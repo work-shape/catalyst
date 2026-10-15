@@ -1,0 +1,9 @@
+instances:
+  test:
+    url: https://chat.example.com
+defaultInstance: test
+defaultAgentName: plain_writer
+agents:
+  - agents/*.agent.yaml
+skills:
+  - skills/*/SKILL.md
