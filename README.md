@@ -2,8 +2,6 @@
 
 Workshape Catalyst is the platform a company runs its AI on: agents, apps, workflows and the company knowledge they work with, on-premise or in a dedicated instance.
 
-Formerly Vivd Catalyst.
-
 ## What is Workshape Catalyst
 
 People work with AI agents in a chat. When an agent builds something useful, such as a form or an overview, the team keeps it as an App. Workflows do routine work on a schedule or when someone starts them. Connections let agents work in the systems a company already uses, such as its CRM or ticket tool.
