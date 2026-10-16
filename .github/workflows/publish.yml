@@ -28,7 +28,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
           cache: pnpm
-      - run: npm install --global npm@11
+      - run: npm install --global npm@11.21.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Publish four MIT packages with provenance (rerunnable)
