@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "paths": {
+      "@work-shape/catalyst-asset-schemas": [
+        "packages/asset-schemas/src/index.ts"
+      ],
+      "@work-shape/catalyst-api-contract": [
+        "packages/api-contract/src/index.ts"
+      ],
+      "@work-shape/catalyst-api-client": [
+        "packages/api-client/src/index.ts"
+      ],
+      "@work-shape/catalyst-cli": [
+        "packages/config-cli/src/index.ts"
+      ]
+    },
+    "target": "ES2023",
+    "types": [
+      "node"
+    ]
+  }
+}

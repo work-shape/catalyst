@@ -1,0 +1,170 @@
+import { listQuerySchema } from "../shared";
+import { z } from "zod";
+import {
+  artifactPreviewResponseSchema,
+  draftAttachmentSchema,
+  draftAttachmentUploadResponseSchema
+} from "../conversations";
+import { blob, defineOperation, json, page } from "./define-operation";
+
+export const conversationFileOperations = {
+  "conversations.artifacts.start_preview": defineOperation({
+    id: "conversations.artifacts.start_preview",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/artifacts/:artifactId/preview",
+    summary: "Prepare the page preview of an artifact",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "changing",
+    response: json(artifactPreviewResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  "conversations.attachments.start_preview": defineOperation({
+    id: "conversations.attachments.start_preview",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/attachments/:attachmentId/preview",
+    summary: "Prepare the page preview of a sent attachment",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "changing",
+    response: json(artifactPreviewResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+
+  "conversations.draft_attachments.list": defineOperation({
+    id: "conversations.draft_attachments.list",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/draft-attachments",
+    summary: "List the attachments of the unsent message",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: listQuerySchema,
+    response: page(draftAttachmentSchema, ["createdAt", "id"], false),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.draft_attachments.upload": defineOperation({
+    id: "conversations.draft_attachments.upload",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/draft-attachments",
+    summary: "Upload an attachment for the next message",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    multipart: true,
+    response: json(draftAttachmentUploadResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  "conversations.draft_attachments.retry": defineOperation({
+    id: "conversations.draft_attachments.retry",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/draft-attachments/:attachmentId/retry",
+    summary: "Process a failed draft attachment again",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    response: json(draftAttachmentUploadResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  "conversations.draft_attachments.delete": defineOperation({
+    id: "conversations.draft_attachments.delete",
+    method: "DELETE",
+    path: "/api/v1/conversations/:conversationId/draft-attachments/:attachmentId",
+    summary: "Remove a draft attachment",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    response: json(draftAttachmentSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  "conversations.files.get_content": defineOperation({
+    id: "conversations.files.get_content",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/files/:fileId/content",
+    summary: "Download or display a file of a conversation",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: z.object({ download: z.string().optional() }),
+    response: blob(),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.artifacts.get_content": defineOperation({
+    id: "conversations.artifacts.get_content",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/artifacts/:artifactId/content",
+    summary: "Download or display an artifact of a conversation",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: z.object({ inline: z.string().optional() }),
+    response: blob(),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.artifacts.get_preview": defineOperation({
+    id: "conversations.artifacts.get_preview",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/artifacts/:artifactId/preview",
+    summary: "Read the page preview of an artifact",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(artifactPreviewResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.attachments.get_preview": defineOperation({
+    id: "conversations.attachments.get_preview",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/attachments/:attachmentId/preview",
+    summary: "Read the page preview of a sent attachment",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(artifactPreviewResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.artifacts.retry_preview": defineOperation({
+    id: "conversations.artifacts.retry_preview",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/artifacts/:artifactId/preview/retry",
+    summary: "Render a failed artifact preview again",
+    tag: "Conversation Files",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "changing",
+    response: json(artifactPreviewResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  })
+} as const;

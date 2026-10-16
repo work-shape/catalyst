@@ -1,0 +1,11 @@
+{
+  "name": "catalyst-public",
+  "version": "0.8.0-rc.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "build": "pnpm -r build",
+    "release:publish": "node scripts/release/publish.mjs --group public"
+  }
+}

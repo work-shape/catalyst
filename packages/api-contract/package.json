@@ -1,0 +1,58 @@
+{
+  "name": "@work-shape/catalyst-api-contract",
+  "version": "0.8.0-rc.1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/work-shape/catalyst",
+    "directory": "packages/api-contract"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist",
+    "openapi.json"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./openapi.json": "./openapi.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./openapi.json": "./openapi.json"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "check:contract": "tsx scripts/check-contract.ts",
+    "check:openapi": "tsx scripts/check-openapi.ts",
+    "generate:openapi": "tsx scripts/write-openapi.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@work-shape/catalyst-asset-schemas": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@redocly/openapi-core": "^2.62.1",
+    "@types/node": "^24.13.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

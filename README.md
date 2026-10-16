@@ -1,6 +1,22 @@
+<img src="docs/images/catalyst-mark.svg" alt="Workshape Catalyst mark" width="64" height="64">
+
 # Workshape Catalyst
 
 Workshape Catalyst is the platform a company runs its AI on: agents, apps, workflows and the company knowledge they work with, on-premise or in a dedicated instance.
+
+![A chat with an agent that read the CRM and answers with a table of clients](docs/images/chat.jpg)
+
+An agent reads the CRM and answers in the chat.
+
+![An offer drafted in the chat, with the email to the client waiting for approval](docs/images/document.jpg)
+
+An agent drafts an offer from call notes. The email with the offer goes out only once a person approves it.
+
+![A Workflow run that checked the bookings of 600 clients, step by step](docs/images/workflow.jpg)
+
+A Workflow checks the bookings of 600 clients and sums up what it found.
+
+The screens show a sample company.
 
 ## What is Workshape Catalyst
 

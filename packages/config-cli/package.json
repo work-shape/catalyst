@@ -1,0 +1,57 @@
+{
+  "name": "@work-shape/catalyst-cli",
+  "version": "0.8.0-rc.1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/work-shape/catalyst",
+    "directory": "packages/config-cli"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "catalyst": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "js-yaml": "^4.3.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.13.1",
+    "@work-shape/catalyst-api-client": "workspace:*",
+    "@work-shape/catalyst-api-contract": "workspace:*",
+    "@work-shape/catalyst-asset-schemas": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  }
+}
