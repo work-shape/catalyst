@@ -58,7 +58,7 @@ importers:
   packages/asset-schemas:
     dependencies:
       js-yaml:
-        specifier: ^4.3.2
+        specifier: ~4.3.2
         version: 4.3.2
       zod:
         specifier: 4.4.3
@@ -80,7 +80,7 @@ importers:
   packages/config-cli:
     dependencies:
       js-yaml:
-        specifier: ^4.3.2
+        specifier: ~4.3.2
         version: 4.3.2
       zod:
         specifier: 4.4.3

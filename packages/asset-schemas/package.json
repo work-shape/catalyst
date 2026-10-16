@@ -1,6 +1,6 @@
 {
   "name": "@work-shape/catalyst-asset-schemas",
-  "version": "0.8.0-rc.1",
+  "version": "0.8.0-rc.2",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -39,7 +39,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "js-yaml": "^4.3.2",
+    "js-yaml": "~4.3.2",
     "zod": "4.4.3"
   },
   "devDependencies": {

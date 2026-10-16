@@ -3,7 +3,9 @@ import { spawnSync } from "node:child_process";
 const REGISTRY_TIMEOUT_MS = 30_000;
 // Gives the public build/publish time to finish; exhaustion leaves the release rerunnable.
 const PUBLIC_PUBLISH_WAIT_MS = 20 * 60_000;
+// Back off during npm processing; the total wait remains PUBLIC_PUBLISH_WAIT_MS.
 const REGISTRY_RETRY_MS = 15_000;
+const REGISTRY_MAX_RETRY_MS = 60_000;
 
 export function npmView(specifier, field) {
   const result = spawnSync(
@@ -41,17 +43,59 @@ export function npmView(specifier, field) {
 
 export async function waitForPackages(packages) {
   const deadline = Date.now() + PUBLIC_PUBLISH_WAIT_MS;
-  let pending = packages;
-  while (pending.length) {
-    pending = pending.filter(
-      ({ name, version }) => npmView(`${name}@${version}`, "version") !== version
-    );
-    if (!pending.length) return;
-    if (Date.now() >= deadline)
+  const pending = new Map(packages.map((pkg) => [pkg, "not checked"]));
+  let retryMs = REGISTRY_RETRY_MS;
+  while (pending.size) {
+    for (const [pkg] of pending) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+      const { name, version } = pkg;
+      let response;
+      try {
+        response = await fetch(
+          `https://registry.npmjs.org/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+          {
+            // Return redirects as HTTP errors instead of hiding their status in a fetch failure.
+            redirect: "manual",
+            signal: AbortSignal.timeout(Math.min(REGISTRY_TIMEOUT_MS, remainingMs))
+          }
+        );
+      } catch {
+        pending.set(pkg, "network error");
+        continue;
+      }
+      pending.set(pkg, `HTTP ${response.status}`);
+      if (!response.ok) {
+        await response.body?.cancel();
+        if (
+          response.status === 404 ||
+          response.status === 429 ||
+          (response.status >= 500 && response.status <= 599)
+        )
+          continue;
+        throw new Error(
+          `Registry request failed for ${name}@${version}: HTTP ${response.status}; refusing to treat it as absent`
+        );
+      }
+      let manifest;
+      try {
+        manifest = await response.json();
+      } catch (error) {
+        if (error instanceof SyntaxError)
+          throw new Error(`Invalid registry response for ${name}@${version}`);
+        pending.set(pkg, "network error");
+        continue;
+      }
+      if (manifest?.version === version) pending.delete(pkg);
+    }
+    if (!pending.size) return;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0)
       throw new Error(
-        `Timed out waiting for ${pending.map(({ name }) => name).join(", ")}; rerun after its release completes`
+        `Timed out waiting for ${[...pending].map(([{ name }, status]) => `${name} (${status})`).join(", ")}; rerun after its release completes`
       );
-    await new Promise((resolve) => setTimeout(resolve, REGISTRY_RETRY_MS));
+    await new Promise((resolve) => setTimeout(resolve, Math.min(retryMs, remainingMs)));
+    retryMs = Math.min(retryMs * 2, REGISTRY_MAX_RETRY_MS);
   }
 }
 
