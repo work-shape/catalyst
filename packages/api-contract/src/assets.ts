@@ -102,6 +102,8 @@ export const agentDraftSummarySchema = z.object({
   baseRevision: revisionNumberSchema,
   author: z.object({
     userId: z.string().optional(),
+    /** The name of the person who wrote the draft last, while their account exists. */
+    displayLabel: z.string().optional(),
     conversationId: z.string().optional(),
     release: z.boolean()
   }),
@@ -155,6 +157,9 @@ export const assetFileSchema = z.object({
   base64: z.string().optional()
 });
 
+/** What a caller may do to an asset beyond reading it. */
+export const assetVerbSchema = z.enum(["write", "delete", "publish"]);
+
 export const assetSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -166,6 +171,8 @@ export const assetSchema = z.object({
   config: configAssetConfigSchema,
   /** The active account's display label for the Workflow revision returned by this read. */
   runsAs: z.string().optional(),
+  /** Unrecorded draft review lines naming its audience and shared source accounts. */
+  publishQuestion: z.array(z.string()).optional(),
   /**
    * The revision `config` and `files` are of, for a kind with a draft and a published revision:
    * the draft where the call names none.
@@ -193,6 +200,12 @@ export const assetSchema = z.object({
   unavailableModels: z.array(unavailableModelSchema).optional(),
   /** False when the primary model is unavailable; no model is substituted. */
   chatAvailable: z.boolean().optional(),
+  /**
+   * What the caller may do to this asset, as the instance decides it on this asset: grants and
+   * denies on the instance, a Namespace, a workspace and the asset itself. A kind without a
+   * published revision names no `publish`. Left out by an instance from before AD-4.
+   */
+  allowed: z.array(assetVerbSchema).optional(),
   updatedAt: timestampSchema
 });
 

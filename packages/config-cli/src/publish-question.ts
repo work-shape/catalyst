@@ -1,4 +1,5 @@
-import { writeError, type ConfigCommandOptions } from "./command-support";
+import { ConfigApiError } from "./api";
+import { isRecord, writeError, type ConfigCommandOptions } from "./command-support";
 
 /** How a publish goes ahead: answered here, sent for the Inbox with `--yes`, or not at all. */
 export type PublishAnswer = "answered" | "unattended" | "refused";
@@ -21,7 +22,7 @@ export async function askBeforePublish(
   if (!options.prompt) {
     writeError(
       options,
-      `Publishing a ${kind} needs your answer here, so a run without a terminal to ask publishes nothing. Run 'catalyst ${command} publish ${name} --revision ${revision}' in a terminal and answer its question, add --yes to confirm it in your Inbox, or publish it in the interface.`
+      `Publishing ${/^[aeiou]/u.test(kind) ? "an" : "a"} ${kind} needs your answer here, so a run without a terminal to ask publishes nothing. Run 'catalyst ${command} publish ${name} --revision ${revision}' in a terminal and answer its question, add --yes to confirm it in your Inbox, or publish it in the interface.`
     );
     return "refused";
   }
@@ -47,3 +48,24 @@ export function waitingPublishLine(
   }
   return `Waits for an approval on the instance; nothing has changed yet (${named}).${approvalHint ? ` ${approvalHint}` : ""}`;
 }
+
+/**
+ * What to do where the instance refused to publish an agent for the caller's right or key: a
+ * service principal's key writes agent drafts and publishes none (AP-10), and a personal key
+ * publishes only with the publish scope, so a person publishes them. Nothing for any other
+ * refusal.
+ */
+export function agentPublishRefusalHint(error: unknown): string | undefined {
+  if (!(error instanceof ConfigApiError) || error.status !== 403) return undefined;
+  const reason = isRecord(error.details) ? error.details.reason : undefined;
+  const keyRefused =
+    reason === "user_only" ||
+    reason === "outside_key_scope" ||
+    error.message.includes(`'${PUBLISH_SCOPE}'`);
+  return keyRefused
+    ? `This key publishes no agent. A service principal's key, such as the release key of an operated instance, writes agent drafts and publishes none (AP-10); a personal key publishes only with the publish right, scope ${PUBLISH_SCOPE}. Publish the draft with such a personal key or on the agent page.`
+    : "Publishing an agent needs the right agent.publish on it, which an instance admin holds.";
+}
+
+/** The scope of a key that reaches `assets.publish`. */
+const PUBLISH_SCOPE = "config_assets:publish";

@@ -1,5 +1,17 @@
 import {
+  knowledgeSyncInputSchema,
+  knowledgeSyncResultSchema,
+  knowledgeSourcesOutputSchema,
+  knowledgeSourceItemsInputSchema,
+  knowledgeSourceItemsOutputSchema,
+  knowledgeLocateInputSchema,
+  knowledgeLocateOutputSchema,
+  knowledgeRetryInputSchema,
+  knowledgeRetryOutputSchema
+} from "@work-shape/catalyst-asset-schemas";
+import {
   DATA_STORE_SCALAR_TYPES,
+  MANAGED_FILE_STATUSES,
   KNOWLEDGE_BASE_STATUSES,
   KNOWLEDGE_DOCUMENT_FAILURE_CODES,
   KNOWLEDGE_DOCUMENT_STATES,
@@ -99,6 +111,8 @@ const knowledgeListDocumentsResponseSchema = z.object({
       format: z.string(),
       /** The size of the file in bytes. */
       bytes: z.number().int(),
+      /** Released originals remain at the source; file metadata and extracted text stay here. */
+      originalStatus: z.enum(MANAGED_FILE_STATUSES).exclude(["deleted"]).optional(),
       /** `pending` until it is searchable, then `indexed`; `failed` with `failureCode`. */
       state: z.enum(KNOWLEDGE_DOCUMENT_STATES),
       failureCode: z.enum(KNOWLEDGE_DOCUMENT_FAILURE_CODES).optional(),
@@ -119,18 +133,6 @@ const knowledgeListDocumentsResponseSchema = z.object({
   ),
   /** Present while more documents follow. */
   nextCursor: z.string().optional()
-});
-
-const knowledgeRetryDocumentsRequestSchema = z.strictObject({
-  /** The documents to index again: failed ones, or pending ones whose indexing seems stuck. */
-  documentIds: z.array(z.string().min(1)).min(1).max(100)
-});
-
-const knowledgeRetryDocumentsResponseSchema = z.object({
-  /** Each named document in the Knowledge Base, with its state after the retry. */
-  documents: z.array(z.object({ id: z.string(), state: z.enum(KNOWLEDGE_DOCUMENT_STATES) })),
-  /** How many contents were queued to be indexed again. */
-  queued: z.number().int()
 });
 
 const knowledgeSearchRequestSchema = z.strictObject({
@@ -174,6 +176,56 @@ const BASE = {
 
 // None names its right in `requires`: the right is the Knowledge Base operation's.
 export const knowledgeOperations = {
+  "knowledge_bases.sync": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.sync",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/sync",
+    summary:
+      "Start a full source sync and return its Operation Run immediately; concurrent starts join the running sync",
+    scope: "config_assets:write",
+    effect: "changing",
+    body: knowledgeSyncInputSchema,
+    response: json(knowledgeSyncResultSchema),
+    rateClass: "write"
+  }),
+  "knowledge_bases.sources": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.sources",
+    method: "GET",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/sources",
+    summary: "Read source states, counts, failure codes and sync progress",
+    scope: "config_assets:read",
+    effect: "reading",
+    response: json(knowledgeSourcesOutputSchema),
+    rateClass: "read"
+  }),
+  "knowledge_bases.source_items": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.source_items",
+    method: "GET",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/sources/:source/items",
+    summary:
+      "Page through the items of a source, newest change first; filter by state or failure code",
+    scope: "config_assets:read",
+    effect: "reading",
+    query: knowledgeSourceItemsInputSchema.omit({ source: true }),
+    response: json(knowledgeSourceItemsOutputSchema),
+    rateClass: "read"
+  }),
+  "knowledge_bases.locate": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.locate",
+    method: "GET",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/locate",
+    summary:
+      "Locate a source item for erasure: state and lifecycle times without content, file name or path",
+    scope: "config_assets:read",
+    effect: "reading",
+    query: knowledgeLocateInputSchema,
+    response: json(knowledgeLocateOutputSchema),
+    rateClass: "read"
+  }),
   "knowledge_bases.get": defineRegisteredOperation({
     ...BASE,
     id: "knowledge_bases.get",
@@ -261,10 +313,10 @@ export const knowledgeOperations = {
     path: "/api/v1/knowledge-bases/:knowledgeBase/documents/retry",
     summary:
       "Index documents of a Knowledge Base again: a failed one goes back to pending, and its content is queued",
-    scope: "data_store_rows:write",
+    scope: "config_assets:write",
     effect: "changing",
-    body: knowledgeRetryDocumentsRequestSchema,
-    response: json(knowledgeRetryDocumentsResponseSchema),
+    body: knowledgeRetryInputSchema,
+    response: json(knowledgeRetryOutputSchema),
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
     rateClass: "write"
   }),

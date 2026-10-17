@@ -21,6 +21,11 @@ import { defineRegisteredOperation, json, page } from "./define-operation";
 /** How many characters of a result a read shows at most. The store cuts to the same number. */
 export const WORKFLOW_RUN_OUTPUT_PREVIEW_MAX_CHARS = 2_000;
 
+/** How long a run key is at most: `WORKFLOW_RUN_KEY_MAX_LENGTH` of the contract. */
+export const WORKFLOW_RUN_KEY_MAX_CHARS = 200;
+
+const runKeySchema = z.string().min(1).max(WORKFLOW_RUN_KEY_MAX_CHARS);
+
 // The values of the Workflow contract in `@work-shape/catalyst-core`, which this package does not
 // import. A value the engine writes and this list lacks fails the answer of the read.
 const runStatusSchema = z.enum(WORKFLOW_RUN_STATUSES);
@@ -71,6 +76,11 @@ export const workflowRunSchema = z.object({
   }),
   /** The due time of the schedule that started the run. Missing on every other run. */
   scheduledFor: timestampSchema.optional(),
+  /**
+   * The run key its start gave the run, such as `2026-09/1402`. Among the Workflow's runs that
+   * are open or `done` a key exists once. Missing on a run started without one.
+   */
+  runKey: z.string().optional(),
   /** The Operation Run of the call that started the run. */
   operationRunId: z.string().optional(),
   parentRunId: z.string().optional(),
@@ -145,6 +155,11 @@ export const workflowStepRunSchema = z.object({
   attempt: z.number().int().min(0),
   /** The Operation Run of the call an operation step made. */
   operationRunId: z.string().optional(),
+  /**
+   * On the step run of a `workflow` step whose start a run key answered: the run it waits for
+   * and does not own. Cancelling this run leaves that one going.
+   */
+  linkedRunId: z.string().optional(),
   error: workflowRunErrorSchema.optional(),
   outputPreview: workflowOutputPreviewSchema.optional(),
   createdAt: timestampSchema,
@@ -154,7 +169,22 @@ export const workflowStepRunSchema = z.object({
 
 export const startWorkflowRunRequestSchema = z.object({
   /** The input of the run, checked against the `inputs` of the Workflow's definition. */
-  input: z.record(z.string(), z.unknown()).optional()
+  input: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * The run key, such as `2026-09/1402`. Where a run of the Workflow that is open or `done`
+   * holds it, the start starts nothing and answers that run; a run that ended `failed`,
+   * `cancelled` or `limit_reached` holds no key.
+   */
+  key: runKeySchema.optional()
+});
+
+/**
+ * The runs of a Workflow by their run key: `key` answers the run with that key, `keyPrefix`
+ * those whose key starts with it, taken as it is written. Not both.
+ */
+export const listWorkflowRunsQuerySchema = listQuerySchema.extend({
+  key: runKeySchema.optional(),
+  keyPrefix: runKeySchema.optional()
 });
 
 /**
@@ -261,7 +291,7 @@ export const workflowOperations = {
     effect: "changing",
     body: startWorkflowRunRequestSchema,
     response: json(workflowRunSchema),
-    errors: ["NOT_FOUND", "CONFLICT"],
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
   "workflows.test": defineRegisteredOperation({
@@ -284,15 +314,16 @@ export const workflowOperations = {
     id: "workflows.list_runs",
     method: "GET",
     path: "/api/v1/workflows/:workflow/runs",
-    summary: "List the runs of one Workflow with their status, newest first",
+    summary:
+      "List the runs of one Workflow with their status, newest first: all of them, or those of one run key or key prefix",
     tag: "Workflows",
     auth: "principal",
     scope: "config_assets:read",
     requires: [],
     effect: "reading",
-    query: listQuerySchema,
+    query: listWorkflowRunsQuerySchema,
     response: page(workflowRunSchema, ["createdAt", "id"], true),
-    errors: [],
+    errors: ["VALIDATION_FAILED"],
     rateClass: "read"
   }),
   "workflows.get_run": defineRegisteredOperation({

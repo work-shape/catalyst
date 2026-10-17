@@ -56,8 +56,20 @@ export interface AssetBaseline {
    * same name can be at the same number. An entry of an earlier CLI has none.
    */
   id?: string;
+  /** For an agent: its live revision. A draft never moves it. */
   revision: number;
   hash: string;
+  /**
+   * For an agent: the draft revision the last pull or push saw, or null where it saw none. A
+   * push names it, so it never writes over a draft somebody changed since. Left out by a CLI
+   * from before agent drafts, whose baseline cannot be pushed until one pull.
+   */
+  draftRevision?: number | null;
+  /**
+   * For an agent: `hash` is of the draft this working copy pushed, not of the live revision,
+   * so a pull reads the live revision again and a diff compares against it.
+   */
+  draftPushed?: true;
 }
 
 /** The delete of an asset as a pull or a push saw it. */
@@ -249,14 +261,24 @@ export async function readStateFile(path: string): Promise<CatalystState> {
           asset.revision < 1 ||
           typeof asset.hash !== "string" ||
           !/^[a-f0-9]{64}$/u.test(asset.hash) ||
-          (asset.id !== undefined && typeof asset.id !== "string")
+          (asset.id !== undefined && typeof asset.id !== "string") ||
+          !(
+            asset.draftRevision === undefined ||
+            asset.draftRevision === null ||
+            (typeof asset.draftRevision === "number" &&
+              Number.isInteger(asset.draftRevision) &&
+              asset.draftRevision >= 1)
+          ) ||
+          (asset.draftPushed !== undefined && asset.draftPushed !== true)
         ) {
           throw new Error(`${path} has an invalid asset baseline for '${key}'`);
         }
         baseline.assets[key] = {
           ...(asset.id === undefined ? {} : { id: asset.id }),
           revision: asset.revision,
-          hash: asset.hash
+          hash: asset.hash,
+          ...(asset.draftRevision === undefined ? {} : { draftRevision: asset.draftRevision }),
+          ...(asset.draftPushed === true ? { draftPushed: true as const } : {})
         };
       }
     }

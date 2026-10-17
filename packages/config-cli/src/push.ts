@@ -11,9 +11,11 @@ import {
   type InstanceBaseline,
   type WorkingCopyBundle
 } from "./working-copy";
+import { agentPublishRefusalHint, askBeforePublish, waitingPublishLine } from "./publish-question";
 import {
   type ConfigCommandOptions,
   type LocalAsset,
+  type RecordedRevision,
   type RemoteAsset,
   assetContents,
   assetEntries,
@@ -25,6 +27,7 @@ import {
   holdsWholeInstance,
   fetchRemoteAsset,
   formatCounts,
+  formatDraftAuthor,
   isRecord,
   listRemoteAssets,
   mapConcurrently,
@@ -66,13 +69,28 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     );
   }
   const baselineAssets = baseline.assets;
+  const touched = assetEntries(bundle).filter(
+    (asset) => baselineAssets[asset.key]?.hash !== assetHash(asset.contents)
+  );
+  // A CLI from before agent drafts recorded the live revision of an agent and not the draft
+  // revision it saw. Pushed against nothing, the push would write over a draft unseen.
+  const undrafted = touched.filter(
+    (asset) => asset.kind === "agent" && baselineAssets[asset.key]?.draftRevision === undefined
+  );
+  if (undrafted.some((asset) => baselineAssets[asset.key] !== undefined)) {
+    throw new Error(
+      `${STATE_FILENAME} was written before agents had drafts and does not say which draft revision ${undrafted
+        .filter((asset) => baselineAssets[asset.key] !== undefined)
+        .map((asset) => asset.key)
+        .join(
+          ", "
+        )} was pulled at. Run 'catalyst config pull' once, then push again. Commit or stash local edits in git first: the pull overwrites the local files.`
+    );
+  }
   const api = await connectApi(instance.url, options, instance);
   // Read to its last page or not at all: a listing that fails stops the push, so a prune
   // never takes an asset it could not list for one that is gone.
   const listing = await listRemoteAssets(api, workingCopyKinds(manifest));
-  const touched = assetEntries(bundle).filter(
-    (asset) => baselineAssets[asset.key]?.hash !== assetHash(asset.contents)
-  );
   const touchedKeys = new Set(touched.map((asset) => asset.key));
   const localKeys = new Set(assetEntries(local).map((asset) => asset.key));
   const deleteAssets = options.prune
@@ -149,11 +167,16 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   const items: SyncBatch["items"] = [
     ...syncTouched.map((asset) => {
       const base = baseOf(asset.key);
+      // An agent that is there is written as its draft, against the draft revision last seen.
+      const draftRevision = baselineAssets[asset.key]?.draftRevision;
       return {
         type: "put" as const,
         kind: asset.kind,
         config: { ...asset.config },
         expectedRevision: base?.revision ?? null,
+        ...(asset.kind === "agent" && draftRevision !== undefined
+          ? { expectedDraftRevision: draftRevision }
+          : {}),
         ...(base?.id === undefined ? {} : { expectedAssetId: base.id })
       };
     }),
@@ -177,6 +200,8 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       `This push changes ${items.length} assets, and one push holds at most ${ASSET_RELEASE_SYNC_MAX_ITEMS}. Push in parts with --only.`
     );
   }
+  /** The agents this push wrote as drafts, which `--publish` makes live. */
+  const drafted: PushedDraft[] = [];
   if (items.length > 0 || changesDefault) {
     // The default agent the push is made against, as the revisions are: the one of the last pull.
     const batch: SyncBatch = {
@@ -194,13 +219,33 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       return 1;
     }
     const result = synced;
-    const revisions = Object.fromEntries(
-      result.items.flatMap((item) =>
-        item.status === "applied" && item.type === "put"
-          ? [[`${item.kind}:${item.name}`, { id: item.id, revision: item.revision }]]
-          : []
-      )
-    );
+    const revisions: Record<string, RecordedRevision> = {};
+    for (const item of result.items) {
+      if (item.status !== "applied" || item.type !== "put") continue;
+      const key = `${item.kind}:${item.name}`;
+      if (item.kind !== "agent") {
+        revisions[key] = { id: item.id, revision: item.revision };
+      } else if (item.draftRevision === undefined) {
+        // A new agent is live at its first revision and has no draft.
+        revisions[key] = { id: item.id, revision: item.revision, draftRevision: null };
+      } else {
+        // The live revision stays; the content recorded is the draft's.
+        const live = item.publishedRevision ?? baselineAssets[key]?.revision ?? item.revision;
+        revisions[key] = {
+          id: item.id,
+          revision: live,
+          draftRevision: item.draftRevision,
+          draftPushed: true
+        };
+        drafted.push({
+          key,
+          id: item.id,
+          name: item.name,
+          draftRevision: item.draftRevision,
+          live
+        });
+      }
+    }
     const pushed = bundleOf(syncTouched);
     await recordBaseline(
       workingDir,
@@ -219,6 +264,12 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       )
     );
     writeOutput(options, `Pushed ${formatCounts(pushed)}, version ${result.version}.`);
+    for (const draft of drafted) {
+      writeOutput(
+        options,
+        `${draft.key}: draft revision ${draft.draftRevision}; live revision ${draft.live} is unchanged until it is published.${options.publish ? "" : ` Publish it with 'catalyst agent publish ${draft.name} --revision ${draft.draftRevision}' or on the agent page.`}`
+      );
+    }
     for (const warning of result.warnings) writeOutput(options, `Warning: ${warning.message}`);
     if (result.hiddenAgentNames?.length) {
       writeOutput(
@@ -230,7 +281,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       );
     }
   }
-  return writeGuardrails(api, {
+  const guardrailsWritten = await writeGuardrails(api, {
     workingDir,
     instanceKey: instance.key,
     version: baseline.lastPulledVersion,
@@ -242,6 +293,137 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
     options
   });
+  if (guardrailsWritten !== 0 || !options.publish || drafted.length === 0) {
+    return guardrailsWritten;
+  }
+  return publishDrafts(api, drafted, {
+    workingDir,
+    instanceKey: instance.key,
+    version: baseline.lastPulledVersion,
+    pushed: new Map(syncTouched.map(byKey)),
+    ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
+    options
+  });
+}
+
+/** An agent a push wrote as its draft, and the live revision it left alone. */
+interface PushedDraft {
+  key: string;
+  id: string;
+  name: string;
+  draftRevision: number;
+  live: number;
+}
+
+/**
+ * `push --publish`: publishes each draft the push wrote, by the draft revision it was given.
+ * An instance's own agent is published without a question, unless a guardrail on
+ * `agent.before_publish` holds it for an approval. A workspace's agent asks first, as an App
+ * does, and without a terminal is not published. A service principal publishes nothing
+ * (AP-10). Each publish is recorded as the agent's new live revision when it is answered.
+ * Answers 0 when all were published, 3 when one waits for an approval, 1 otherwise.
+ */
+async function publishDrafts(
+  api: ConfigApi,
+  drafts: readonly PushedDraft[],
+  input: {
+    workingDir: string;
+    instanceKey: string;
+    version: number;
+    pushed: ReadonlyMap<string, LocalAsset>;
+    workspaceId?: string;
+    options: ConfigCommandOptions;
+  }
+): Promise<number> {
+  const { options } = input;
+  const scope = input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId };
+  const left = (from: number) =>
+    drafts
+      .slice(from)
+      .map(
+        (draft) =>
+          `  catalyst agent publish ${draft.name} --revision ${draft.draftRevision}${input.workspaceId === undefined ? "" : ` --workspace ${input.workspaceId}`}`
+      );
+  const unpublished = (from: number) => {
+    const commands = left(from);
+    if (commands.length > 0) {
+      writeError(
+        options,
+        ["Not published; each stays a draft until it is:", ...commands].join("\n")
+      );
+    }
+  };
+  for (const [index, draft] of drafts.entries()) {
+    if (input.workspaceId !== undefined) {
+      // A workspace's agent keeps the question and the approval of its publish (WS-PUB-1b).
+      const answer = await askBeforePublish(options, {
+        kind: "agent",
+        command: "agent",
+        name: draft.name,
+        revision: draft.draftRevision,
+        yes: false
+      });
+      if (answer !== "answered") {
+        unpublished(index);
+        return 1;
+      }
+    }
+    let outcome;
+    try {
+      outcome = await api.change(
+        (client, idempotencyKey) =>
+          client.assets.publish({
+            params: { kind: "agent", name: draft.name },
+            body: { revision: draft.draftRevision, ...scope },
+            idempotencyKey
+          }),
+        `It may have been published: run 'catalyst agent show ${draft.name}' before sending it again.`
+      );
+    } catch (error) {
+      if (!(error instanceof ConfigApiError)) throw error;
+      writeError(options, publishRefusal(draft, error));
+      unpublished(index);
+      return 1;
+    }
+    if (outcome.status === "pending_approval") {
+      writeError(options, `${draft.key}: ${waitingPublishLine(outcome.run)}`);
+      unpublished(index + 1);
+      return 3;
+    }
+    // What was pushed is live now: the baseline names the new live revision and no draft.
+    const asset = input.pushed.get(draft.key);
+    if (asset !== undefined) {
+      await recordBaseline(
+        input.workingDir,
+        input.instanceKey,
+        input.version,
+        bundleOf([asset]),
+        {
+          [draft.key]: {
+            id: draft.id,
+            revision: outcome.output.publishedRevision,
+            draftRevision: null
+          }
+        },
+        false
+      );
+    }
+    writeOutput(
+      options,
+      `Published draft revision ${draft.draftRevision} of agent '${draft.name}' as live revision ${outcome.output.publishedRevision}${outcome.output.replacedRevision === undefined ? "" : ` in place of revision ${outcome.output.replacedRevision}`}.`
+    );
+  }
+  return 0;
+}
+
+/** Why the instance refused to publish a pushed draft, and what publishes it instead. */
+function publishRefusal(draft: PushedDraft, error: ConfigApiError): string {
+  const hint = agentPublishRefusalHint(error);
+  return [
+    `${draft.key}: nothing was published; draft revision ${draft.draftRevision} stays a draft.`,
+    `The instance refused it (${error.code ?? `HTTP ${error.status}`}): ${error.message}`,
+    ...(hint === undefined ? [] : [hint])
+  ].join("\n");
 }
 
 /**
@@ -277,6 +459,11 @@ async function syncBatch(
       )
     };
   } catch (error) {
+    const draftConflict = error instanceof ConfigApiError ? readDraftConflict(error) : undefined;
+    if (draftConflict) {
+      writeError(options, formatPushConflict([draftConflict], false, options));
+      return undefined;
+    }
     const refusal = error instanceof ConfigApiError ? readRefusedBatch(error) : undefined;
     if (!refusal) {
       throw error;
@@ -530,6 +717,43 @@ interface AssetConflict {
   deleted?: boolean;
   changedBy?: string;
   changedAt?: string;
+  /**
+   * An agent whose draft another write changed since the last pull or push: the draft
+   * revision it is at now, or null where it was published or discarded since.
+   */
+  draft?: { revision: number | null };
+}
+
+/**
+ * An agent draft that moved since this working copy saw it: the instance refuses the whole
+ * push with `draft_changed`, and names the agent, the draft revision it is at and its author.
+ */
+export function readDraftConflict(error: ConfigApiError): AssetConflict | undefined {
+  const details = isRecord(error.details) ? error.details : undefined;
+  if (error.code !== "REVISION_CONFLICT" || details?.reason !== "draft_changed") return undefined;
+  const author = isRecord(details.author) ? details.author : undefined;
+  const revision =
+    typeof details.currentDraftRevision === "number" ? details.currentDraftRevision : null;
+  return {
+    kind: typeof details.kind === "string" ? details.kind : "agent",
+    name: typeof details.name === "string" ? details.name : "(unnamed)",
+    draft: { revision },
+    ...(author
+      ? {
+          changedBy: formatDraftAuthor({
+            release: author.release === true,
+            ...(typeof author.userId === "string" ? { userId: author.userId } : {}),
+            ...(typeof author.displayLabel === "string"
+              ? { displayLabel: author.displayLabel }
+              : {}),
+            ...(typeof author.conversationId === "string"
+              ? { conversationId: author.conversationId }
+              : {})
+          })
+        }
+      : {}),
+    ...(typeof details.changedAt === "string" ? { changedAt: details.changedAt } : {})
+  };
 }
 
 /**
@@ -689,6 +913,11 @@ function formatPushConflict(
 
 /** What the instance holds of one conflicting asset, in the words of what the key may read. */
 function describeConflict(asset: AssetConflict): string {
+  if (asset.draft !== undefined) {
+    return asset.draft.revision === null
+      ? "the draft this working copy last saw was published or discarded since"
+      : `its draft changed since the last pull: draft revision ${asset.draft.revision}, written by ${asset.changedBy ?? "unknown actor"} at ${asset.changedAt ?? "unknown time"}. A pull records it, and the push after it writes over that draft`;
+  }
   if (asset.baseline === "replaced") {
     return "the instance holds another asset under this name than the one this working copy pulled. The working copy was pulled from another database, or the asset was replaced there";
   }

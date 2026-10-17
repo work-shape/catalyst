@@ -33,6 +33,12 @@ The instance decides every right and every check, and a refusal is printed as it
 A write names the revision it was made against: read it with 'show' or 'history'.
 A publish of an App or a Workflow asks you first and needs your answer in a terminal; --yes
 publishes nothing. If you may not approve it yourself, it then waits for an approver.
+A put of an agent that exists writes its one shared draft, and nothing is live until
+'catalyst agent publish <name> --revision <n>' names that draft revision. A put over a pending
+draft names the draft revision it read with --if-draft-revision <n>. An instance's own
+agent is published without a question unless a guardrail asks for an approval; a workspace's
+agent asks first. A service principal's key publishes no agent. 'catalyst agent discard
+<name> --revision <n>' drops the draft.
 Exit codes: 0 done, 1 refused or failed, 2 usage, 3 waits for an approval (nothing changed yet).
 `;
 }

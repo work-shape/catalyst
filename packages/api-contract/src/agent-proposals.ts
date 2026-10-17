@@ -13,11 +13,17 @@ export const agentDraftSchema = z.object({
   config: configAssetConfigSchema,
   author: z.object({
     userId: z.string().optional(),
+    /** The name of the person who wrote the draft last, while their account exists. */
+    displayLabel: z.string().optional(),
+    /** The name people read for the person who wrote the draft last, while they exist. */
+    name: z.string().optional(),
     conversationId: z.string().optional(),
     release: z.boolean()
   }),
   updatedAt: timestampSchema
 });
+/** The agent's one draft as `agents.draft.get` answers it to a holder of its write right. */
+export type AgentDraft = z.infer<typeof agentDraftSchema>;
 export const agentDraftResponseSchema = z.object({ draft: agentDraftSchema.nullable() });
 export const discardAgentDraftRequestSchema = z.object({
   expectedRevision: revisionNumberSchema,

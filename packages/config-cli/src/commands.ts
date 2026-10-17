@@ -35,6 +35,7 @@ import {
   formatCommandError,
   formatCount,
   formatCounts,
+  formatDraft,
   listRemoteAssets,
   mapConcurrently,
   parseOnlySelectors,
@@ -48,6 +49,7 @@ import {
   workingCopyKinds,
   type AssetKindName,
   type FetchedAsset,
+  type RemoteAsset,
   writeError,
   writeOutput
 } from "./command-support";
@@ -120,7 +122,9 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
       // asset of the name can be at the revision the last pull recorded.
       base.id === remote.id &&
       base.revision === remote.revision &&
-      assetHash(mine.contents) === base.hash
+      assetHash(mine.contents) === base.hash &&
+      // What this working copy pushed as an agent's draft is not its live revision.
+      base.draftPushed !== true
     ) {
       return readDefinition(remote, mine.config);
     }
@@ -129,8 +133,20 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
   });
   const present = pulled.flatMap((asset) => (asset ? [asset] : []));
   const selected = bundleOf(present);
+  const listed = new Map(wanted.map(byKey));
+  // An agent is pulled at its live revision, with the draft revision the pull saw: the next
+  // push names it.
   const revisions = Object.fromEntries(
-    present.map((asset) => [asset.key, { id: asset.id, revision: asset.revision }])
+    present.map((asset) => [
+      asset.key,
+      {
+        id: asset.id,
+        revision: asset.revision,
+        ...(asset.kind === "agent"
+          ? { draftRevision: listed.get(asset.key)?.draft?.revision ?? null }
+          : {})
+      }
+    ])
   );
   const selectedKeys = new Set(present.map((asset) => asset.key));
   const absentSelectors = selectors.filter((selector) => !selectedKeys.has(selector.key));
@@ -216,7 +232,24 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
     options,
     `Pulled ${formatCounts(selected)}${overview.version === undefined ? "" : `, version ${overview.version}`}.${selectors.length === 0 ? "" : " Scoped pull; selected asset baselines updated."}`
   );
+  const drafts = pendingDrafts(present.flatMap((asset) => listed.get(asset.key) ?? []));
+  if (drafts.length > 0) {
+    writeOutput(
+      options,
+      [
+        "Pending agent drafts, not live; the working copy holds each agent's live revision:",
+        ...drafts
+      ].join("\n")
+    );
+  }
   return 0;
+}
+
+/** One line per pending agent draft of the listing: revision, author and time. */
+function pendingDrafts(assets: Iterable<RemoteAsset>): string[] {
+  return [...assets].flatMap((asset) =>
+    asset.draft === undefined ? [] : [`  ${asset.key}: ${formatDraft(asset.draft)}`]
+  );
 }
 
 /**
@@ -337,13 +370,26 @@ export async function diffConfig(options: ConfigCommandOptions): Promise<number>
       (remoteAsset?.revision ?? null) !== (base?.revision ?? null) ||
       // Another asset under the name, whatever its number.
       (remoteAsset !== undefined && base !== undefined && remoteAsset.id !== base.id);
-    if (!localChanged && !remoteChanged) {
+    // An agent is compared against its live revision: what this working copy pushed as its
+    // draft differs from it until the draft is published.
+    const pushedDraft = base?.draftPushed === true && localAsset !== undefined;
+    const draft = remoteAsset?.draft;
+    if (!localChanged && !remoteChanged && !pushedDraft && draft === undefined) {
       continue;
     }
-    output.push(
-      `${key}: ${localChanged && remoteChanged ? "conflict" : remoteChanged ? "remote newer" : "changed locally"}`
-    );
-    if (localChanged && !remoteChanged) {
+    const status =
+      localChanged && remoteChanged
+        ? "conflict"
+        : remoteChanged
+          ? "remote newer"
+          : localChanged
+            ? "changed locally"
+            : pushedDraft
+              ? "pushed as a draft, not live"
+              : undefined;
+    if (status !== undefined) output.push(`${key}: ${status}`);
+    if (draft !== undefined) output.push(`${key}: pending ${formatDraft(draft)}; not live`);
+    if ((localChanged || pushedDraft) && !remoteChanged) {
       // The content of the instance's asset is read for the assets changed locally and for
       // no other: the list answers revisions, which is all the rest of the comparison needs.
       const fetched = remoteAsset

@@ -8,6 +8,7 @@ import type {
   PlatformContext
 } from "@work-shape/catalyst-api-contract";
 import { ConfigApiError } from "./api";
+import { formatDraft } from "./command-support";
 
 // How the asset commands print what the instance answered. Every line is built from the
 // answer; nothing here decides anything.
@@ -64,12 +65,23 @@ export function kindNoun(kind: AssetKind): string {
 export function formatAssetList(kind: AssetKind, assets: readonly AssetSummary[]): string {
   if (assets.length === 0) return `No ${kind.plural} you may read.`;
   const published = kind.lifecycle === "draft_published";
+  // An agent's pending draft, where the caller may read it.
+  const drafts = kind.kind === "agent" && assets.some((asset) => asset.agentDraft !== undefined);
   return table(
-    ["NAME", "REVISION", ...(published ? ["PUBLISHED"] : []), "NAMESPACE", "SCOPE", "TITLE"],
+    [
+      "NAME",
+      "REVISION",
+      ...(published ? ["PUBLISHED"] : []),
+      ...(drafts ? ["DRAFT"] : []),
+      "NAMESPACE",
+      "SCOPE",
+      "TITLE"
+    ],
     assets.map((asset) => [
       `${asset.name}${asset.isDefault ? " (default)" : ""}`,
       String(asset.revision),
       ...(published ? [asset.publishedRevision?.toString() ?? "-"] : []),
+      ...(drafts ? [asset.agentDraft?.revision.toString() ?? "-"] : []),
       asset.namespace ?? "-",
       scopeLabel(asset.scope),
       asset.title
@@ -84,6 +96,7 @@ export function formatAsset(asset: Asset): string {
     ["id", asset.id],
     ["revision", String(asset.revision)],
     ["published revision", asset.publishedRevision?.toString()],
+    ["pending draft", asset.agentDraft && `${formatDraft(asset.agentDraft)}, not live`],
     ["content of revision", asset.contentRevision?.toString()],
     ["namespace", asset.namespace],
     ["scope", scopeLabel(asset.scope)],

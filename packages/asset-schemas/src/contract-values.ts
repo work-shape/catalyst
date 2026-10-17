@@ -999,3 +999,6 @@ export const WORKFLOW_ENDED_STATUSES = [
   "limit_reached"
 ] as const satisfies readonly WorkflowRunStatus[];
 export type WorkflowEndedStatus = (typeof WORKFLOW_ENDED_STATUSES)[number];
+
+/** A released Managed File keeps its identity; original bytes live at the synced source. */
+export const MANAGED_FILE_STATUSES = ["available", "released", "deleted"] as const;

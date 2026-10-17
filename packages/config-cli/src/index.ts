@@ -1,3 +1,4 @@
+import { runKnowledgeCommand, knowledgeHelpText } from "./knowledge-commands";
 import { realpathSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
@@ -65,9 +66,12 @@ Login:
              replaces a different skill file there and keeps it as SKILL.md.bak
 
 Commands:
-  pull       Sync remote config assets into the local working copy
-  push       Merge local config assets into the remote instance
-  diff       Show local changes, remote newer assets, and conflicts
+  pull       Sync remote config assets into the local working copy. An agent is pulled
+             at its live revision; each pending draft is listed with its author
+  push       Merge local config assets into the remote instance. A changed agent that
+             exists is written as its draft: "draft revision n", nothing live yet
+  diff       Show local changes, remote newer assets, and conflicts, each agent against
+             its live revision, and name each pending agent draft
   validate   Validate local assets and remote references
   list       List local and remote config assets and their sync status
   show       Print a remote asset: show <agent|skill|guardrail> <name>
@@ -79,6 +83,11 @@ Options:
   --dir <working-copy-dir>  Directory containing catalyst.yaml (default: .)
   --prune                   Mirror on push, deleting the remote-only assets the last pull
                             saw
+  --publish                 On push: publish each agent draft the push wrote. An
+                            instance's own agent is published without a question unless a
+                            guardrail asks for an approval; a workspace's agent asks first.
+                            Needs a personal key with the publish right: a service
+                            principal's key writes drafts and publishes none
   --only <agent:name|skill:name|guardrail:name>
                             Sync selected assets; repeatable on push/pull
   --workspace <id>          On pull: bind the working copy to the workspace and hold
@@ -107,13 +116,22 @@ such as 'guardrails/*/guardrail.yaml'. Each is a folder with its guardrail.yaml 
 model_judge check, its instruction in check.md. Guardrails are no part of a release: a push
 writes each as its draft with assets.put after the batch, which needs the config_assets:write
 scope. Publishing is a step of its own.
+
+An agent has its live revision and at most one draft, which every writer shares. A push of
+a changed agent writes that draft and names the draft revision the last pull or push saw: it
+is refused when somebody changed the draft since, naming who. 'catalyst agent publish <name>
+--revision <n>' makes a draft live, and 'catalyst agent discard <name> --revision <n>' drops it.
+A .catalyst-state.json of a CLI from before agent drafts needs one pull before an agent push.
+Exit codes: 0 done, 1 refused or failed, 2 usage, 3 a publish waits for an approval.
 `;
 
 export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): Promise<number> {
   const stdout = runtime.stdout ?? ((text: string) => process.stdout.write(text));
   const stderr = runtime.stderr ?? ((text: string) => process.stderr.write(text));
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-    stdout(`${assetHelpText}\n${operationHelpText}\n${namedHelpText}\n${helpText}`);
+    stdout(
+      `${assetHelpText}\n${operationHelpText}\n${namedHelpText}\n${knowledgeHelpText}\n${helpText}`
+    );
     return 0;
   }
   if (argv[0] === "--version") {
@@ -123,6 +141,13 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
   if (argv[0] === "login" || argv[0] === "logout" || argv[0] === "setup") {
     return runLoginCommand(argv[0], argv.slice(1), runtime, stdout, stderr);
   }
+  if (argv[0] === "knowledge-base" && (argv[1] === "source" || argv[1] === "sync"))
+    return runKnowledgeCommand(argv, {
+      ...runtime,
+      cwd: runtime.cwd ?? process.cwd(),
+      stdout,
+      stderr
+    });
   if (isNamedCommand(argv)) {
     return runNamedCommand(argv, {
       ...runtime,
@@ -169,6 +194,7 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
     return 2;
   }
 
+  const configPrompt = runtime.prompt ?? (process.stdin.isTTY ? askTerminal : undefined);
   try {
     const parsed = parseArgs({
       args: argv.slice(2),
@@ -177,6 +203,7 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
         dir: { type: "string" },
         force: { type: "boolean", default: false },
         prune: { type: "boolean", default: false },
+        publish: { type: "boolean", default: false },
         only: { type: "string", multiple: true },
         workspace: { type: "string" },
         help: { type: "boolean", short: "h", default: false }
@@ -194,6 +221,10 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
     }
     if (parsed.values.prune && command !== "push") {
       stderr("--prune is only valid with 'catalyst config push'.\n");
+      return 2;
+    }
+    if (parsed.values.publish && command !== "push") {
+      stderr("--publish is only valid with 'catalyst config push'.\n");
       return 2;
     }
     if (parsed.values.only && command !== "push" && command !== "pull") {
@@ -225,6 +256,7 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
       ...(parsed.values.instance === undefined ? {} : { instance: parsed.values.instance }),
       ...(parsed.values.force ? { force: true } : {}),
       ...(parsed.values.prune ? { prune: true } : {}),
+      ...(parsed.values.publish ? { publish: true } : {}),
       ...(parsed.values.only === undefined ? {} : { only: parsed.values.only }),
       ...(parsed.values.workspace === undefined ? {} : { workspace: parsed.values.workspace }),
       ...(command === "show" && isShownKind(parsed.positionals[0])
@@ -232,6 +264,7 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
         : {}),
       ...(runtime.fetchImpl === undefined ? {} : { fetchImpl: runtime.fetchImpl }),
       ...(runtime.env === undefined ? {} : { env: runtime.env }),
+      ...(configPrompt === undefined ? {} : { prompt: configPrompt }),
       stdout,
       stderr
     };

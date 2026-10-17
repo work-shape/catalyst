@@ -1,4 +1,8 @@
-import { BODY_TOO_LARGE_REASON, UNKNOWN_OPERATION_REASON } from "@work-shape/catalyst-api-contract";
+import {
+  BODY_TOO_LARGE_REASON,
+  UNKNOWN_OPERATION_REASON,
+  type AssetSummary
+} from "@work-shape/catalyst-api-contract";
 import {
   CONFIG_ASSET_KINDS,
   agentConfigSchema,
@@ -48,6 +52,8 @@ export interface ConfigCommandOptions {
   instance?: string;
   force?: boolean;
   prune?: boolean;
+  /** On push: publish each agent draft the push wrote. */
+  publish?: boolean;
   only?: string[];
   /** The workspace `pull` binds the working copy to, or finds it bound to. */
   workspace?: string;
@@ -133,6 +139,24 @@ export interface RemoteAsset {
   revision: number;
   /** The listing marks the instance's default agent. */
   isDefault?: true;
+  /** An agent's pending draft, as the listing names it to a holder of `agent.write`. */
+  draft?: AgentDraftSummary;
+}
+
+/** A pending agent draft: its revision, the live revision it was written on, who and when. */
+export type AgentDraftSummary = NonNullable<AssetSummary["agentDraft"]>;
+
+/** Who wrote a draft last, in the words a person reads. */
+export function formatDraftAuthor(author: AgentDraftSummary["author"]): string {
+  if (author.release) return "a release push";
+  const person =
+    author.displayLabel ?? (author.userId === undefined ? "somebody" : "an account that is gone");
+  return author.conversationId === undefined ? person : `${person} through the Build Agent`;
+}
+
+/** "draft revision 4 by Kai at 2026-10-17T12:00:00.000Z" */
+export function formatDraft(draft: AgentDraftSummary): string {
+  return `draft revision ${draft.revision} by ${formatDraftAuthor(draft.author)} at ${draft.updatedAt}`;
 }
 
 export type FetchedAsset = RemoteAsset & AssetDefinition;
@@ -187,7 +211,8 @@ export async function listRemoteAssets(
         name: asset.name,
         id: asset.id,
         revision: asset.revision,
-        ...(asset.isDefault ? { isDefault: true as const } : {})
+        ...(asset.isDefault ? { isDefault: true as const } : {}),
+        ...(asset.agentDraft === undefined ? {} : { draft: asset.agentDraft })
       });
     }
   }
@@ -552,13 +577,23 @@ export function assetHash(contents: string): string {
   return createHash("sha256").update(contents).digest("hex");
 }
 
+export interface RecordedRevision {
+  id: string;
+  revision: number;
+  draftRevision?: number | null;
+  draftPushed?: true;
+}
+
 export async function recordBaseline(
   workingDir: string,
   instanceKey: string,
   version: number,
   bundle: WorkingCopyBundle,
-  /** The asset each written or pulled definition is, and the revision it is at. */
-  revisions: Record<string, { id: string; revision: number }> | undefined,
+  /**
+   * The asset each written or pulled definition is, and the revision it is at; for an agent
+   * also the draft revision seen, and whether the content recorded is that pushed draft's.
+   */
+  revisions: Record<string, RecordedRevision> | undefined,
   fullPull: boolean,
   defaultAgentName?: string | null,
   /** The assets that are deleted on the instance, each with the revision of its delete. */

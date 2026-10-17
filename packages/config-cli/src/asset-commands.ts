@@ -38,7 +38,8 @@ import {
   type ConfigCommandOptions
 } from "./command-support";
 import { formatAssetHelp } from "./asset-help";
-import { askBeforePublish, waitingPublishLine } from "./publish-question";
+import { readDraftConflict } from "./push";
+import { agentPublishRefusalHint, askBeforePublish, waitingPublishLine } from "./publish-question";
 
 // `catalyst context`, `kinds`, `references` and `catalyst <kind> <verb>`: one command per
 // operation of the instance, for every kind it registers. A command reads its arguments, sends
@@ -61,6 +62,7 @@ const OPTIONS = {
   files: { type: "boolean", default: false },
   from: { type: "string" },
   "if-revision": { type: "string" },
+  "if-draft-revision": { type: "string" },
   to: { type: "string" },
   mode: { type: "string" },
   personal: { type: "boolean", default: false },
@@ -217,15 +219,18 @@ const VERBS: Record<string, Verb> = {
     }
   },
   put: {
-    usage: "put <name> --from <file-or-folder> --if-revision <n|new>",
+    usage:
+      "put <name> --from <file-or-folder> --if-revision <n|new> [--if-draft-revision <n|none>]",
     summary:
-      "Create an asset (--if-revision new) or replace it at the revision you read (assets.put)",
+      "Create an asset (--if-revision new) or replace it at the revision you read (assets.put). An agent that exists is written as its draft",
     named: true,
-    flags: ["from", "if-revision"],
+    flags: ["from", "if-revision", "if-draft-revision"],
     prepare: (values, name, cwd) => {
       const expectedRevision = ifRevision(values["if-revision"], true);
+      const draftFence = ifDraftRevision(values["if-draft-revision"]);
       const from = fromPath(values, cwd, "--from <file-or-folder>");
       return async (session) => {
+        requireAgentForDraftFence(session, draftFence);
         const source = await readAssetSource(from, session.kind.representation);
         if ("config" in source && source.config.name !== undefined && source.config.name !== name) {
           throw new UsageError(
@@ -234,15 +239,28 @@ const VERBS: Record<string, Verb> = {
         }
         const body =
           "config" in source
-            ? { config: { ...source.config, name }, expectedRevision, ...session.scope }
+            ? {
+                config: { ...source.config, name },
+                expectedRevision,
+                ...draftFence,
+                ...session.scope
+              }
             : { files: source.files, expectedRevision, ...session.scope };
-        const outcome = await session.api.change(
-          (client, idempotencyKey) =>
-            client.assets.put({ params: { kind: session.kind.kind, name }, body, idempotencyKey }),
-          `It may have been written: run 'catalyst ${kindNoun(session.kind)} show ${name}' before sending it again.`
-        );
+        const outcome = await session.api
+          .change(
+            (client, idempotencyKey) =>
+              client.assets.put({
+                params: { kind: session.kind.kind, name },
+                body,
+                idempotencyKey
+              }),
+            `It may have been written: run 'catalyst ${kindNoun(session.kind)} show ${name}' before sending it again.`
+          )
+          .catch(explainDraftChanged(name, "put"));
         return settle(session, outcome, (output) => [
-          `Wrote ${session.kind.kind} '${name}' at revision ${output.revision}.${session.kind.lifecycle === "draft_published" ? " It is a draft until it is published." : ""}`,
+          output.draftRevision !== undefined && session.kind.kind === AGENT_KIND
+            ? `Wrote agent '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published with 'catalyst agent publish ${name} --revision ${output.draftRevision}'.`
+            : `Wrote ${session.kind.kind} '${name}' at revision ${output.revision}.${session.kind.lifecycle === "draft_published" ? " It is a draft until it is published." : ""}`,
           ...formatWarnings(output.warnings)
         ]);
       };
@@ -263,8 +281,22 @@ const VERBS: Record<string, Verb> = {
         } else if (values.confirm !== undefined) {
           throw new UsageError("--confirm answers the dry run of a guardrail's publish.");
         }
+        if (session.kind.kind === "knowledge_base") {
+          const asset = await session.api.read((client) =>
+            client.assets.get({
+              params: { kind: session.kind.kind, name },
+              query: { revision: String(revision), ...session.scope }
+            })
+          );
+          for (const line of asset.publishQuestion ?? []) writeOutput(session.options, line);
+        }
         let unattended = false;
-        if (session.kind.actions.approve !== undefined) {
+        // A workspace's agent keeps the question of its publish; the instance's own does not.
+        const agent = session.kind.kind === AGENT_KIND;
+        const asks =
+          session.kind.actions.approve !== undefined ||
+          (agent && session.scope.workspaceId !== undefined);
+        if (asks) {
           const asked = {
             kind: session.kind.kind,
             command: kindNoun(session.kind),
@@ -276,24 +308,34 @@ const VERBS: Record<string, Verb> = {
           unattended = answer === "unattended";
         } else if (values.yes) {
           throw new UsageError(
-            `A ${session.kind.kind} is published without a question; --yes answers none.`
+            agent
+              ? "An instance's own agent is published without a question; --yes answers none."
+              : `A ${session.kind.kind} is published without a question; --yes answers none.`
           );
         }
-        const outcome = await session.api.change(
-          (client, idempotencyKey) =>
-            client.assets.publish({
-              params: { kind: session.kind.kind, name },
-              body: { revision, ...session.scope },
-              idempotencyKey,
-              ...(unattended ? { unattended } : {})
-            }),
-          "It may have been applied: run 'show' before sending it again."
-        );
+        const outcome = await session.api
+          .change(
+            (client, idempotencyKey) =>
+              client.assets.publish({
+                params: { kind: session.kind.kind, name },
+                body: { revision, ...session.scope },
+                idempotencyKey,
+                ...(unattended ? { unattended } : {})
+              }),
+            "It may have been applied: run 'show' before sending it again."
+          )
+          .catch((error: unknown) => {
+            const hint = agent ? agentPublishRefusalHint(error) : undefined;
+            if (hint === undefined) throw error;
+            throw new ExplainedRefusal(error, hint);
+          });
         return settle(
           session,
           outcome,
           (output) => [
-            `Published revision ${output.publishedRevision} of ${session.kind.kind} '${name}'${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
+            output.draftRevision !== undefined && agent
+              ? `Published draft revision ${output.draftRevision} of agent '${name}' as live revision ${output.publishedRevision}${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
+              : `Published revision ${output.publishedRevision} of ${session.kind.kind} '${name}'${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
           ],
           session.kind.actions.approve === undefined
             ? undefined
@@ -376,6 +418,35 @@ const VERBS: Record<string, Verb> = {
       ]);
     }
   },
+  discard: {
+    usage: "discard <name> --revision <n>",
+    summary:
+      "Drop an agent's draft at the draft revision you read; the live agent stays (agents.draft.discard)",
+    named: true,
+    flags: ["revision"],
+    prepare: (values, name) => {
+      const expectedRevision = revisionNumber(required(values.revision, "--revision <n>"));
+      return async (session) => {
+        if (session.kind.kind !== AGENT_KIND) {
+          throw new UsageError(
+            "'discard' is a command of agents only; another kind's draft goes with 'discard-draft'."
+          );
+        }
+        const outcome = await session.api.change(
+          (client, idempotencyKey) =>
+            client.agents.draft.discard({
+              params: { name },
+              body: { expectedRevision, ...session.scope },
+              idempotencyKey
+            }),
+          "It may have been applied: run 'show' before sending it again."
+        );
+        return settle(session, outcome, () => [
+          `Discarded draft revision ${expectedRevision} of agent '${name}'; its live revision is unchanged.`
+        ]);
+      };
+    }
+  },
   "discard-draft": {
     usage: "discard-draft <name> --if-revision <n>",
     summary: "Move the draft back to the published revision (assets.discard_draft)",
@@ -424,25 +495,32 @@ const VERBS: Record<string, Verb> = {
     }
   },
   revert: {
-    usage: "revert <name> --to <n> --if-revision <n>",
-    summary: "Make an earlier revision the content again (assets.revert)",
+    usage: "revert <name> --to <n> --if-revision <n> [--if-draft-revision <n|none>]",
+    summary:
+      "Make an earlier revision the content again (assets.revert). For an agent it becomes the draft",
     named: true,
-    flags: ["to", "if-revision"],
+    flags: ["to", "if-revision", "if-draft-revision"],
     prepare: (values, name) => {
       const revision = revisionNumber(required(values.to, "--to <n>"));
       const expectedRevision = ifRevision(values["if-revision"], false);
+      const draftFence = ifDraftRevision(values["if-draft-revision"]);
       return async (session) => {
-        const outcome = await session.api.change(
-          (client, idempotencyKey) =>
-            client.assets.revert({
-              params: { kind: session.kind.kind, name },
-              body: { revision, expectedRevision, ...session.scope },
-              idempotencyKey
-            }),
-          "It may have been applied: run 'history' before sending it again."
-        );
+        requireAgentForDraftFence(session, draftFence);
+        const outcome = await session.api
+          .change(
+            (client, idempotencyKey) =>
+              client.assets.revert({
+                params: { kind: session.kind.kind, name },
+                body: { revision, expectedRevision, ...draftFence, ...session.scope },
+                idempotencyKey
+              }),
+            "It may have been applied: run 'history' before sending it again."
+          )
+          .catch(explainDraftChanged(name, "revert"));
         return settle(session, outcome, (output) => [
-          `Reverted ${session.kind.kind} '${name}' to the content of revision ${revision}; it is revision ${output.revision} now.`,
+          output.draftRevision !== undefined && session.kind.kind === AGENT_KIND
+            ? `Wrote the content of revision ${revision} of agent '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published.`
+            : `Reverted ${session.kind.kind} '${name}' to the content of revision ${revision}; it is revision ${output.revision} now.`,
           ...formatWarnings(output.warnings)
         ]);
       };
@@ -511,6 +589,17 @@ const VERBS: Record<string, Verb> = {
 };
 
 const GUARDRAIL_KIND = "guardrail";
+const AGENT_KIND = "agent";
+
+/** A refusal of the instance, with a line of this CLI that says what to do instead. */
+class ExplainedRefusal extends Error {
+  constructor(
+    readonly refusal: unknown,
+    readonly hint: string
+  ) {
+    super(hint);
+  }
+}
 
 function requireGuardrail(session: Session, verb: string): void {
   if (session.kind.kind !== GUARDRAIL_KIND) {
@@ -670,6 +759,14 @@ export async function runAssetCommand(
       writeError(options, error.message);
       return EXIT.usage;
     }
+    if (error instanceof ExplainedRefusal) {
+      const { refusal } = error;
+      writeError(
+        options,
+        `${refusal instanceof ConfigApiError ? formatRefusal(refusal) : formatCommandError(refusal)}\n${error.hint}`
+      );
+      return EXIT.refused;
+    }
     writeError(
       options,
       error instanceof ConfigApiError ? formatRefusal(error) : formatCommandError(error)
@@ -760,6 +857,38 @@ function ifRevision(value: string | undefined, creates: boolean): number | null 
   const named = required(value, creates ? "--if-revision <n|new>" : "--if-revision <n>");
   if (creates && named === "new") return null;
   return revisionNumber(named);
+}
+
+/**
+ * `--if-draft-revision`: the agent draft revision the caller read, or `none` where it read no
+ * draft. Left out, the write names no draft, as `none` does.
+ */
+function ifDraftRevision(
+  value: string | undefined
+): { expectedDraftRevision: number | null } | Record<string, never> {
+  if (value === undefined) return {};
+  return { expectedDraftRevision: value === "none" ? null : revisionNumber(value) };
+}
+
+function requireAgentForDraftFence(session: Session, fence: object): void {
+  if ("expectedDraftRevision" in fence && session.kind.kind !== AGENT_KIND) {
+    throw new UsageError("--if-draft-revision names the draft of an agent.");
+  }
+}
+
+/** A write over an agent draft that moved: the refusal, and who moved it. */
+function explainDraftChanged(name: string, verb: "put" | "revert"): (error: unknown) => never {
+  return (error) => {
+    const conflict = error instanceof ConfigApiError ? readDraftConflict(error) : undefined;
+    if (conflict?.draft === undefined) throw error;
+    const { revision } = conflict.draft;
+    throw new ExplainedRefusal(
+      error,
+      revision === null
+        ? `Agent '${name}' has no draft any more. Repeat the ${verb} with --if-draft-revision none.`
+        : `Agent '${name}' has draft revision ${revision}${conflict.changedBy === undefined ? "" : ` by ${conflict.changedBy}`}${conflict.changedAt === undefined ? "" : ` at ${conflict.changedAt}`}. Read it with 'catalyst agent show ${name}'; the ${verb} writes over it with --if-draft-revision ${revision}.`
+    );
+  };
 }
 
 function revisionNumber(value: string): number {
