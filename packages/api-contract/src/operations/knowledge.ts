@@ -1,6 +1,10 @@
 import {
   DATA_STORE_SCALAR_TYPES,
-  KNOWLEDGE_BASE_STATUSES
+  KNOWLEDGE_BASE_STATUSES,
+  KNOWLEDGE_DOCUMENT_FAILURE_CODES,
+  KNOWLEDGE_DOCUMENT_STATES,
+  KNOWLEDGE_DOCUMENT_WAIT_CODES,
+  KNOWLEDGE_SEARCH_SIGNALS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { defineRegisteredOperation, json } from "./define-operation";
@@ -61,6 +65,106 @@ const knowledgeStateResponseSchema = z.object({
   problem: z.string().optional()
 });
 
+const knowledgeAddFilesRequestSchema = z.strictObject({
+  /** Files the caller can open: each a file of a Conversation they may read. */
+  files: z
+    .array(z.strictObject({ conversationId: z.string().min(1), fileId: z.string().min(1) }))
+    .min(1)
+});
+
+const knowledgeAddFilesResponseSchema = z.object({
+  /** Each document added, and the copy of its file the Knowledge Base now owns. In input order. */
+  documents: z.array(z.object({ id: z.string(), fileId: z.string() })),
+  count: z.number().int(),
+  bytes: z.number().int()
+});
+
+const knowledgeListDocumentsQuerySchema = z.object({
+  /** Documents per page: 50 by default, at most 200. */
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  /** The `nextCursor` of the page before. */
+  cursor: z.string().min(1).max(1_000).optional()
+});
+
+const knowledgeListDocumentsResponseSchema = z.object({
+  /** The documents not removed, newest first. */
+  documents: z.array(
+    z.object({
+      id: z.string(),
+      /** The copy of the file the Knowledge Base owns. */
+      fileId: z.string(),
+      fileName: z.string(),
+      title: z.string(),
+      /** `txt`, `markdown`, `pdf` or `docx`. */
+      format: z.string(),
+      /** The size of the file in bytes. */
+      bytes: z.number().int(),
+      /** `pending` until it is searchable, then `indexed`; `failed` with `failureCode`. */
+      state: z.enum(KNOWLEDGE_DOCUMENT_STATES),
+      failureCode: z.enum(KNOWLEDGE_DOCUMENT_FAILURE_CODES).optional(),
+      /**
+       * Why a `pending` document waits, where it waits for more than its turn: a usage limit
+       * that refuses its embedding. It goes on by itself once the limit resets or is raised.
+       */
+      waitCode: z.enum(KNOWLEDGE_DOCUMENT_WAIT_CODES).optional(),
+      /**
+       * The source the document was synced from. Source withdrawal removes it; a manual
+       * remove is refused with `knowledge_synced_document_remove_refused`.
+       */
+      sourceId: z.string().optional(),
+      addedAt: z.string(),
+      /** When its state last changed. */
+      updatedAt: z.string()
+    })
+  ),
+  /** Present while more documents follow. */
+  nextCursor: z.string().optional()
+});
+
+const knowledgeRetryDocumentsRequestSchema = z.strictObject({
+  /** The documents to index again: failed ones, or pending ones whose indexing seems stuck. */
+  documentIds: z.array(z.string().min(1)).min(1).max(100)
+});
+
+const knowledgeRetryDocumentsResponseSchema = z.object({
+  /** Each named document in the Knowledge Base, with its state after the retry. */
+  documents: z.array(z.object({ id: z.string(), state: z.enum(KNOWLEDGE_DOCUMENT_STATES) })),
+  /** How many contents were queued to be indexed again. */
+  queued: z.number().int()
+});
+
+const knowledgeSearchRequestSchema = z.strictObject({
+  /** Words or a question. Quoted words are a phrase, and a word after `-` is left out. */
+  query: z.string().trim().min(1).max(1_000),
+  /** Passages to answer at most: 20 by default, at most 50. */
+  limit: z.number().int().min(1).max(50).optional()
+});
+
+const knowledgeSearchResponseSchema = z.object({
+  /** The passages that answer the query best, best first. */
+  passages: z.array(
+    z.object({
+      /** `K1`, `K2` and so on, in the order of the answer. */
+      ref: z.string(),
+      knowledgeBase: z.string(),
+      documentId: z.string(),
+      /** The copy of the file the Knowledge Base owns. */
+      fileId: z.string(),
+      fileName: z.string(),
+      title: z.string(),
+      /** The page, from 1. None for a text file. */
+      page: z.number().int().optional(),
+      heading: z.string().optional(),
+      text: z.string(),
+      /** Reciprocal rank fusion of the lists in `signals`: compare it only within one Knowledge Base. */
+      score: z.number(),
+      originLink: z.string().optional()
+    })
+  ),
+  /** The ranked lists fused: `semantic`, `keyword` and `title`. */
+  signals: z.array(z.enum(KNOWLEDGE_SEARCH_SIGNALS))
+});
+
 const BASE = {
   tag: "Knowledge Bases",
   auth: "principal",
@@ -106,6 +210,76 @@ export const knowledgeOperations = {
     effect: "reading",
     body: knowledgeQueryRequestSchema,
     response: json(knowledgeQueryResponseSchema),
+    rateClass: "read"
+  }),
+  "knowledge_bases.add_files": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.add_files",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/files",
+    summary:
+      "Add files the caller can open to a Knowledge Base that keeps documents. Each is copied into a file the Knowledge Base owns",
+    scope: "data_store_rows:write",
+    effect: "changing",
+    body: knowledgeAddFilesRequestSchema,
+    response: json(knowledgeAddFilesResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "knowledge_bases.list_documents": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.list_documents",
+    method: "GET",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/documents",
+    summary:
+      "List the documents of a Knowledge Base that keeps documents, newest first, each with its state and the failure code of a failed one",
+    scope: "data_store_rows:read",
+    effect: "reading",
+    query: knowledgeListDocumentsQuerySchema,
+    response: json(knowledgeListDocumentsResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "read"
+  }),
+  "knowledge_bases.remove_documents": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.remove_documents",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/documents/remove",
+    summary:
+      "Remove documents from search immediately and queue deletion of their unshared content and files",
+    scope: "data_store_rows:write",
+    effect: "changing",
+    body: z.strictObject({ documentIds: z.array(z.string().min(1).max(200)).min(1).max(100) }),
+    response: json(z.object({ removed: z.number().int() })),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "knowledge_bases.retry_documents": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.retry_documents",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/documents/retry",
+    summary:
+      "Index documents of a Knowledge Base again: a failed one goes back to pending, and its content is queued",
+    scope: "data_store_rows:write",
+    effect: "changing",
+    body: knowledgeRetryDocumentsRequestSchema,
+    response: json(knowledgeRetryDocumentsResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "knowledge_bases.search": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.search",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/search",
+    summary:
+      "Search the documents of a Knowledge Base: the passages that answer a query best, by meaning, by words and by title, with file and page",
+    scope: "data_store_rows:read",
+    effect: "reading",
+    body: knowledgeSearchRequestSchema,
+    response: json(knowledgeSearchResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
     rateClass: "read"
   })
 };

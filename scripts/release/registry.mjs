@@ -57,6 +57,9 @@ export async function waitForPackages(packages) {
           {
             // Return redirects as HTTP errors instead of hiding their status in a fetch failure.
             redirect: "manual",
+            headers: process.env.NODE_AUTH_TOKEN
+              ? { Authorization: `Bearer ${process.env.NODE_AUTH_TOKEN}` }
+              : undefined,
             signal: AbortSignal.timeout(Math.min(REGISTRY_TIMEOUT_MS, remainingMs))
           }
         );

@@ -30,6 +30,11 @@ export const approvalRequestSchema = z.object({
       agentName: z.string()
     })
     .optional(),
+  /**
+   * The one person a confirmation in the Inbox is addressed to, who alone sees and decides it.
+   * Absent on a request the holders of a right decide.
+   */
+  addresseeUserId: z.string().optional(),
   status: approvalRequestStatusSchema,
   decision: z
     .object({

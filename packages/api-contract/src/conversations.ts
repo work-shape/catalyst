@@ -1,4 +1,9 @@
-import { TOOL_DECISION_MODES, TOOL_DECISION_OUTCOMES } from "@work-shape/catalyst-asset-schemas";
+import {
+  FOLLOW_UP_MODES,
+  FOLLOW_UP_STATUSES,
+  TOOL_DECISION_MODES,
+  TOOL_DECISION_OUTCOMES
+} from "@work-shape/catalyst-asset-schemas";
 import {
   AGENT_RUN_FAILURE_CATEGORIES,
   AGENT_RUN_STATUSES,
@@ -407,6 +412,13 @@ export const agentRunErrorSchema = z.object({
 
 export const agentRuntimeEventSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("follow_up_changed"),
+    runId: z.string(),
+    sequence: z.number().int().positive(),
+    createdAt: timestampSchema,
+    followUp: z.lazy(() => conversationFollowUpSchema)
+  }),
+  z.object({
     type: z.literal("message_delta"),
     runId: z.string(),
     sequence: z.number(),
@@ -480,6 +492,17 @@ export const agentRuntimeEventSchema = z.discriminatedUnion("type", [
     outcome: z.enum(TOOL_DECISION_OUTCOMES),
     decidedBy: z.string().optional(),
     reason: z.string().optional()
+  }),
+  z.object({
+    type: z.literal("subagent_started"),
+    runId: z.string(),
+    sequence: z.number(),
+    createdAt: timestampSchema,
+    toolCallId: z.string(),
+    subagentRunId: z.string(),
+    threadId: z.string(),
+    agent: z.string(),
+    description: z.string()
   }),
   z.object({
     type: z.literal("tool_call_completed"),
@@ -557,6 +580,14 @@ export const activeRunSummarySchema = z.object({
   lastSequence: z.number().int().nonnegative()
 });
 
+/** On a `run_agent` call that started its subagent: the subagent, for its card. */
+const toolCallSubagentSchema = z.object({
+  runId: z.string(),
+  threadId: z.string(),
+  agent: z.string(),
+  description: z.string()
+});
+
 /** While a call waits for a decision: what the person is asked to decide. */
 const toolCallDecisionSchema = z.object({
   operationRunId: z.string(),
@@ -587,7 +618,8 @@ export const agentRunProjectionPartSchema = z.discriminatedUnion("type", [
     state: agentRunProjectionToolCallStateSchema,
     output: z.unknown().optional(),
     errorText: z.string().optional(),
-    decision: toolCallDecisionSchema.optional()
+    decision: toolCallDecisionSchema.optional(),
+    subagent: toolCallSubagentSchema.optional()
   })
 ]);
 
@@ -619,7 +651,8 @@ export const agentRunProjectionSchema = z.object({
       state: agentRunProjectionToolCallStateSchema,
       output: z.unknown().optional(),
       errorText: z.string().optional(),
-      decision: toolCallDecisionSchema.optional()
+      decision: toolCallDecisionSchema.optional(),
+      subagent: toolCallSubagentSchema.optional()
     })
   ),
   error: agentRunErrorSchema.optional()
@@ -636,7 +669,66 @@ export const runObservationSchema = z.object({
   createdAt: timestampSchema
 });
 
+const knownEventTypes: ReadonlySet<string> = new Set(
+  agentRuntimeEventSchema.options.map((option) => option.shape.type.value)
+);
+
+/**
+ * An observation of an event type this release does not know, which a newer server may send.
+ * A client passes it over and keeps its sequence as its position.
+ */
+export const unknownRunObservationSchema = z.object({
+  runId: z.string(),
+  conversationId: z.string(),
+  sequence: z.number().int().positive(),
+  payload: z.object({ type: z.string().refine((type) => !knownEventTypes.has(type)) })
+});
+
+/** A subagent of a chat conversation's runs, for the Resources panel and its thread view. */
+export const subagentSummarySchema = z.object({
+  runId: z.string(),
+  threadId: z.string(),
+  parentRunId: z.string(),
+  toolCallId: z.string(),
+  agentName: z.string(),
+  description: z.string(),
+  status: agentRunStatusSchema,
+  startedAt: timestampSchema,
+  endedAt: timestampSchema.optional()
+});
+
+export const subagentListSchema = z.object({ items: z.array(subagentSummarySchema) });
+
+export const conversationFollowUpSchema = z.object({
+  id: z.string(),
+  clientInstanceId: z.string(),
+  conversationId: z.string(),
+  authorUserId: z.string(),
+  authorDisplayLabel: z.string().optional(),
+  text: z.string(),
+  mode: z.enum(FOLLOW_UP_MODES),
+  status: z.enum(FOLLOW_UP_STATUSES),
+  position: z.number().int().positive(),
+  agentName: z.string(),
+  modelBindingId: z.string().optional(),
+  reasoningEffort: reasoningEffortSchema.optional(),
+  idempotencyKey: z.string().optional(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  dispatchedRunId: z.string().optional()
+});
+
+export const queuedConversationRunResponseSchema = z.object({
+  followUp: conversationFollowUpSchema
+});
+
 export const startConversationRunRequestSchema = z.object({
+  followUp: z
+    .literal("queue")
+    .optional()
+    .describe(
+      "Queue the message when this conversation has an active run. Without this option, an active run still returns CONFLICT."
+    ),
   idempotencyKey: z.string().min(1),
   agentName: z.string().min(1).optional(),
   modelBindingId: z.string().min(1).optional(),
@@ -691,6 +783,7 @@ export const conversationUserStateSchema = z.object({
 });
 
 export const conversationThreadSnapshotSchema = z.object({
+  followUps: z.array(conversationFollowUpSchema).optional(),
   conversation: conversationSchema,
   messages: z.array(messageSchema),
   completedRunProjections: z.record(z.string(), agentRunProjectionSchema).optional(),
@@ -756,6 +849,9 @@ export type RunCommand = z.infer<typeof runCommandSchema>;
 export type RunCommandRequest = z.infer<typeof runCommandRequestSchema>;
 export type RunCommandResponse = z.infer<typeof runCommandResponseSchema>;
 export type ConversationUserState = z.infer<typeof conversationUserStateSchema>;
+export type ConversationFollowUp = z.infer<typeof conversationFollowUpSchema>;
+export type SubagentSummary = z.infer<typeof subagentSummarySchema>;
+
 export type ConversationThreadSnapshot = z.infer<typeof conversationThreadSnapshotSchema>;
 export type CancelRunRequest = z.infer<typeof cancelRunRequestSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;

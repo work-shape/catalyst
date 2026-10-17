@@ -5,7 +5,7 @@ import {
   type OperationScope,
   type PlatformAction
 } from "@work-shape/catalyst-asset-schemas";
-import type { z } from "zod";
+import { z } from "zod";
 import type { ApiErrorCode } from "../errors";
 import { operationRunSchema } from "../operation-runs";
 import { listEnvelopeSchema } from "../shared";
@@ -49,8 +49,21 @@ export type OperationResponse =
       readonly order: readonly string[];
       readonly descending: boolean;
     }
-  | { readonly kind: "sse"; readonly schema: z.ZodType }
-  | { readonly kind: "blob"; readonly contentType: string };
+  | { readonly kind: "sse"; readonly schema: z.ZodType; readonly skip?: z.ZodType }
+  | { readonly kind: "blob"; readonly contentType: string }
+  /**
+   * `303 See Other` to an address of the instance, for a browser that a provider sent back.
+   * The handler answers `{ location }`, which the helper sends as the `Location` header with
+   * no body. Only an operation of the registry that keeps no answer (`secret`) declares it.
+   */
+  | { readonly kind: "redirect"; readonly schema: typeof redirectAnswerSchema };
+
+/** What the handler of a `redirect` operation answers: the address to send the browser to. */
+export const redirectAnswerSchema = z.object({ location: z.string().url() });
+
+export function redirect() {
+  return { kind: "redirect", schema: redirectAnswerSchema } as const;
+}
 
 export function json<Schema extends z.ZodType>(schema: Schema) {
   return { kind: "json", schema } as const;
@@ -78,8 +91,18 @@ export function page<Schema extends z.ZodType>(
 }
 
 /** A stream of server-sent events whose `data` is one value of `schema`. */
-export function sse<Schema extends z.ZodType>(schema: Schema) {
-  return { kind: "sse", schema } as const;
+export function sse<Schema extends z.ZodType>(schema: Schema): { kind: "sse"; schema: Schema };
+/**
+ * A stream whose events a client built earlier may not all know: an event that does not match
+ * `schema` but matches `skip` is passed over instead of failing the stream, and the client
+ * hears of it to keep its position.
+ */
+export function sse<Schema extends z.ZodType, Skip extends z.ZodType>(
+  schema: Schema,
+  skip: Skip
+): { kind: "sse"; schema: Schema; skip: Skip };
+export function sse(schema: z.ZodType, skip?: z.ZodType) {
+  return skip ? { kind: "sse", schema, skip } : { kind: "sse", schema };
 }
 
 /** A body the handler sends itself: a file, or a page. */
@@ -95,7 +118,9 @@ export type OperationQuerySchema = z.ZodObject<Record<string, z.ZodType>>;
  */
 export const OPERATION_HEADERS = {
   request: {
-    "Idempotency-Key": `A key the caller chooses for one changing call, up to ${IDEMPOTENCY_KEY_MAX_LENGTH} characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.`
+    "Idempotency-Key": `A key the caller chooses for one changing call, up to ${IDEMPOTENCY_KEY_MAX_LENGTH} characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.`,
+    "Catalyst-Unattended":
+      "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it."
   },
   response: {
     "Operation-Run-Id":
@@ -208,7 +233,7 @@ export function defineOperation<const Config extends OperationConfig>(
 /** What an operation of the registry leaves to `defineRegisteredOperation`. */
 type RegisteredOperationConfig = OperationConfig & {
   readonly auth: "user" | "principal";
-  readonly response: { readonly kind: "json" | "page" };
+  readonly response: { readonly kind: "json" | "page" | "redirect" };
   readonly accepted?: never;
   readonly deferred?: never;
   readonly headers?: never;
@@ -221,7 +246,7 @@ const REGISTERED_READING = {
 const REGISTERED_CHANGING = {
   accepted: operationRunSchema,
   headers: {
-    request: ["Idempotency-Key"],
+    request: ["Idempotency-Key", "Catalyst-Unattended"],
     response: ["Operation-Run-Id", "Location", "Idempotent-Replayed"]
   }
 } as const;
@@ -277,6 +302,9 @@ export function defineRegisteredOperation<
 export function defineRegisteredOperation(config: RegisteredOperationConfig): Operation {
   if (config.secret && config.effect !== "changing") {
     throw new Error(`Operation '${config.id}' is reading and cannot declare a secret answer`);
+  }
+  if (config.response.kind === "redirect" && !config.secret) {
+    throw new Error(`Operation '${config.id}' redirects and must keep no answer ('secret')`);
   }
   const changing = config.secret ? REGISTERED_SECRET : REGISTERED_CHANGING;
   return defineOperation({

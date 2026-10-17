@@ -368,6 +368,13 @@ function createResultResponses(operation: Operation): Record<string, OpenApiResp
           description: "The stream has ended and holds no event after the position asked for"
         }
       };
+    case "redirect":
+      return {
+        "303": {
+          description:
+            "The browser is sent on to the page of the instance named in the `Location` header, for every outcome. The body is empty"
+        }
+      };
     case "blob":
       return {
         "200": {

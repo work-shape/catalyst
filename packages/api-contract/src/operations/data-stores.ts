@@ -3,9 +3,11 @@ import {
   DATA_STORE_INSERT_CONFLICT_MODES,
   DATA_STORE_MIGRATION_OUTCOMES,
   DATA_STORE_SCALAR_TYPES,
+  GRANT_HOLDER_KINDS,
   LISTED_DATA_STORE_STATUSES
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
+import { APP_ASSET_KIND } from "../apps";
 import { defineRegisteredOperation, json } from "./define-operation";
 
 // The routes to one Data Store: four verbs on its rows and the read of its state, each with
@@ -132,9 +134,9 @@ const cursorSchema = z.string().min(1).max(8_192);
 const dataStoreListResponseSchema = z.object({
   items: z.array(
     z.object({
-      /** The id of the store's asset. */
+      /** The id of the store's asset, or of the Knowledge Base's asset that owns it. */
       id: z.string(),
-      /** The id operations and routes name the store by. */
+      /** The id operations and routes name the store by. A store a Knowledge Base owns has no operations. */
       name: z.string(),
       title: z.string(),
       description: z.string().optional(),
@@ -146,7 +148,12 @@ const dataStoreListResponseSchema = z.object({
       tableCount: z.number().int().optional(),
       /** The planner's estimate over all tables, not a count. */
       rowEstimate: z.number().int().optional(),
-      measuredAt: z.string().optional()
+      measuredAt: z.string().optional(),
+      /**
+       * The Knowledge Base whose documents the store keeps, which made it and drops it. Such a
+       * store has no migrations of its own and no App binds it.
+       */
+      ownedBy: z.object({ knowledgeBase: z.string() }).optional()
     })
   ),
   /** More stores exist than one list reads. */
@@ -193,15 +200,98 @@ const dataStoreValueQuerySchema = z.object({
 
 const dataStoreValueResponseSchema = z.object({ value: z.unknown() });
 
-const usingAssetSchema = z.object({ id: z.string(), name: z.string(), title: z.string() });
+/** Where the rows an App or a Workflow writes come from: a Connection it calls. */
+const dataStoreSourceSchema = z.object({
+  connection: z.string(),
+  /** The Connection's name people read, where the caller may see it; its id otherwise. */
+  title: z.string()
+});
+
+/**
+ * Who reads through one way in: the members of the workspace that owns it, and whoever holds
+ * its right by a grant row. Admins hold every right by their role and are not listed.
+ */
+const dataStoreAudienceSchema = z.object({
+  workspace: z.object({ title: z.string(), members: z.number().int() }).optional(),
+  /** The holders by a grant row, named only to a caller who administers users. */
+  holders: z.array(
+    z.object({ kind: z.enum(GRANT_HOLDER_KINDS), name: z.string(), title: z.string() })
+  ),
+  /** How many more hold it by a grant row, whom the caller is not shown. */
+  hiddenHolders: z.number().int()
+});
+
+const usingAssetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  title: z.string(),
+  /** It reads rows of the store. */
+  reads: z.boolean(),
+  /** It adds rows to the store. */
+  writes: z.boolean(),
+  /** Every Connection it calls, where it writes into the store: where the rows come from. */
+  sources: z.array(dataStoreSourceSchema)
+});
 
 const dataStoreUsedByResponseSchema = z.object({
   /** The published Apps whose `sql` actions name the store, as far as the caller is shown them. */
-  apps: z.array(usingAssetSchema),
+  apps: z.array(usingAssetSchema.extend({ audience: dataStoreAudienceSchema })),
   /** The published Workflows whose operation steps call the store. */
-  workflows: z.array(usingAssetSchema),
+  workflows: z.array(
+    usingAssetSchema.extend({
+      /**
+       * The service principal a run acts as: its name and label for a caller who may administer
+       * users, an empty object for any other caller.
+       */
+      account: z.object({ name: z.string().optional(), title: z.string().optional() }).optional()
+    })
+  ),
+  /** The published Knowledge Bases on the store. */
+  knowledgeBases: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      title: z.string(),
+      audience: dataStoreAudienceSchema
+    })
+  ),
+  /** Who reads the store itself: the holders of `data_store.read`. */
+  readers: dataStoreAudienceSchema,
   /** How many more use it that the caller is not shown. */
-  hidden: z.object({ apps: z.number().int(), workflows: z.number().int() }),
+  hidden: z.object({
+    apps: z.number().int(),
+    workflows: z.number().int(),
+    knowledgeBases: z.number().int(),
+    /** How many of them add rows to the store. */
+    fills: z.number().int(),
+    /** How many of them read it: Apps that read it, Knowledge Bases, and Workflows that read it and add no rows. */
+    reads: z.number().int()
+  }),
+  truncated: z.boolean()
+});
+
+/**
+ * Where the data of one App comes from, as the App declares it: each store its reading
+ * statements name, and each published Workflow or App that adds rows to that store with the
+ * Connections it copies from. Its users read it; it never names an account.
+ */
+const appDataSourcesResponseSchema = z.object({
+  stores: z.array(
+    z.object({
+      name: z.string(),
+      title: z.string(),
+      fillers: z.array(
+        z.object({
+          kind: z.enum(["workflow", APP_ASSET_KIND]),
+          name: z.string(),
+          title: z.string(),
+          /** The names people read of the Connections it calls. */
+          connections: z.array(z.string())
+        })
+      )
+    })
+  ),
+  /** More published assets exist than one read looks through. */
   truncated: z.boolean()
 });
 
@@ -270,7 +360,7 @@ export const dataStoreOperations = {
     method: "GET",
     path: "/api/v1/data-stores",
     summary:
-      "List the Data Stores the caller may read, each with its size, its number of tables and the estimate of its rows as last measured",
+      "List the Data Stores the caller may read, and the stores of the Knowledge Bases it may read, each with its size, its number of tables and the estimate of its rows as last measured",
     response: json(dataStoreListResponseSchema),
     errors: []
   }),
@@ -299,8 +389,22 @@ export const dataStoreOperations = {
     id: "data_stores.used_by",
     method: "GET",
     path: "/api/v1/data-stores/:store/used-by",
-    summary: "Read which published Apps and Workflows use one Data Store",
+    summary:
+      "Read which published Apps, Workflows and Knowledge Bases use one Data Store, where its rows come from and who reads them",
     response: json(dataStoreUsedByResponseSchema),
+    errors: ["NOT_FOUND"]
+  }),
+  "data_stores.app_sources": defineRegisteredOperation({
+    ...READ,
+    auth: "user",
+    scope: "config_assets:read",
+    id: "data_stores.app_sources",
+    method: "GET",
+    path: "/api/v1/app-data-sources",
+    summary:
+      "Read where the data of one published App comes from: the Data Stores its statements read, and the Workflows and Apps that fill them from which Connections. Whoever uses the App reads it",
+    query: z.strictObject({ app: z.string().min(1).max(63) }),
+    response: json(appDataSourcesResponseSchema),
     errors: ["NOT_FOUND"]
   }),
   "data_stores.preview_rows": defineRegisteredOperation({

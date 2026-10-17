@@ -52,7 +52,12 @@ type ControlPart<Op extends Operation> = {
   ? {
       /** Called when the server has nothing after the given position and sends no stream. */
       onCaughtUp?: () => void;
-    }
+    } & (Op["response"] extends { skip: infer Skip extends z.ZodType }
+      ? {
+          /** Called for an event this client does not know, which the stream passes over. */
+          onSkipped?: (value: z.output<Skip>) => void;
+        }
+      : unknown)
   : unknown);
 
 /**
@@ -67,10 +72,23 @@ type IdempotencyPart<Op> = Op extends {
     : unknown
   : unknown;
 
+/**
+ * An operation that takes `Catalyst-Unattended` is sent with it when `unattended` is set: nobody
+ * watches the caller's terminal, so a call that needs a confirmation waits in the Inbox.
+ */
+type UnattendedPart<Op> = Op extends {
+  headers: { request: readonly (infer Header extends OperationRequestHeader)[] };
+}
+  ? "Catalyst-Unattended" extends Header
+    ? { unattended?: boolean }
+    : unknown
+  : unknown;
+
 type InputOf<Op extends Operation> = ParamsPart<Op["path"]> &
   QueryPart<Op> &
   BodyPart<Op> &
   IdempotencyPart<Op> &
+  UnattendedPart<Op> &
   ControlPart<Op>;
 
 /**
@@ -84,7 +102,10 @@ export type OperationOutcome<Output, Run = unknown> = {
   replayed: boolean;
 } & (
   | { status: "done"; output: Output }
-  /** Nothing ran yet: somebody else decides. `location` is where the run is read again. */
+  /**
+   * Nothing ran yet: somebody decides it, an approver or, for a run `pending_confirmation`, the
+   * caller in their Inbox. `location` is where the run is read again.
+   */
   | { status: "pending_approval"; run: Run; location: string | undefined }
 );
 
@@ -106,14 +127,17 @@ type OutputOf<Op extends Operation> = Op["response"] extends {
   schema: infer Schema extends z.ZodType;
 }
   ? AsyncIterable<z.output<Schema>>
-  : Op["response"] extends { schema: infer Schema extends z.ZodType }
-    ? Op extends { accepted: infer Accepted extends z.ZodType }
-      ? Promise<OperationOutcome<z.output<Schema>, z.output<Accepted>>>
-      : Op extends { deferred: true }
-        ? // Undefined: the call was accepted and its work finishes by itself.
-          Promise<z.output<Schema> | undefined>
-        : Promise<z.output<Schema>>
-    : Promise<Blob>;
+  : Op["response"] extends { kind: "redirect" }
+    ? // A browser address: the server sends the browser on, and a call learns nothing more.
+      Promise<undefined>
+    : Op["response"] extends { schema: infer Schema extends z.ZodType }
+      ? Op extends { accepted: infer Accepted extends z.ZodType }
+        ? Promise<OperationOutcome<z.output<Schema>, z.output<Accepted>>>
+        : Op extends { deferred: true }
+          ? // Undefined: the call was accepted and its work finishes by itself.
+            Promise<z.output<Schema> | undefined>
+          : Promise<z.output<Schema>>
+      : Promise<Blob>;
 
 /** What the method of a catalog operation takes: `params`, `query`, `body` or `file`, `signal`. */
 export type OperationInput<Name extends ApiOperationName> = InputOf<Catalog[Name]>;
@@ -272,7 +296,13 @@ function callOperation(
 ): AsyncIterable<unknown> | Promise<unknown> {
   const { response } = operation;
   if (response.kind === "sse") {
-    return streamEvents(transport, operation, response.schema, request);
+    return streamEvents(transport, operation, response, request);
+  }
+  if (response.kind === "redirect") {
+    return transport.send(operation, request).then(async (answer) => {
+      await answer.body?.cancel();
+      return undefined;
+    });
   }
   if (response.kind === "blob") {
     return transport
@@ -310,7 +340,7 @@ function callOperation(
 async function* streamEvents(
   transport: ApiTransport,
   operation: Operation,
-  schema: z.ZodType,
+  response: { schema: z.ZodType; skip?: z.ZodType },
   request: OperationRequest
 ): AsyncGenerator<unknown, void, undefined> {
   const answer = await transport.send(operation, request);
@@ -323,7 +353,12 @@ async function* streamEvents(
   }
   try {
     for await (const data of readServerSentEvents(answer.body)) {
-      yield parseJson(transport, data, schema, answer.status);
+      const event = readEvent(transport, data, response, answer.status);
+      if (event.skipped) {
+        request.onSkipped?.(event.value);
+        continue;
+      }
+      yield event.value;
     }
   } catch (error) {
     throw asCallFailure(error, request);
@@ -341,6 +376,32 @@ async function readBody<Body>(read: () => Promise<Body>, request: OperationReque
 /** An abort stays the caller's own abort; anything else that cuts an answer is a failed call. */
 function asCallFailure(error: unknown, request: OperationRequest): unknown {
   return error instanceof ApiError || request.signal?.aborted ? error : transportError(error);
+}
+
+/**
+ * One event of a stream. One that fails `schema` but matches `skip` is of a type this client
+ * does not know and is passed over; one that matches neither fails as any unreadable answer.
+ */
+function readEvent(
+  transport: ApiTransport,
+  text: string,
+  response: { schema: z.ZodType; skip?: z.ZodType },
+  status: number
+): { skipped: boolean; value: unknown } {
+  const { skip } = response;
+  if (skip) {
+    let value: unknown;
+    try {
+      value = JSON.parse(text);
+    } catch (error) {
+      throw unreadableResponseError(status, error);
+    }
+    const parsed = response.schema.safeParse(value);
+    if (parsed.success) return { skipped: false, value: parsed.data };
+    const skipped = skip.safeParse(value);
+    if (skipped.success) return { skipped: true, value: skipped.data };
+  }
+  return { skipped: false, value: parseJson(transport, text, response.schema, status) };
 }
 
 function parseJson(

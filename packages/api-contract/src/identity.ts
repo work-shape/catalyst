@@ -61,6 +61,8 @@ export const apiUserSchema = z.object({
   displayLabel: z.string(),
   email: z.string().optional(),
   emailVerified: z.boolean().optional(),
+  /** An active instance admin a signed-in person can ask for help; no directory access needed. */
+  instanceAdminName: z.string().optional(),
   roles: z.array(z.string()),
   permissionRefs: z.array(z.string()),
   permissions: z.array(z.string()),

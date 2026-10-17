@@ -38,7 +38,7 @@ import {
   type ConfigCommandOptions
 } from "./command-support";
 import { formatAssetHelp } from "./asset-help";
-import { askBeforePublish } from "./publish-question";
+import { askBeforePublish, waitingPublishLine } from "./publish-question";
 
 // `catalyst context`, `kinds`, `references` and `catalyst <kind> <verb>`: one command per
 // operation of the instance, for every kind it registers. A command reads its arguments, sends
@@ -263,6 +263,7 @@ const VERBS: Record<string, Verb> = {
         } else if (values.confirm !== undefined) {
           throw new UsageError("--confirm answers the dry run of a guardrail's publish.");
         }
+        let unattended = false;
         if (session.kind.actions.approve !== undefined) {
           const asked = {
             kind: session.kind.kind,
@@ -270,9 +271,9 @@ const VERBS: Record<string, Verb> = {
             name,
             revision
           };
-          if (!(await askBeforePublish(session.options, { ...asked, yes: values.yes }))) {
-            return EXIT.refused;
-          }
+          const answer = await askBeforePublish(session.options, { ...asked, yes: values.yes });
+          if (answer === "refused") return EXIT.refused;
+          unattended = answer === "unattended";
         } else if (values.yes) {
           throw new UsageError(
             `A ${session.kind.kind} is published without a question; --yes answers none.`
@@ -283,7 +284,8 @@ const VERBS: Record<string, Verb> = {
             client.assets.publish({
               params: { kind: session.kind.kind, name },
               body: { revision, ...session.scope },
-              idempotencyKey
+              idempotencyKey,
+              ...(unattended ? { unattended } : {})
             }),
           "It may have been applied: run 'show' before sending it again."
         );
@@ -727,13 +729,12 @@ function filesRead(session: Session, from: string, files: number): number {
 /** Prints what a changing call answered, or that it waits and has changed nothing yet. */
 function settle<Output>(
   session: Session,
-  outcome: OperationOutcome<Output, { id: string; approvalRequestId?: string }>,
+  outcome: OperationOutcome<Output, { id: string; status?: string; approvalRequestId?: string }>,
   lines: (output: Output) => string[],
   approvalHint?: string
 ): number {
   if (outcome.status === "pending_approval") {
-    const { id, approvalRequestId } = outcome.run;
-    const text = `Waits for an approval on the instance; nothing has changed yet (${approvalRequestId === undefined ? "" : `request ${approvalRequestId}, `}Operation Run ${id}).${approvalHint ? ` ${approvalHint}` : ""}`;
+    const text = waitingPublishLine(outcome.run, approvalHint);
     if (session.values.json)
       writeOutput(
         session.options,

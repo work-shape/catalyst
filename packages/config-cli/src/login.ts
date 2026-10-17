@@ -53,13 +53,16 @@ export interface ConnectedKey {
 /**
  * Starts a connect code under `clientLabel`, prints where to confirm it, waits for the
  * confirmation and saves the key it issues. `openUrl` also opens the address in a browser.
- * Answers nothing when the code expired unconfirmed. A refusal throws.
+ * With `asksUseLevel` the address asks Settings to start the key with the use level ticked, as
+ * `catalyst setup` does; the person still chooses. Answers nothing when the code expired
+ * unconfirmed. A refusal throws.
  */
 export async function loginByConnectCode(
   options: ConfigCommandOptions,
   url: string,
   clientLabel: string,
-  openUrl?: (address: string) => void
+  openUrl?: (address: string) => void,
+  asksUseLevel = false
 ): Promise<ConnectedKey | undefined> {
   assertSafeApiKeyExchangeUrl(url, "receive an API key");
   const sleep = options.sleep ?? defaultSleep;
@@ -68,7 +71,7 @@ export async function loginByConnectCode(
     fetchImpl: instanceFetch(options.fetchImpl)
   });
   const started = await call(() => client.connect_codes.start({ body: { clientLabel } }));
-  const address = `${url}${started.confirmPath}`;
+  const address = confirmAddress(url, started.confirmPath, asksUseLevel);
   writeOutput(
     options,
     [
@@ -102,6 +105,15 @@ export async function loginByConnectCode(
     };
   }
   return undefined;
+}
+
+/** Where the person confirms the code, with `level=use` where the key asks for the use level. */
+function confirmAddress(url: string, confirmPath: string, asksUseLevel: boolean): string {
+  const address = `${url}${confirmPath}`;
+  if (!asksUseLevel) return address;
+  const withLevel = new URL(address);
+  withLevel.searchParams.append("level", "use");
+  return withLevel.toString();
 }
 
 /** Forgets the saved key of the instance. Revoking it is the interface's, in Settings. */

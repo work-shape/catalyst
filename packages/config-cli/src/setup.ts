@@ -93,7 +93,9 @@ export async function setupCommand(options: SetupOptions): Promise<number> {
         options,
         url,
         `${tool.label} on ${hostname()}`,
-        options.openUrl ?? openInBrowser(url)
+        options.openUrl ?? openInBrowser(url),
+        // The key a local agent gets publishes what its person may publish (CLI-PUBLISH-USE).
+        true
       );
       if (key === undefined) {
         writeError(

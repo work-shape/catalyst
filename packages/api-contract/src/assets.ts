@@ -97,7 +97,18 @@ const isDefaultSchema = z.literal(true).optional();
  * Whoever may not read the draft is answered the published view: `revision` and
  * `publishedRevision` both name the published revision, and `draftRevision` is left out.
  */
+export const agentDraftSummarySchema = z.object({
+  revision: revisionNumberSchema,
+  baseRevision: revisionNumberSchema,
+  author: z.object({
+    userId: z.string().optional(),
+    conversationId: z.string().optional(),
+    release: z.boolean()
+  }),
+  updatedAt: timestampSchema
+});
 const pointerShape = {
+  agentDraft: agentDraftSummarySchema.optional(),
   draftRevision: revisionNumberSchema.optional(),
   publishedRevision: revisionNumberSchema.optional()
 };
@@ -251,6 +262,7 @@ export const putAssetRequestSchema = z
     files: z.array(assetFileInputSchema).min(1).max(FILE_SET_MAX_FILES).optional(),
     /** The revision the caller last read, or `null` to create the asset. Required. */
     expectedRevision: expectedRevisionOrNewSchema,
+    expectedDraftRevision: expectedRevisionOrNewSchema.optional(),
     workspaceId: workspaceIdSchema,
     /**
      * Where a new agent starts available: the shared workspace it is made in, or `all`, which
@@ -275,6 +287,8 @@ export const assetWriteResponseSchema = z.object({
   version: z.number().int().nonnegative(),
   /** The revision the write left the asset at. A delete is a revision too. */
   revision: revisionNumberSchema,
+  draftRevision: revisionNumberSchema.optional(),
+  publishedRevision: revisionNumberSchema.optional(),
   /** The file set of the revision and its source files, after a write that carried files. */
   fileSetId: z.string().optional(),
   files: z.array(assetFileEntrySchema).optional(),
@@ -352,6 +366,7 @@ export const revertAssetRequestSchema = z.object({
   revision: revisionNumberSchema,
   /** The revision the asset is at now, a deleted asset's last one included. Required. */
   expectedRevision: expectedRevisionSchema,
+  expectedDraftRevision: expectedRevisionOrNewSchema.optional(),
   workspaceId: workspaceIdSchema
 });
 
@@ -438,6 +453,7 @@ export const assetSyncItemSchema = z.discriminatedUnion("type", [
     config: assetDefinitionSchema,
     /** The revision the caller last read, or `null` to create the asset. Required. */
     expectedRevision: expectedRevisionOrNewSchema,
+    expectedDraftRevision: expectedRevisionOrNewSchema.optional(),
     expectedAssetId: expectedAssetIdSchema
   }),
   z.object({
@@ -491,7 +507,9 @@ export const assetSyncAppliedItemSchema = z.discriminatedUnion("status", [
     /** The id of the asset that was written. */
     id: z.string(),
     /** The revision this batch gave the asset. */
-    revision: revisionNumberSchema
+    revision: revisionNumberSchema,
+    draftRevision: revisionNumberSchema.optional(),
+    publishedRevision: revisionNumberSchema.optional()
   }),
   // A delete in a release of an asset that is not there: nothing was written for it.
   z.object({

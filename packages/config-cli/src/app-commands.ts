@@ -19,7 +19,7 @@ import {
 } from "./app-folder";
 import { formatRefusal, formatWarnings } from "./asset-output";
 import { connectApi, resolveWorkingDir, type ConfigCommandOptions } from "./command-support";
-import { askBeforePublish } from "./publish-question";
+import { askBeforePublish, waitingPublishLine } from "./publish-question";
 import { readManifestIfPresent, resolveInstance } from "./working-copy";
 
 // `catalyst app pull|push|publish|status`: an App as a folder on this machine. Each command
@@ -308,29 +308,41 @@ async function publish(
     throw new Error(`The instance answered revision ${number} for --revision ${values.revision}.`);
   }
   if (candidate.publishedRevision === number) {
-    writeOut(options, `Revision ${number} of App '${app}' is the published one already.`);
+    writeOut(
+      options,
+      values.json
+        ? JSON.stringify(
+            {
+              draftRevision: candidate.draftRevision ?? candidate.revision,
+              publishedRevision: number,
+              alreadyPublished: true
+            },
+            null,
+            2
+          )
+        : `Revision ${number} of App '${app}' is the published one already.`
+    );
     return EXIT.done;
   }
   const live = candidate.publishedRevision === undefined ? undefined : await get("published");
   const review = publishReview(candidate, live);
   if (values.json) writeErr(options, formatReview(app, review));
   else writeOut(options, formatReview(app, review));
-  if (
-    !(await askBeforePublish(options, {
-      kind: APP_KIND,
-      command: APP_KIND,
-      name: app,
-      revision: number,
-      yes: values.yes
-    }))
-  )
-    return EXIT.refused;
+  const answer = await askBeforePublish(options, {
+    kind: APP_KIND,
+    command: APP_KIND,
+    name: app,
+    revision: number,
+    yes: values.yes
+  });
+  if (answer === "refused") return EXIT.refused;
   const outcome = await target.api.change(
     (client, idempotencyKey) =>
       client.assets.publish({
         params: { kind: APP_KIND, name: app },
         body: { revision: number, workspaceId: target.workspaceId },
-        idempotencyKey
+        idempotencyKey,
+        ...(answer === "unattended" ? { unattended: true } : {})
       }),
     `It may have been applied: run 'catalyst app status ${app}' before sending it again.`
   );
@@ -669,16 +681,12 @@ function writeErr(target: Pick<ConfigCommandOptions, "stderr">, text: string): v
 
 /** A held write preserves the request id and the JSON outcome the generic commands return. */
 function pendingApproval(
-  run: { id: string; approvalRequestId?: string },
+  run: { id: string; status?: string; approvalRequestId?: string },
   json: boolean,
   options: ConfigCommandOptions,
   hint?: string
 ): number {
   if (json) writeOut(options, JSON.stringify({ status: "pending_approval", run }, null, 2));
-  else
-    writeErr(
-      options,
-      `Waits for an approval on the instance; nothing has changed yet (${run.approvalRequestId === undefined ? "" : `request ${run.approvalRequestId}, `}Operation Run ${run.id}).${hint ? ` ${hint}` : ""}`
-    );
+  else writeErr(options, waitingPublishLine(run, hint));
   return EXIT.pending;
 }

@@ -104,6 +104,18 @@ export const platformContextSchema = z.object({
    * legacy key names, such as `service_principals.manage`.
    */
   instanceActions: z.array(z.string()),
+  /**
+   * The use level a personal key can carry, of the rights the caller holds somewhere: on the
+   * instance, in a workspace, a Namespace or on one asset. Only the rights of kinds the instance
+   * runs are named. The key screen offers these (CLI-PUBLISH-USE).
+   */
+  useActions: z.array(z.string()),
+  /**
+   * The reading, writing and publishing rights a personal key can carry, of the rights the
+   * caller holds somewhere, as `useActions`. The key `catalyst setup` asks for starts with
+   * these and the use level ticked.
+   */
+  authoringActions: z.array(z.string()),
   namespaces: z.array(platformContextNamespaceSchema),
   /**
    * The workspaces whose own assets the caller can use an action of a listed kind on, each

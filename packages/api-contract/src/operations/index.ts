@@ -1,5 +1,6 @@
 import { accessOperations } from "./access";
 import { accountOperations } from "./account";
+import { agentOperations } from "./agents";
 import { apiAccessOperations } from "./api-access";
 import { appOperations } from "./apps";
 import { approvalRequestOperations } from "./approval-requests";
@@ -40,6 +41,7 @@ export const apiOperations = {
   ...appOperations,
   ...configAssetOperations,
   ...assetOperations,
+  ...agentOperations,
   ...connectionOperations,
   ...guardrailOperations,
   ...workflowOperations,

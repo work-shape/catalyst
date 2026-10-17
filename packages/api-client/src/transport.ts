@@ -30,8 +30,10 @@ export interface OperationRequest {
   body?: unknown;
   file?: Blob;
   idempotencyKey?: string;
+  unattended?: boolean;
   signal?: AbortSignal;
   onCaughtUp?: () => void;
+  onSkipped?: (value: unknown) => void;
 }
 
 /**
@@ -69,6 +71,9 @@ export function createApiTransport(options: ApiClientOptions) {
       }
       if (operation.headers?.request?.includes("Idempotency-Key")) {
         headers.set("idempotency-key", request.idempotencyKey ?? createIdempotencyKey());
+      }
+      if (request.unattended && operation.headers?.request?.includes("Catalyst-Unattended")) {
+        headers.set("catalyst-unattended", "1");
       }
       const token = await options.getToken?.();
       if (token) {

@@ -24,7 +24,7 @@ export const operationRunOriginSchema = z.discriminatedUnion("kind", [
     toolRevisionId: z.string().optional()
   }),
   z.object({ kind: z.literal("user") }),
-  z.object({ kind: z.literal("cli") }),
+  z.object({ kind: z.literal("cli"), unattended: z.literal(true).optional() }),
   z.object({ kind: z.literal("mcp"), clientName: z.string().optional() }),
   z.object({
     kind: z.literal("app"),

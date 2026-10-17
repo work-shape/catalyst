@@ -51,6 +51,7 @@ export type OperationScope = Exclude<FirstPartyAuthScope, "*">;
 export const ACTIONS = [
   "agent.read",
   "agent.write",
+  "agent.publish",
   "agent.delete",
   "skill.read",
   "skill.write",
@@ -329,7 +330,10 @@ export const APPROVAL_EXECUTIONS = [
   "failed",
   "interrupted",
   "refused",
-  "expired"
+  "expired",
+  // A confirmation in the Inbox whose Allow left the call waiting for an approver: it ended
+  // here, and the call waits as the approval request `approvalRequestId` of `applyResult`.
+  "held"
 ] as const;
 export type ApprovalExecution = (typeof APPROVAL_EXECUTIONS)[number];
 
@@ -462,6 +466,9 @@ export const MODEL_PROVIDER_AUTH_MODES = ["bearer", "api-key"] as const;
 export type ModelProviderAuthMode = (typeof MODEL_PROVIDER_AUTH_MODES)[number];
 
 export const CONVERSATION_VISIBILITIES = ["workspace", "private"] as const;
+/** A conversation a person has, or the run thread of a Child Agent Run. */
+export const CONVERSATION_KINDS = ["chat", "run_thread"] as const;
+export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
 export type ConversationVisibility = (typeof CONVERSATION_VISIBILITIES)[number];
 
 export const WEB_SOURCE_PROVIDERS = [
@@ -493,10 +500,14 @@ export type AttachmentCreateOutcome = (typeof ATTACHMENT_CREATE_OUTCOMES)[number
 export const STRUCTURED_DATA_REVIEW_REASONS = ["uncertain", "conflicting"] as const;
 export type StructuredDataReviewReason = (typeof STRUCTURED_DATA_REVIEW_REASONS)[number];
 
+export const FOLLOW_UP_MODES = ["queue"] as const;
+export const FOLLOW_UP_STATUSES = ["pending", "dispatched", "cancelled"] as const;
+
 export const AGENT_RUN_STATUSES = [
   "queued",
   "running",
   "waiting_for_decision",
+  "waiting_for_subagents",
   "cancelling",
   "completed",
   "cancelled",
@@ -590,8 +601,11 @@ export type UsageCostStatus = (typeof USAGE_COST_STATUSES)[number];
 
 export const CONNECTION_OPERATION_STATUSES = [
   "ready",
+  /** Accepted, a discovering type, and no discovery has pinned it yet. */
   "awaiting_discovery",
+  /** The catalog's fingerprint differs from the accepted one. */
   "needs_review",
+  /** Accepted, and the last discovery did not list it or listed a schema nothing can check. */
   "unknown",
   "disabled"
 ] as const;
@@ -604,9 +618,33 @@ export const CONNECTOR_TEST_STATUSES = [
   "ready",
   "unauthorized",
   "network_denied",
-  "unavailable"
+  "unavailable",
+  /** The server asks for an OAuth sign-in, or the Connection signs in and nobody has. */
+  "oauth_required"
 ] as const;
 export type ConnectorTestStatus = (typeof CONNECTOR_TEST_STATUSES)[number];
+
+/**
+ * The state of a Connection's sign-in. `connected`: calls use it. `needs_reconnect`: the
+ * outside system refused it and a new sign-in is needed. `revoked`: someone disconnected it,
+ * or its Connection went away.
+ */
+export const CONNECTION_BINDING_STATES = ["connected", "needs_reconnect", "revoked"] as const;
+export type ConnectionBindingState = (typeof CONNECTION_BINDING_STATES)[number];
+
+/**
+ * How a Connection that signs in with OAuth has its client: registered by the platform
+ * (Dynamic Client Registration) or issued by the provider and named in the settings.
+ */
+export const CONNECTION_OAUTH_REGISTRATIONS = ["dcr", "preregistered"] as const;
+export type ConnectionOAuthRegistration = (typeof CONNECTION_OAUTH_REGISTRATIONS)[number];
+
+/**
+ * What the provider answered to the revocation of a sign-in (RFC 7009): it confirmed, it
+ * failed or was not reached, or it lists no revocation endpoint and was sent nothing.
+ */
+export const CONNECTION_PROVIDER_REVOCATIONS = ["confirmed", "failed", "not_offered"] as const;
+export type ConnectionProviderRevocation = (typeof CONNECTION_PROVIDER_REVOCATIONS)[number];
 
 export const CONNECTION_ORIGINS = ["release", "runtime"] as const;
 export type ConnectionOrigin = (typeof CONNECTION_ORIGINS)[number];
@@ -646,8 +684,125 @@ export type DataStoreStatus = (typeof DATA_STORE_STATUSES)[number];
 export const DATA_STORE_MIGRATION_OUTCOMES = ["none", "pending", "applied", "failed"] as const;
 export type DataStoreMigrationOutcome = (typeof DATA_STORE_MIGRATION_OUTCOMES)[number];
 
-export const KNOWLEDGE_BASE_STATUSES = ["unchecked", "ok", "needs_attention"] as const;
+/**
+ * `unchecked` until the first check; `preparing` while the store a Knowledge Base of documents
+ * owns is still being made; then `ok` or `needs_attention`.
+ */
+export const KNOWLEDGE_BASE_STATUSES = ["unchecked", "preparing", "ok", "needs_attention"] as const;
 export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number];
+
+/**
+ * What the page of a Knowledge Base shows of one document. `pending` is added and not yet
+ * searchable: waiting for its index job, being indexed or waiting for extraction. `indexed` is
+ * found by search. `failed` carries one of `KNOWLEDGE_DOCUMENT_FAILURE_CODES`; Retry puts it
+ * back to `pending`.
+ */
+export const KNOWLEDGE_DOCUMENT_STATES = ["pending", "indexed", "failed"] as const;
+export type KnowledgeDocumentState = (typeof KNOWLEDGE_DOCUMENT_STATES)[number];
+
+/**
+ * Why a document was not indexed. The first five can also come from the extraction of a PDF
+ * or DOCX (`KNOWLEDGE_EXTRACTION_FAILURE_CODES` in core); the rest are the index job's own.
+ */
+export const KNOWLEDGE_DOCUMENT_FAILURE_CODES = [
+  // The extractor does not read the file's format.
+  "knowledge_file_format_unsupported",
+  // The file is over a limit of the extraction: size, pages or time.
+  "knowledge_file_over_limit",
+  // The file is corrupt, encrypted, or not the format it claims.
+  "knowledge_file_unreadable",
+  // The copy the Knowledge Base owns, or its bytes, are gone.
+  "knowledge_file_missing",
+  // Extraction failed on every attempt.
+  "knowledge_extraction_failed",
+  // A PDF or DOCX on an instance without document processing.
+  "knowledge_file_format_unavailable",
+  // A text file whose bytes are not text.
+  "knowledge_text_unreadable",
+  // No text to search, such as a scanned PDF without a text layer.
+  "knowledge_text_empty",
+  // Indexing failed on every attempt.
+  "knowledge_index_failed"
+] as const;
+export type KnowledgeDocumentFailureCode = (typeof KNOWLEDGE_DOCUMENT_FAILURE_CODES)[number];
+
+/**
+ * Why a `pending` document waits, where it waits for something other than its turn. It goes on
+ * by itself once the cause is gone.
+ */
+export const KNOWLEDGE_DOCUMENT_WAIT_CODES = [
+  // A usage limit of the instance or the workspace refuses the embedding calls. Indexing goes
+  // on when the limit resets or is raised.
+  "knowledge_usage_limit_reached"
+] as const;
+export type KnowledgeDocumentWaitCode = (typeof KNOWLEDGE_DOCUMENT_WAIT_CODES)[number];
+
+/**
+ * Why a synced source of a Knowledge Base, or one item of it, did not come in. Beside the
+ * document codes: an item over the size limit or of a format the instance does not read is
+ * recorded with `knowledge_file_over_limit` or `knowledge_file_format_unsupported` and never
+ * fetched. Spec: Synced sources, Contract freezes (SRC-0).
+ */
+export const KNOWLEDGE_SOURCE_FAILURE_CODES = [
+  // The source did not answer.
+  "knowledge_source_unreachable",
+  // The credential or the account's access was refused for the whole source.
+  "knowledge_source_refused",
+  // A fetch failed on every attempt.
+  "knowledge_fetch_failed",
+  // The Knowledge Base holds its document limit; the listing stopped discovering there.
+  "knowledge_source_limit_reached"
+] as const;
+export type KnowledgeSourceFailureCode = (typeof KNOWLEDGE_SOURCE_FAILURE_CODES)[number];
+
+/** The code a failed item of a synced source carries: a source code, or one it shares with a file added by hand. */
+export const KNOWLEDGE_SOURCE_ITEM_FAILURE_CODES = [
+  ...KNOWLEDGE_SOURCE_FAILURE_CODES,
+  "knowledge_file_over_limit",
+  "knowledge_file_format_unsupported"
+] as const satisfies readonly (KnowledgeSourceFailureCode | KnowledgeDocumentFailureCode)[];
+export type KnowledgeSourceItemFailureCode = (typeof KNOWLEDGE_SOURCE_ITEM_FAILURE_CODES)[number];
+
+/**
+ * The state of an item of a synced source as the sync keeps it. It ends at `fetched`: from
+ * then on the item shows its document's state. `withdrawn` is out of search.
+ */
+export const KNOWLEDGE_SOURCE_ITEM_STATES = [
+  "discovered",
+  "fetched",
+  "failed",
+  "withdrawn"
+] as const;
+export type KnowledgeSourceItemState = (typeof KNOWLEDGE_SOURCE_ITEM_STATES)[number];
+
+/**
+ * How a sync of a source walks it: `initial` and `full` list every item below its folders,
+ * `changes` reads the source's change feed from the stored cursor.
+ */
+export const KNOWLEDGE_SYNC_MODES = ["initial", "changes", "full"] as const;
+export type KnowledgeSyncMode = (typeof KNOWLEDGE_SYNC_MODES)[number];
+
+export const KNOWLEDGE_SYNC_RUN_STATES = ["running", "done", "failed"] as const;
+export type KnowledgeSyncRunState = (typeof KNOWLEDGE_SYNC_RUN_STATES)[number];
+
+/** What a sync run counts, in this order wherever it shows them. */
+export const KNOWLEDGE_SYNC_COUNTS = [
+  "discovered",
+  "added",
+  "changed",
+  "moved",
+  "withdrawn",
+  "failed",
+  "skipped"
+] as const;
+export type KnowledgeSyncCount = (typeof KNOWLEDGE_SYNC_COUNTS)[number];
+
+/**
+ * The ranked lists a search on the built-in backend fuses: cosine distance to the query's
+ * embedding, German and English full text, and the words of a document's title and file name.
+ */
+export const KNOWLEDGE_SEARCH_SIGNALS = ["semantic", "keyword", "title"] as const;
+export type KnowledgeSearchSignal = (typeof KNOWLEDGE_SEARCH_SIGNALS)[number];
 
 export const DATABASE_RELATION_TYPES = [
   "table",
@@ -676,11 +831,16 @@ export const WORKFLOW_STEP_TYPES = [
   "output",
   "agent",
   "notify",
+  /** Starts another Workflow as a child run and waits for it. */
   "workflow"
 ] as const;
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
 
-export const WORKFLOW_RESERVED_STEP_TYPES = ["condition", "parallel"] as const;
+export const WORKFLOW_RESERVED_STEP_TYPES = [
+  /** Reserved in the contract: drawn, and run by no engine yet. */
+  "condition",
+  "parallel"
+] as const;
 export type WorkflowReservedStepType = (typeof WORKFLOW_RESERVED_STEP_TYPES)[number];
 
 export const WORKFLOW_TRIGGER_KINDS = ["manual", "schedule", "parent"] as const;
@@ -740,7 +900,8 @@ export const ENDED_APPROVAL_EXECUTIONS = [
   "failed",
   "interrupted",
   "refused",
-  "expired"
+  "expired",
+  "held"
 ] as const satisfies readonly ApprovalExecution[];
 export type EndedApprovalExecution = (typeof ENDED_APPROVAL_EXECUTIONS)[number];
 
@@ -783,6 +944,7 @@ export const ACTIVE_AGENT_RUN_STATUSES = [
   "queued",
   "running",
   "waiting_for_decision",
+  "waiting_for_subagents",
   "cancelling"
 ] as const satisfies readonly AgentRunStatus[];
 export type ActiveAgentRunStatus = (typeof ACTIVE_AGENT_RUN_STATUSES)[number];
@@ -814,6 +976,7 @@ export const LISTED_DATA_STORE_STATUSES = [
 export type ListedDataStoreStatus = (typeof LISTED_DATA_STORE_STATUSES)[number];
 
 export const KNOWLEDGE_CHECK_STATUSES = [
+  "preparing",
   "ok",
   "needs_attention"
 ] as const satisfies readonly KnowledgeBaseStatus[];
