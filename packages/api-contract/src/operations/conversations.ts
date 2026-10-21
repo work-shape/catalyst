@@ -296,6 +296,7 @@ export const conversationOperations = {
     method: "DELETE",
     path: "/api/v1/conversations/:conversationId",
     summary: "Delete a conversation",
+    query: z.object({ discardEmpty: z.literal("true").optional() }),
     tag: "Conversations",
     auth: "user",
     scope: "conversation:write",

@@ -3,7 +3,6 @@ import { mkdir, readFile, readdir, rename, rm, rmdir, writeFile } from "node:fs/
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import yaml from "js-yaml";
 import {
-  NAMESPACE_PREFIX_PATTERN,
   agentConfigSchema,
   loadYamlData,
   parseSkillMarkdown,
@@ -23,14 +22,9 @@ export const STATE_FILENAME = ".catalyst-state.json";
 export interface ManifestInstance {
   url: string;
   /**
-   * The one Namespace this working copy writes in, such as `tax-`. A push names it, and leaves
-   * the instance's default agent alone, which only a release names.
-   */
-  namespace?: string;
-  /**
    * The workspace this working copy is bound to, by its id: `catalyst config pull
    * --workspace <id>` writes it. The root holds what that workspace owns, and everything it
-   * pushes is owned by that workspace. A root names a Namespace or a workspace, not both.
+   * pushes is owned by that workspace.
    */
   workspace?: string;
 }
@@ -50,6 +44,8 @@ export interface ResolvedInstance extends ManifestInstance {
 }
 
 export interface AssetBaseline {
+  /** Absent in older copies, whose omitted fields and hashes cannot safely be reused. */
+  canonicalFormVersion?: number;
   /**
    * The id of the asset the revision counts. A revision number alone does not say which
    * asset it belongs to: in a database that was replaced or restored, another asset of the
@@ -130,21 +126,9 @@ export function parseManifest(contents: string, source = MANIFEST_FILENAME): Cat
     if (!isRecord(value) || typeof value.url !== "string" || value.url.length === 0) {
       throw new Error(`${source} instance '${name}' must define a url`);
     }
-    const namespace = readOptionalString(value, "namespace", `${source} instance '${name}'`);
-    if (namespace !== undefined && !NAMESPACE_PREFIX_PATTERN.test(namespace)) {
-      throw new Error(
-        `${source} instance '${name}' names no Namespace prefix: '${namespace}'. A prefix is lowercase words joined by '-' and ends in '-', such as 'tax-'.`
-      );
-    }
     const workspace = readOptionalString(value, "workspace", `${source} instance '${name}'`);
-    if (namespace !== undefined && workspace !== undefined) {
-      throw new Error(
-        `${source} instance '${name}' names a Namespace and a workspace. A working copy belongs to one of them.`
-      );
-    }
     instances[name] = {
       url: normalizeUrl(value.url, `${source} instance '${name}'`),
-      ...(namespace === undefined ? {} : { namespace }),
       ...(workspace === undefined ? {} : { workspace })
     };
   }
@@ -261,6 +245,10 @@ export async function readStateFile(path: string): Promise<CatalystState> {
           asset.revision < 1 ||
           typeof asset.hash !== "string" ||
           !/^[a-f0-9]{64}$/u.test(asset.hash) ||
+          (asset.canonicalFormVersion !== undefined &&
+            (typeof asset.canonicalFormVersion !== "number" ||
+              !Number.isInteger(asset.canonicalFormVersion) ||
+              asset.canonicalFormVersion < 1)) ||
           (asset.id !== undefined && typeof asset.id !== "string") ||
           !(
             asset.draftRevision === undefined ||
@@ -274,6 +262,9 @@ export async function readStateFile(path: string): Promise<CatalystState> {
           throw new Error(`${path} has an invalid asset baseline for '${key}'`);
         }
         baseline.assets[key] = {
+          ...(asset.canonicalFormVersion === undefined
+            ? {}
+            : { canonicalFormVersion: asset.canonicalFormVersion }),
           ...(asset.id === undefined ? {} : { id: asset.id }),
           revision: asset.revision,
           hash: asset.hash,
@@ -446,7 +437,7 @@ export async function readSkillResources(skillFilePath: string): Promise<SkillRe
   await walkFiles(skillDirectory, skillDirectory, files);
   const resources: SkillResourceConfig[] = [];
   for (const path of files.sort((left, right) => left.localeCompare(right))) {
-    if (path === skillFilePath) {
+    if (path === skillFilePath || path === resolve(skillDirectory, ".catalyst-skill.json")) {
       continue;
     }
     const resourcePath = toRelativePath(skillDirectory, path);

@@ -3,7 +3,11 @@ import { dirname, resolve } from "node:path";
 import { ConfigApiError } from "./api";
 import { createUnifiedDiff } from "./diff";
 import { serializeGuardrailFiles } from "./guardrail-files";
-import { serializeAgentYaml, serializeSkillPackageForDisplay } from "./serialization";
+import {
+  CANONICAL_FORM_VERSION,
+  serializeAgentYaml,
+  serializeSkillPackageForDisplay
+} from "./serialization";
 import {
   MANIFEST_FILENAME,
   STATE_FILENAME,
@@ -118,6 +122,7 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
     if (
       base &&
       mine &&
+      base.canonicalFormVersion === CANONICAL_FORM_VERSION &&
       // The same asset, not only the same number: after a database was replaced another
       // asset of the name can be at the revision the last pull recorded.
       base.id === remote.id &&
@@ -201,7 +206,7 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
       force: true
     });
   }
-  // A working copy of one Namespace or one workspace never names the instance's default agent.
+  // A working copy of one workspace never names the instance's default agent.
   const fullInstancePull = selectors.length === 0 && holdsWholeInstance(instance);
   if (selectors.length === 0) {
     await removeStaleManifestAssets(workingDir, manifest, desiredPaths);
@@ -254,9 +259,8 @@ function pendingDrafts(assets: Iterable<RemoteAsset>): string[] {
 
 /**
  * The manifest and the instance a pull reads, with the root bound to the workspace `--workspace`
- * names where it is not yet. A root is bound once and stays: one bound elsewhere, one of a
- * Namespace and one that holds the instance's own assets already are refused, so a pull
- * never mixes the assets of two owners in one working copy.
+ * names where it is not yet. A root is bound once and stays: one bound elsewhere and one that
+ * holds the instance's own assets already are refused, so a pull never mixes the assets of two owners in one working copy.
  */
 async function bindWorkspace(workingDir: string, options: ConfigCommandOptions) {
   const manifest = await readManifest(workingDir);
@@ -266,11 +270,6 @@ async function bindWorkspace(workingDir: string, options: ConfigCommandOptions) 
   if (instance.workspace !== undefined) {
     throw new Error(
       `This working copy is bound to workspace '${instance.workspace}'. Pull another workspace into a directory of its own.`
-    );
-  }
-  if (instance.namespace !== undefined) {
-    throw new Error(
-      `This working copy belongs to Namespace '${instance.namespace}'. Pull a workspace into a directory of its own.`
     );
   }
   const baseline = (await readStateFile(resolve(workingDir, STATE_FILENAME))).instances[

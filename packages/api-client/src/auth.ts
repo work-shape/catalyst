@@ -16,12 +16,15 @@ const authSessionSchema = z
 export type AuthSession = NonNullable<z.infer<typeof authSessionSchema>>;
 
 const authFailureSchema = z.object({
+  code: z.string().optional(),
   message: z.string().optional(),
   error: z.object({ message: z.string().optional() }).optional()
 });
 
 export interface AuthResult {
   ok: boolean;
+  /** The sign-in library's code for a refusal, such as `INVALID_EMAIL_OR_PASSWORD`. */
+  code?: string;
   message?: string;
 }
 
@@ -58,6 +61,7 @@ export async function signInWithEmail(input: {
   const failure = authFailureSchema.safeParse(await response.json().catch(() => undefined));
   return {
     ok: false,
+    ...(failure.data?.code === undefined ? {} : { code: failure.data.code }),
     message: failure.data?.message ?? failure.data?.error?.message ?? "Sign in failed"
   };
 }

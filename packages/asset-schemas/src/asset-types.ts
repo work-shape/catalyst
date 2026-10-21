@@ -3,6 +3,9 @@
  * asset model: a working copy, the command line tool and the instance read the same types.
  */
 
+/** The configuration rights reported for an asset; publish applies to draft/published kinds. */
+export const ASSET_ACCESS_VERBS = ["read", "write", "delete", "publish"] as const;
+
 export const localeCodes = ["en", "de"] as const;
 
 export type LocaleCode = (typeof localeCodes)[number];
@@ -149,3 +152,6 @@ export interface SkillResourceConfig {
   mediaType: SkillResourceMediaType;
   content: string;
 }
+
+/** Ordered from the narrowest App audience to the widest. */
+export const APP_AUDIENCES = ["self", "workspace", "instance"] as const;

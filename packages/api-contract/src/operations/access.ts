@@ -1,14 +1,14 @@
+import { dataScopesSchema, scopeAssignmentInputSchema } from "@work-shape/catalyst-asset-schemas";
+import { z } from "zod";
 import { listQuerySchema } from "../shared";
 import {
-  createNamespaceRequestSchema,
   createPermissionGrantRequestSchema,
   effectivePermissionsQuerySchema,
   effectivePermissionsSchema,
   listPermissionGrantsQuerySchema,
-  namespaceSchema,
-  namespaceUsageSchema,
   permissionGrantSchema,
-  updateNamespaceRequestSchema
+  updateWorkspaceBuildLimitsRequestSchema,
+  workspaceBuildLimitsSchema
 } from "../access";
 import { defineOperation, defineRegisteredOperation, json, page } from "./define-operation";
 
@@ -16,12 +16,48 @@ import { defineOperation, defineRegisteredOperation, json, page } from "./define
 // The three reads are plain.
 
 export const accessOperations = {
+  "scope_assignments.list": defineOperation({
+    id: "scope_assignments.list",
+    method: "GET",
+    path: "/api/v1/instance/access/scope-assignments",
+    summary: "Read the declared data scope and one holder's assignments",
+    tag: "Access",
+    auth: "user",
+    scope: "user_admin:read",
+    requires: ["users.manage"],
+    effect: "reading",
+    query: scopeAssignmentInputSchema.pick({ holderKind: true, holderId: true }),
+    response: json(
+      z.object({
+        dimensions: dataScopesSchema,
+        assignments: z.array(scopeAssignmentInputSchema),
+        effective: z.record(z.string(), z.union([z.literal("all"), z.array(z.string())])).optional()
+      })
+    ),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "scope_assignments.set": defineRegisteredOperation({
+    id: "scope_assignments.set",
+    method: "PUT",
+    path: "/api/v1/instance/access/scope-assignments",
+    summary: "Replace one holder's data scope values or revocations; never grants a right",
+    tag: "Access",
+    auth: "user",
+    scope: "user_admin:write",
+    requires: ["users.manage"],
+    effect: "changing",
+    body: scopeAssignmentInputSchema,
+    response: json(scopeAssignmentInputSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
   "permissions.grant": defineRegisteredOperation({
     id: "permissions.grant",
     method: "POST",
     path: "/api/v1/instance/access/grants",
     summary:
-      "Allow or deny a user an action in a Namespace or on one asset, or allow a service principal a use right on one asset",
+      "Allow or deny a user an action in a workspace, on one asset or on the instance, or allow a service principal a use right on one asset",
     tag: "Access",
     // A person's operation. A service principal is let in to be refused by the operation
     // itself, by name and on the Operation Run, and not by the route with a general answer.
@@ -88,63 +124,34 @@ export const accessOperations = {
     errors: ["NOT_FOUND"],
     rateClass: "read"
   }),
-  "namespaces.create": defineRegisteredOperation({
-    id: "namespaces.create",
-    method: "POST",
-    path: "/api/v1/instance/access/namespaces",
-    summary: "Register a name prefix as a Namespace",
-    tag: "Access",
-    auth: "user",
-    scope: "user_admin:write",
-    requires: ["users.manage"],
-    effect: "changing",
-    body: createNamespaceRequestSchema,
-    response: json(namespaceSchema),
-    errors: ["CONFLICT"],
-    rateClass: "write"
-  }),
-  "namespaces.update": defineRegisteredOperation({
-    id: "namespaces.update",
-    method: "PATCH",
-    path: "/api/v1/instance/access/namespaces/:prefix",
-    summary: "Change a Namespace's display name and its tool and model lists",
-    tag: "Access",
-    auth: "user",
-    scope: "user_admin:write",
-    requires: ["users.manage"],
-    effect: "changing",
-    body: updateNamespaceRequestSchema,
-    response: json(namespaceSchema),
-    errors: ["NOT_FOUND"],
-    rateClass: "write"
-  }),
-  "namespaces.list": defineOperation({
-    id: "namespaces.list",
+  "workspaces.limits.list": defineOperation({
+    id: "workspaces.limits.list",
     method: "GET",
-    path: "/api/v1/instance/access/namespaces",
-    summary: "List Namespaces with the grants and assets each one covers",
+    path: "/api/v1/instance/access/workspaces",
+    summary: "List the Shared Workspaces with the tools and model bindings their agents may use",
     tag: "Access",
     auth: "user",
     scope: "user_admin:read",
     requires: ["users.manage"],
     effect: "reading",
     query: listQuerySchema,
-    response: page(namespaceUsageSchema, ["prefix"], false),
+    response: page(workspaceBuildLimitsSchema, ["id"], false),
     errors: [],
     rateClass: "read"
   }),
-  "namespaces.delete": defineRegisteredOperation({
-    id: "namespaces.delete",
-    method: "DELETE",
-    path: "/api/v1/instance/access/namespaces/:prefix",
-    summary: "Delete a Namespace that no grant row names",
+  "workspaces.limits.update": defineRegisteredOperation({
+    id: "workspaces.limits.update",
+    method: "PATCH",
+    path: "/api/v1/instance/access/workspaces/:collaborationWorkspaceId",
+    summary: "Change the tools and model bindings the agents of a Shared Workspace may use",
     tag: "Access",
     auth: "user",
     scope: "user_admin:write",
     requires: ["users.manage"],
     effect: "changing",
-    response: json(namespaceSchema),
-    errors: ["NOT_FOUND", "CONFLICT"],
+    body: updateWorkspaceBuildLimitsRequestSchema,
+    response: json(workspaceBuildLimitsSchema),
+    errors: ["NOT_FOUND"],
     rateClass: "write"
   })
 } as const;

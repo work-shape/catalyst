@@ -30,7 +30,7 @@ export const configAssetOperations = {
     tag: "Config Assets",
     auth: "principal",
     scope: "config_assets:write",
-    requires: ["agent.write"],
+    requires: [],
     effect: "reading",
     query: listQuerySchema,
     response: page(administeredCollaborationWorkspaceSchema, ["createdAt", "id"], false),

@@ -4,6 +4,7 @@ import {
   OPERATION_ORIGIN_KINDS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
+import { appAudienceSchema } from "../assets";
 import { agentRunStatusSchema } from "../conversations";
 import { operationRunSchema, operationRunStatusSchema } from "../operation-runs";
 import { listQuerySchema, timestampSchema } from "../shared";
@@ -12,6 +13,8 @@ import { defineOperation, defineRegisteredOperation, json, page } from "./define
 /** A person's decision on a call their own Agent Run waits on. */
 const decideOperationRunRequestSchema = z.object({
   decision: z.enum(OPERATION_CONFIRMATION_DECISIONS),
+  /** For a waiting App publish: the audience chosen by the person. */
+  audience: appAudienceSchema.optional(),
   /** Why, for a decline: the agent reads it. */
   reason: z.string().trim().min(1).max(500).optional()
 });

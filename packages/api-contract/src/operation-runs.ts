@@ -21,7 +21,20 @@ export const operationRunOriginSchema = z.discriminatedUnion("kind", [
     toolCallId: z.string(),
     toolName: z.string(),
     /** The revision a data tool was read from when the call was made, where it names one. */
-    toolRevisionId: z.string().optional()
+    toolRevisionId: z.string().optional(),
+    /**
+     * A Workflow agent step's call in a test run of a draft, which acts as the person testing:
+     * the service principal whose rights bounded theirs.
+     */
+    boundBy: z.object({ id: z.string(), label: z.string() }).optional(),
+    draft: z
+      .object({
+        kind: z.literal("agent_preview"),
+        asset: z.object({ kind: z.string(), id: z.string(), name: z.string() }),
+        revisionId: z.string(),
+        part: z.string()
+      })
+      .optional()
   }),
   z.object({ kind: z.literal("user") }),
   z.object({ kind: z.literal("cli"), unattended: z.literal(true).optional() }),

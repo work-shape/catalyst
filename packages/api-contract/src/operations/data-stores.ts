@@ -1,4 +1,6 @@
+import { workflowDataFlowsSchema } from "@work-shape/catalyst-asset-schemas";
 import {
+  APP_AUDIENCES,
   DATA_STORE_CONDITIONS,
   DATA_STORE_INSERT_CONFLICT_MODES,
   DATA_STORE_MIGRATION_OUTCOMES,
@@ -153,7 +155,9 @@ const dataStoreListResponseSchema = z.object({
        * The Knowledge Base whose documents the store keeps, which made it and drops it. Such a
        * store has no migrations of its own and no App binds it.
        */
-      ownedBy: z.object({ knowledgeBase: z.string() }).optional()
+      ownedBy: z.object({ knowledgeBase: z.string() }).optional(),
+      /** Published Apps using this store that the caller may read or use. */
+      apps: z.array(z.object({ name: z.string(), title: z.string() })).optional()
     })
   ),
   /** More stores exist than one list reads. */
@@ -189,6 +193,7 @@ const dataStoreRowsPageResponseSchema = z.object({
   ),
   /** What `after` takes for the next page. Missing behind the last row. */
   next: z.string().optional(),
+  scopeUnassigned: z.string().optional(),
   valueMaxChars: z.number().int()
 });
 
@@ -202,7 +207,8 @@ const dataStoreValueResponseSchema = z.object({ value: z.unknown() });
 
 /** Where the rows an App or a Workflow writes come from: a Connection it calls. */
 const dataStoreSourceSchema = z.object({
-  connection: z.string(),
+  connection: z.string().optional(),
+  knowledgeBase: z.string().optional(),
   /** The Connection's name people read, where the caller may see it; its id otherwise. */
   title: z.string()
 });
@@ -212,6 +218,7 @@ const dataStoreSourceSchema = z.object({
  * its right by a grant row. Admins hold every right by their role and are not listed.
  */
 const dataStoreAudienceSchema = z.object({
+  app: z.object({ audience: z.enum(APP_AUDIENCES), people: z.number().int() }).optional(),
   workspace: z.object({ title: z.string(), members: z.number().int() }).optional(),
   /** The holders by a grant row, named only to a caller who administers users. */
   holders: z.array(
@@ -234,6 +241,12 @@ const usingAssetSchema = z.object({
 });
 
 const dataStoreUsedByResponseSchema = z.object({
+  conversationWriters: z
+    .object({ agents: z.number().int(), conversations: z.number().int(), truncated: z.boolean() })
+    .optional(),
+  dataFlows: workflowDataFlowsSchema.optional(),
+  /** The published agents carrying row tools that the caller may read. */
+  agents: z.array(usingAssetSchema).optional(),
   /** The published Apps whose `sql` actions name the store, as far as the caller is shown them. */
   apps: z.array(usingAssetSchema.extend({ audience: dataStoreAudienceSchema })),
   /** The published Workflows whose operation steps call the store. */
@@ -259,6 +272,7 @@ const dataStoreUsedByResponseSchema = z.object({
   readers: dataStoreAudienceSchema,
   /** How many more use it that the caller is not shown. */
   hidden: z.object({
+    agents: z.number().int().optional(),
     apps: z.number().int(),
     workflows: z.number().int(),
     knowledgeBases: z.number().int(),
@@ -273,7 +287,8 @@ const dataStoreUsedByResponseSchema = z.object({
 /**
  * Where the data of one App comes from, as the App declares it: each store its reading
  * statements name, and each published Workflow or App that adds rows to that store with the
- * Connections it copies from. Its users read it; it never names an account.
+ * Connections it copies from. Its users read it; it never names an account. With `revision`,
+ * the same of that stored revision with who would see it: the publish question (DS-13b).
  */
 const appDataSourcesResponseSchema = z.object({
   stores: z.array(
@@ -288,10 +303,37 @@ const appDataSourcesResponseSchema = z.object({
           /** The names people read of the Connections it calls. */
           connections: z.array(z.string())
         })
-      )
+      ),
+      /**
+       * No store the App may reach stands under this name: none, a retired one, or one of
+       * another workspace, which a publish refuses. `title` is then the declared name, and no
+       * filler or measurement is given.
+       */
+      unavailable: z.literal(true).optional(),
+      /** With `revision`: the names of the revision's reading `sql` actions on this store. */
+      actions: z.array(z.string()).optional(),
+      /**
+       * With `revision`: the store's last measurement, the planner's estimate of all its rows. It
+       * is not a count and not what the actions select, which depends on their parameters.
+       * Absent where the store was never measured.
+       */
+      rows: z
+        .object({
+          estimate: z.number().int(),
+          tables: z.number().int(),
+          measuredAt: z.string()
+        })
+        .optional()
     })
   ),
-  /** More published assets exist than one read looks through. */
+  /** The revision described, where the request named one. */
+  revision: z.number().int().optional(),
+  /**
+   * With `revision`: who may use the App, and so sees what its `sql` actions select.
+   * `workspace.members` counts people; `hiddenHolders` counts holders by a grant, not people.
+   */
+  audience: dataStoreAudienceSchema.optional(),
+  /** More published assets or grant rows exist than one read looks through. */
   truncated: z.boolean()
 });
 
@@ -330,6 +372,42 @@ export const dataStoreOperations = {
     effect: "changing",
     body: dataStoreInsertRequestSchema,
     response: json(dataStoreInsertResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "data_stores.update": defineRegisteredOperation({
+    id: "data_stores.update",
+    method: "POST",
+    path: "/api/v1/data-stores/:store/update",
+    summary: "Change rows of one Data Store by primary key",
+    tag: "Data Stores",
+    auth: "principal",
+    scope: "data_store_rows:write",
+    requires: [],
+    effect: "changing",
+    body: z.strictObject({
+      table: tableNameSchema,
+      rows: z.array(z.strictObject({ key: rowSchema, set: rowSchema })).min(1)
+    }),
+    response: json(z.strictObject({ table: z.string(), updated: z.number().int().min(0) })),
+    errors: ["NOT_FOUND", "CONFLICT", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "data_stores.delete_rows": defineRegisteredOperation({
+    id: "data_stores.delete_rows",
+    method: "POST",
+    path: "/api/v1/data-stores/:store/delete_rows",
+    summary: "Remove rows of one Data Store by primary key",
+    tag: "Data Stores",
+    auth: "principal",
+    scope: "data_store_rows:write",
+    requires: [],
+    effect: "changing",
+    body: z.strictObject({
+      table: tableNameSchema,
+      keys: z.array(rowSchema).min(1)
+    }),
+    response: json(z.strictObject({ table: z.string(), deleted: z.number().int().min(0) })),
     errors: ["NOT_FOUND", "CONFLICT", "TIMEOUT"],
     rateClass: "write"
   }),
@@ -402,8 +480,11 @@ export const dataStoreOperations = {
     method: "GET",
     path: "/api/v1/app-data-sources",
     summary:
-      "Read where the data of one published App comes from: the Data Stores its statements read, and the Workflows and Apps that fill them from which Connections. Whoever uses the App reads it",
-    query: z.strictObject({ app: z.string().min(1).max(63) }),
+      "Read where the data of one published App comes from: the Data Stores its statements read, and the Workflows and Apps that fill them from which Connections. Whoever uses the App reads it. With a revision, the same of that stored revision with who may use the App and each store's last measurement, for whoever may change, publish or approve it",
+    query: z.strictObject({
+      app: z.string().min(1).max(63),
+      revision: z.coerce.number().int().positive().optional()
+    }),
     response: json(appDataSourcesResponseSchema),
     errors: ["NOT_FOUND"]
   }),

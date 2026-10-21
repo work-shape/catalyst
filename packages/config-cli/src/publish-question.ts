@@ -15,7 +15,15 @@ export type PublishAnswer = "answered" | "unattended" | "refused";
  */
 export async function askBeforePublish(
   options: ConfigCommandOptions,
-  publish: { kind: string; command: string; name: string; revision: number; yes: boolean }
+  publish: {
+    kind: string;
+    command: string;
+    name: string;
+    revision: number;
+    yes: boolean;
+    /** The review stays folded until the reader asks for Details. */
+    details?: () => void | Promise<void>;
+  }
 ): Promise<PublishAnswer> {
   const { kind, command, name, revision } = publish;
   if (publish.yes) return "unattended";
@@ -26,9 +34,14 @@ export async function askBeforePublish(
     );
     return "refused";
   }
-  const answer = await options.prompt(
-    `Publish revision ${revision} of ${kind} '${name}'? If approval is required, this files a request in the Inbox. [y/N] `
-  );
+  let answer: string;
+  do {
+    answer = await options.prompt(
+      `Publish revision ${revision} of ${kind} '${name}'? If approval is required, this files a request in the Inbox. ${publish.details ? "[y/N; d=Details]" : "[y/N]"} `
+    );
+    if (/^d(?:etails)?$/iu.test(answer.trim()) && publish.details) await publish.details();
+    else break;
+  } while (true);
   if (/^y(?:es)?$/iu.test(answer.trim())) return "answered";
   writeError(options, "Nothing was published.");
   return "refused";

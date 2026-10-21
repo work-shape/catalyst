@@ -1,7 +1,14 @@
-import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
-import type { Asset, PlatformContext } from "@work-shape/catalyst-api-contract";
+import { lstat, readFile, readdir } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
+import type { PlatformContext } from "@work-shape/catalyst-api-contract";
+
+import {
+  sha256,
+  readFolderState,
+  writeFolderState,
+  localChanges as folderChanges,
+  type FolderState
+} from "./asset-folder";
 
 // The folder of one App on this machine: what `catalyst app pull` writes and `push` reads. The
 // folder holds the App's source files as they are, `app.yaml` at its root, and one file of
@@ -15,15 +22,8 @@ export const APP_STATE_FILE = ".catalyst-app.json";
 const IGNORED_FOLDERS = new Set(["node_modules"]);
 
 /** What a pull recorded: where the App lives, and the revision and files the folder holds. */
-export interface AppFolderState {
-  instance: string;
-  workspaceId: string;
+export interface AppFolderState extends FolderState {
   app: string;
-  assetId: string;
-  /** The revision the files are of. A push names it as the revision it was made against. */
-  revision: number;
-  /** The SHA-256 of each file as it was pulled or pushed, by its path in the folder. */
-  files: Record<string, string>;
 }
 
 /** One file a push sends. */
@@ -39,50 +39,15 @@ interface AppFolderRead {
 
 type KindLimits = NonNullable<PlatformContext["kinds"][number]["limits"]>;
 
-function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
 export async function readAppState(directory: string): Promise<AppFolderState | undefined> {
-  let contents: string;
-  try {
-    contents = await readFile(join(directory, APP_STATE_FILE), "utf8");
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") return undefined;
-    throw error;
-  }
-  const parsed: unknown = JSON.parse(contents);
-  if (
-    !isRecord(parsed) ||
-    typeof parsed.instance !== "string" ||
-    typeof parsed.workspaceId !== "string" ||
-    typeof parsed.app !== "string" ||
-    typeof parsed.assetId !== "string" ||
-    typeof parsed.revision !== "number" ||
-    !isRecord(parsed.files)
-  ) {
-    throw new Error(
-      `'${join(directory, APP_STATE_FILE)}' is not the state of a pulled App. Pull the App into an empty folder again.`
-    );
-  }
-  const files: Record<string, string> = {};
-  for (const [path, hash] of Object.entries(parsed.files)) {
-    if (typeof hash === "string") files[path] = hash;
-  }
-  return {
-    instance: parsed.instance,
-    workspaceId: parsed.workspaceId,
-    app: parsed.app,
-    assetId: parsed.assetId,
-    revision: parsed.revision,
-    files
-  };
+  const state = await readFolderState(directory, APP_STATE_FILE, "app");
+  if (state === undefined) return undefined;
+  const { name, ...base } = state;
+  return { ...base, app: name };
 }
 
 export async function writeAppState(directory: string, state: AppFolderState): Promise<void> {
-  const path = join(directory, APP_STATE_FILE);
-  await writeFile(`${path}.tmp`, `${JSON.stringify(state, null, 2)}\n`);
-  await rename(`${path}.tmp`, path);
+  await writeFolderState(directory, APP_STATE_FILE, state);
 }
 
 /**
@@ -180,76 +145,7 @@ export async function localChanges(
   directory: string,
   state: AppFolderState
 ): Promise<{ changed: string[]; added: string[]; removed: string[] }> {
-  const read = await readAppFolder(directory, undefined, new Set(Object.keys(state.files))).catch(
-    () => undefined
-  );
-  const now = read?.hashes ?? {};
-  const changed: string[] = [];
-  const added: string[] = [];
-  const removed: string[] = [];
-  for (const [path, hash] of Object.entries(now)) {
-    const before = state.files[path];
-    if (before === undefined) added.push(path);
-    else if (before !== hash) changed.push(path);
-  }
-  for (const path of Object.keys(state.files)) {
-    if (now[path] === undefined) removed.push(path);
-  }
-  return { changed, added, removed };
-}
-
-/**
- * Writes the source files of one revision into the folder, byte for byte, and removes the
- * files of the last pull the revision no longer holds. Each file is checked against the hash
- * the instance answered before the state names it.
- */
-export async function writeAppFiles(
-  directory: string,
-  files: NonNullable<Asset["files"]>,
-  previous: AppFolderState | undefined
-): Promise<Record<string, string>> {
-  const hashes: Record<string, string> = {};
-  const written = new Set<string>();
-  for (const file of files) {
-    const target = safeTarget(directory, file.path);
-    const bytes =
-      file.base64 !== undefined
-        ? Buffer.from(file.base64, "base64")
-        : Buffer.from(file.text ?? "", "utf8");
-    const hash = sha256(bytes);
-    if (hash !== file.sha256) {
-      throw new Error(
-        `The file '${file.path}' did not arrive as the instance holds it (its SHA-256 differs). Nothing else was written after it; pull again.`
-      );
-    }
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, bytes);
-    hashes[file.path] = hash;
-    written.add(file.path);
-  }
-  for (const path of Object.keys(previous?.files ?? {})) {
-    if (!written.has(path)) await rm(safeTarget(directory, path), { force: true });
-  }
-  return hashes;
-}
-
-/** Whether a folder holds anything a pull could overwrite. */
-export async function folderIsEmpty(directory: string): Promise<boolean> {
-  try {
-    return (await readdir(directory)).length === 0;
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") return true;
-    throw error;
-  }
-}
-
-/** The place of a file the instance named, refused where it would leave the folder. */
-function safeTarget(directory: string, path: string): string {
-  const target = resolve(directory, path);
-  if (path.includes("\\") || !target.startsWith(`${resolve(directory)}${sep}`)) {
-    throw new Error(`The instance named the file '${path}', which lies outside the folder.`);
-  }
-  return target;
+  return folderChanges(directory, state, APP_STATE_FILE, true);
 }
 
 function utf8Text(bytes: Uint8Array): string | undefined {
@@ -269,12 +165,4 @@ function formatBytes(bytes: number): string {
 
 function compare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
 }

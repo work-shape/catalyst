@@ -4,8 +4,10 @@ import {
   OPERATION_EFFECTS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
-import { appActionPermissionSchema } from "./app-bridge";
+import { appActionPermissionSchema, appStorageMutationSchema } from "./app-bridge";
 import { operationTargetSchema } from "./operation-runs";
+import { assetScopeSchema } from "./assets";
+import { listQuerySchema } from "./shared";
 import { pagePreviewSchema } from "./pages";
 
 /** The kind id of an App in the asset registry. */
@@ -148,6 +150,8 @@ export const appPreviewRequestSchema = z.object({ mode: appModeSchema }).strict(
  * caller: put it in the frame and nowhere else. `interfacePath` holds none and can be shared.
  */
 export const appPreviewSchema = pagePreviewSchema.extend({
+  /** Data scope labels the viewer has no assignment for; never sent into the App bridge. */
+  unassignedScopes: z.array(z.string()).optional(),
   /** The number of the asset revision shown. */
   revision: z.number().int().positive(),
   interfacePath: z.string(),
@@ -170,6 +174,12 @@ const pageSessionProof = {
   fileSetId: z.string().min(1).max(200),
   token: z.string().min(1).max(512)
 };
+
+export const appStorageWriteResponseSchema = z.object({ saved: z.literal(true) }).strict();
+
+export const appStorageWriteRequestSchema = z
+  .object({ ...pageSessionProof, mutation: appStorageMutationSchema })
+  .strict();
 
 export const appSessionContextRequestSchema = z.object(pageSessionProof).strict();
 
@@ -210,12 +220,12 @@ export const appActionCallResultSchema = z.union([
 export type AppSessionContextResponse = z.infer<typeof appSessionContextSchema>;
 export type AppActionCallResult = z.infer<typeof appActionCallResultSchema>;
 
-export const appActionsListQuerySchema = z
-  .object({
+export const appActionsListQuerySchema = listQuerySchema
+  .extend({
     /**
      * The id of one App. Named, the answer holds that App alone: its draft for whoever writes
      * it, the published revision for everybody else who reads it. Left out, it holds the
-     * published revision of every App the caller reads.
+     * published revisions of one cursor page of Apps the caller reads or uses.
      */
     app: z.string().min(1).max(63).optional()
   })
@@ -233,11 +243,16 @@ export const appActionUnavailableSchema = z.enum([
 
 export type AppActionUnavailable = z.infer<typeof appActionUnavailableSchema>;
 
-/** What every named action of a revision is listed with, whatever its kind. */
-const listedAppAction = {
+/** The catalog a use holder may choose from, without configuration or a call preview. */
+const appActionSummary = {
   name: z.string(),
   effect: z.enum(OPERATION_EFFECTS),
-  description: z.string().optional(),
+  description: z.string().optional()
+};
+
+/** What every named action a reader sees is listed with, whatever its kind. */
+const listedAppAction = {
+  ...appActionSummary,
   /** The operation the action is, as an agent lists it: `app.<id>.<action>`. */
   toolName: z.string(),
   /** What the action takes: its declared parameters, as JSON Schema. */
@@ -306,14 +321,17 @@ export const appActionsSchema = z.object({
     z.object({
       name: z.string(),
       title: z.string(),
+      scope: assetScopeSchema,
       /** Which revision the actions are read from, and its number. */
       view: appModeSchema,
       revision: z.number().int().positive(),
-      actions: z.array(appActionSchema)
+      /** Readers get the full view; use-only holders get just name, description and effect. */
+      actions: z.array(z.union([appActionSchema, z.strictObject(appActionSummary)]))
     })
   ),
-  /** More Apps are published than one answer lists. The answer holds the first by name. */
-  truncated: z.boolean()
+  /** Kept for existing readers; true while another cursor page follows. */
+  truncated: z.boolean(),
+  nextCursor: z.string().optional()
 });
 
 export type AppActions = z.infer<typeof appActionsSchema>;

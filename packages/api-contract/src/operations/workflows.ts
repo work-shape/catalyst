@@ -1,17 +1,21 @@
+import { WORKFLOW_KINDS } from "@work-shape/catalyst-asset-schemas";
 import {
+  AGENT_RUN_STATUSES,
   OPERATION_EFFECTS,
   OPERATION_TARGETS,
   PRINCIPAL_HOLDER_KINDS,
   WORKFLOW_RESERVED_STEP_TYPES,
+  WORKFLOW_DATASET_STATES,
   WORKFLOW_RUN_MODES,
   WORKFLOW_RUN_STATUSES,
   WORKFLOW_STEP_RUN_STATUSES,
   WORKFLOW_STEP_TYPES,
+  WORKFLOW_DATASET_DOWNLOAD_FORMATS,
   WORKFLOW_TRIGGER_KINDS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { listQuerySchema, timestampSchema } from "../shared";
-import { defineRegisteredOperation, json, page } from "./define-operation";
+import { defineRegisteredOperation, blob, json, page } from "./define-operation";
 
 // The Workflows of an instance and their runs: the list, the start by hand, the test run of a
 // draft, the reads and the cancel. A read answers states,
@@ -46,6 +50,12 @@ const workflowRunErrorSchema = z.object({
   message: z.string(),
   /** Where the run's principal was refused for a right it does not hold: that right. */
   action: z.string().optional(),
+  /** The Connection of a refused connection.use call, as the step recorded it. */
+  connection: z.string().optional(),
+  /** That Connection's display name, where the reader may read or use it. */
+  connectionTitle: z.string().optional(),
+  /** On `confirmation_unattended`: the operation an agent step called that needed one. */
+  operation: z.string().optional(),
   /** On a run: the step run it ended at. */
   stepRunId: z.string().optional()
 });
@@ -56,7 +66,18 @@ const workflowOutputPreviewSchema = z.object({
   truncated: z.boolean()
 });
 
+const datasetMetadataSchema = z.object({
+  id: z.string(),
+  rowSchema: z.record(z.string(), z.unknown()),
+  rowCount: z.number().int().min(0),
+  bytes: z.number().int().min(0),
+  state: z.enum(WORKFLOW_DATASET_STATES)
+});
+
 export const workflowRunSchema = z.object({
+  /** Descendants that failed, reached a limit or contain failed items, excluding this run. */
+  failedDescendantCount: z.number().int().min(0).optional(),
+  failedItemCount: z.number().int().min(0).optional(),
   id: z.string(),
   workflow: z.string(),
   /** The revision of the definition the run started on and keeps to its end. */
@@ -64,6 +85,8 @@ export const workflowRunSchema = z.object({
   mode: z.enum(WORKFLOW_RUN_MODES),
   trigger: z.enum(WORKFLOW_TRIGGER_KINDS),
   status: runStatusSchema,
+  /** A completed data run whose write steps handled no items. */
+  empty: z.boolean().optional(),
   /**
    * The service principal the run acts as. Its rights are the rights of every step. A test run
    * (`mode: test`) acts as the person who started it, bounded by this principal.
@@ -81,6 +104,15 @@ export const workflowRunSchema = z.object({
    * are open or `done` a key exists once. Missing on a run started without one.
    */
   runKey: z.string().optional(),
+  labels: z.record(z.string(), z.string()).optional(),
+  continuation: z
+    .object({
+      rootRunId: z.string(),
+      previousRunId: z.string().optional(),
+      successorRunId: z.string().optional(),
+      number: z.number().int().positive()
+    })
+    .optional(),
   /** The Operation Run of the call that started the run. */
   operationRunId: z.string().optional(),
   parentRunId: z.string().optional(),
@@ -94,6 +126,7 @@ export const workflowRunSchema = z.object({
   deadlineAt: timestampSchema,
   error: workflowRunErrorSchema.optional(),
   outputPreview: workflowOutputPreviewSchema.optional(),
+  datasets: z.array(datasetMetadataSchema).optional(),
   createdAt: timestampSchema,
   startedAt: timestampSchema.optional(),
   finishedAt: timestampSchema.optional(),
@@ -105,6 +138,25 @@ export const workflowRunSchema = z.object({
    * of its step runs. The run and its step runs stay. Missing while the run has its values.
    */
   dataPrunedAt: timestampSchema.optional()
+});
+
+/**
+ * The transcript of one agent step's run, read by a holder of `workflow.read_run_data`. It is
+ * bounded: at most 100 messages, each text cut at 10,000 characters and a tool input over 2,000
+ * characters left out; `truncated` says that something was.
+ */
+export const workflowStepTranscriptSchema = z.object({
+  runId: z.string(),
+  messages: z.array(
+    z.object({
+      role: z.string(),
+      text: z.string(),
+      toolCalls: z
+        .array(z.object({ toolName: z.string(), input: z.unknown().optional() }))
+        .optional()
+    })
+  ),
+  truncated: z.boolean()
 });
 
 export const workflowStepRunSchema = z.object({
@@ -160,8 +212,24 @@ export const workflowStepRunSchema = z.object({
    * and does not own. Cancelling this run leaves that one going.
    */
   linkedRunId: z.string().optional(),
+  /** The child run owned by this step, when one has started. */
+  childRunId: z.string().optional(),
+  agent: z
+    .object({
+      runId: z.string(),
+      status: z.enum(AGENT_RUN_STATUSES),
+      usage: z.object({
+        modelCallCount: z.number(),
+        inputTokens: z.number(),
+        outputTokens: z.number(),
+        totalTokens: z.number()
+      })
+    })
+    .optional(),
   error: workflowRunErrorSchema.optional(),
+  inputPreview: workflowOutputPreviewSchema.optional(),
   outputPreview: workflowOutputPreviewSchema.optional(),
+  datasets: z.array(datasetMetadataSchema).optional(),
   createdAt: timestampSchema,
   startedAt: timestampSchema.optional(),
   finishedAt: timestampSchema.optional()
@@ -220,6 +288,7 @@ export const workflowStartIssueSchema = z.object({
 });
 
 export const workflowSummarySchema = z.object({
+  kind: z.enum(WORKFLOW_KINDS).default("process"),
   id: z.string(),
   name: z.string(),
   description: z.string().optional(),
@@ -247,6 +316,8 @@ export const workflowSummarySchema = z.object({
   /** The latest run of the Workflow. Missing on one that never ran. */
   lastRun: z
     .object({
+      failedDescendantCount: z.number().int().min(0).optional(),
+      failedItemCount: z.number().int().min(0).optional(),
       id: z.string(),
       status: runStatusSchema,
       startedAt: timestampSchema.optional(),
@@ -264,18 +335,56 @@ export type StartWorkflowRunRequest = z.infer<typeof startWorkflowRunRequestSche
 // Workflow's own (`workflow.use`, `workflow.read`, `workflow.write`) and is decided on the
 // Workflow the call or its run names.
 export const workflowOperations = {
-  "workflows.list": defineRegisteredOperation({
-    id: "workflows.list",
+  "workflows.unpublish": defineRegisteredOperation({
+    id: "workflows.unpublish",
+    method: "POST",
+    path: "/api/v1/workflows/:workflow/unpublish",
+    summary: "Stop a Workflow and remove its owned account and rights; keep its draft",
+    tag: "Workflows",
+    auth: "user",
+    scope: "config_assets:publish",
+    requires: [],
+    effect: "changing",
+    response: json(
+      z.object({
+        draftRevision: z.number().int().positive(),
+        unpublishedRevision: z.number().int().positive()
+      })
+    ),
+    errors: ["NOT_FOUND", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "workflows.download_dataset": defineRegisteredOperation({
+    id: "workflows.download_dataset",
     method: "GET",
-    path: "/api/v1/workflows",
+    path: "/api/v1/workflow-runs/:runId/datasets/:datasetId",
     summary:
-      "List the published Workflows the caller may read or use, each with its latest run and whether it can be started",
+      "Download a result dataset as streamed JSON Lines or CSV; requires run-data access or the run starter",
     tag: "Workflows",
     auth: "principal",
     scope: "config_assets:read",
     requires: [],
     effect: "reading",
-    response: json(z.object({ items: z.array(workflowSummarySchema) })),
+    query: z.object({ format: z.enum(WORKFLOW_DATASET_DOWNLOAD_FORMATS).default("jsonl") }),
+    response: blob(),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "workflows.list": defineRegisteredOperation({
+    id: "workflows.list",
+    method: "GET",
+    path: "/api/v1/workflows",
+    summary:
+      "List a cursor page of published Workflows the caller may read or use, with latest runs and start readiness. Follow nextCursor until absent to reach every Workflow.",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    query: listQuerySchema,
+    response: json(
+      z.object({ items: z.array(workflowSummarySchema), nextCursor: z.string().optional() })
+    ),
     errors: [],
     rateClass: "read"
   }),
@@ -354,6 +463,21 @@ export const workflowOperations = {
     query: listWorkflowStepRunsQuerySchema,
     response: page(workflowStepRunSchema, ["createdAt", "id"], false),
     errors: ["NOT_FOUND", "VALIDATION_FAILED"],
+    rateClass: "read"
+  }),
+  "workflows.get_step_transcript": defineRegisteredOperation({
+    id: "workflows.get_step_transcript",
+    method: "GET",
+    path: "/api/v1/workflow-runs/:runId/steps/:stepRunId/transcript",
+    summary:
+      "Read the bounded transcript of one agent step of a Workflow Run; requires run-data access",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(workflowStepTranscriptSchema),
+    errors: ["NOT_FOUND"],
     rateClass: "read"
   }),
   "workflows.cancel_run": defineRegisteredOperation({

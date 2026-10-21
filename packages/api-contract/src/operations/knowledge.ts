@@ -1,3 +1,4 @@
+import { workflowDataFlowsSchema } from "@work-shape/catalyst-asset-schemas";
 import {
   knowledgeSyncInputSchema,
   knowledgeSyncResultSchema,
@@ -6,6 +7,8 @@ import {
   knowledgeSourceItemsOutputSchema,
   knowledgeLocateInputSchema,
   knowledgeLocateOutputSchema,
+  knowledgeExtractFieldsInputSchema,
+  knowledgeExtractFieldsOutputSchema,
   knowledgeRetryInputSchema,
   knowledgeRetryOutputSchema
 } from "@work-shape/catalyst-asset-schemas";
@@ -19,7 +22,7 @@ import {
   KNOWLEDGE_SEARCH_SIGNALS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
-import { defineRegisteredOperation, json } from "./define-operation";
+import { defineRegisteredOperation, json, blob } from "./define-operation";
 
 // The routes to one Knowledge Base, each with its id in the path. A route is no operation of
 // its own: its call runs as the Knowledge Base's operation `knowledge.<id>.<part>`, the one an
@@ -30,22 +33,42 @@ const SCALAR_TYPES = DATA_STORE_SCALAR_TYPES;
 const scalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const valueSchema = z.union([scalarSchema, z.array(scalarSchema)]);
 
-const knowledgeQueryRequestSchema = z.strictObject({
-  /** One read-only SELECT or WITH statement with positional placeholders. */
-  sql: z.string().min(1),
-  /** A bare value, or a value with the type it is bound as. Never part of the statement. */
-  parameters: z
-    .array(
-      z.union([
-        valueSchema,
-        z.strictObject({
-          type: z.enum(SCALAR_TYPES.flatMap((type) => [type, `${type}[]`] as const)),
-          value: valueSchema
-        })
-      ])
-    )
-    .optional()
+/**
+ * A cited document is opened from a conversation: its workspace is where the reader may use the
+ * Knowledge Base through its availability. The reader must be able to open that conversation.
+ */
+const knowledgeOpenDocumentQuerySchema = z.object({
+  conversationId: z.string().min(1).optional()
 });
+
+const knowledgeQueryRequestSchema = z
+  .strictObject({
+    sql: z.string().min(1).max(20000).optional(),
+    query: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,62}$/u)
+      .optional(),
+    parameters: z
+      .union([
+        z
+          .array(
+            z.union([
+              valueSchema,
+              z.strictObject({
+                type: z.enum(SCALAR_TYPES.flatMap((type) => [type, `${type}[]`] as const)),
+                value: valueSchema
+              })
+            ])
+          )
+          .max(100),
+        z.record(z.string(), valueSchema)
+      ])
+      .optional()
+  })
+  .refine(
+    (input) => (input.sql === undefined) !== (input.query === undefined),
+    "Give either sql or a named query"
+  );
 
 const knowledgeQueryResponseSchema = z.object({
   /** `type` is the product's name of the type, `nativeType` the database's. */
@@ -62,6 +85,17 @@ const knowledgeQueryResponseSchema = z.object({
 });
 
 const knowledgeStateResponseSchema = z.object({
+  /** Published agents using this Knowledge Base that the caller may read. */
+  agents: z.array(z.object({ name: z.string(), title: z.string() })).optional(),
+  agentsTruncated: z.boolean().optional(),
+  dataFlows: workflowDataFlowsSchema.optional(),
+  /** Due ingestion has no reporting worker. Omitted for a structured Knowledge Base. */
+  processingWaiting: z.boolean().optional(),
+  /**
+   * The formats this instance reads into a Knowledge Base that keeps documents: `txt` and
+   * `markdown`, with document processing also `pdf` and `docx`. Omitted for a structured one.
+   */
+  documentFormats: z.array(z.string()).optional(),
   /** The id of the Knowledge Base's asset. */
   id: z.string(),
   /** The id operations and routes name the Knowledge Base by. */
@@ -116,11 +150,31 @@ const knowledgeListDocumentsResponseSchema = z.object({
       /** `pending` until it is searchable, then `indexed`; `failed` with `failureCode`. */
       state: z.enum(KNOWLEDGE_DOCUMENT_STATES),
       failureCode: z.enum(KNOWLEDGE_DOCUMENT_FAILURE_CODES).optional(),
+      /** Current configured page limit when `failureCode` is `knowledge_file_too_many_pages`. */
+      failurePageLimit: z.number().int().positive().optional(),
+      /** Detected pages when conversion took too long. */
+      failurePageCount: z.number().int().positive().optional(),
       /**
        * Why a `pending` document waits, where it waits for more than its turn: a usage limit
        * that refuses its embedding. It goes on by itself once the limit resets or is raised.
        */
       waitCode: z.enum(KNOWLEDGE_DOCUMENT_WAIT_CODES).optional(),
+      /**
+       * Field extraction paused at the Knowledge Base's budget before it reached this document.
+       * The document stays searchable; its fields follow once the budget resets or is raised.
+       */
+      fieldsPending: z.boolean().optional(),
+      fieldsPendingReason: z
+        .discriminatedUnion("reason", [
+          z.object({ reason: z.literal("monthly_budget") }),
+          z.object({
+            reason: z.literal("token_budget"),
+            estimatedTokens: z.number(),
+            reservedOutputTokens: z.number(),
+            maxTokensPerDocument: z.number()
+          })
+        ])
+        .optional(),
       /**
        * The source the document was synced from. Source withdrawal removes it; a manual
        * remove is refused with `knowledge_synced_document_remove_refused`.
@@ -132,7 +186,15 @@ const knowledgeListDocumentsResponseSchema = z.object({
     })
   ),
   /** Present while more documents follow. */
-  nextCursor: z.string().optional()
+  nextCursor: z.string().optional(),
+  /** Retained document totals and ingestion state, returned on the first page. */
+  summary: z
+    .object({
+      count: z.number().int(),
+      state: z.enum(KNOWLEDGE_DOCUMENT_STATES),
+      lastIngestedAt: z.string().optional()
+    })
+    .optional()
 });
 
 const knowledgeSearchRequestSchema = z.strictObject({
@@ -176,6 +238,23 @@ const BASE = {
 
 // None names its right in `requires`: the right is the Knowledge Base operation's.
 export const knowledgeOperations = {
+  "knowledge_bases.open_document": defineRegisteredOperation({
+    id: "knowledge_bases.open_document",
+    method: "GET",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/documents/:documentId/content",
+    summary:
+      "Open an original source document with knowledge_base.use; a cited document is opened in the context of its conversation's workspace; removed documents are unavailable",
+    tag: "Knowledge Bases",
+    auth: "user",
+    scope: "data_store_rows:read",
+    // The route checks knowledge_base.use itself, in the workspace of the citing conversation.
+    requires: [],
+    effect: "reading",
+    query: knowledgeOpenDocumentQuerySchema,
+    response: blob(),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
   "knowledge_bases.sync": defineRegisteredOperation({
     ...BASE,
     id: "knowledge_bases.sync",
@@ -278,6 +357,20 @@ export const knowledgeOperations = {
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
     rateClass: "write"
   }),
+  "knowledge_bases.upload_file": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.upload_file",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/uploads",
+    summary:
+      "Upload one file from the caller's device to a Knowledge Base that keeps documents. It runs as the Knowledge Base's add_files and keeps the file as a copy the Knowledge Base owns",
+    scope: "data_store_rows:write",
+    effect: "changing",
+    multipart: true,
+    response: json(knowledgeAddFilesResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "write"
+  }),
   "knowledge_bases.list_documents": defineRegisteredOperation({
     ...BASE,
     id: "knowledge_bases.list_documents",
@@ -320,6 +413,20 @@ export const knowledgeOperations = {
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
     rateClass: "write"
   }),
+  "knowledge_bases.extract_fields": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.extract_fields",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/extract-fields",
+    summary:
+      "Extract declared fields with page and quote evidence through the approved model binding, within this Knowledge Base's extraction budget. Unsupported evidence is dropped and counted.",
+    scope: "data_store_rows:read",
+    effect: "reading",
+    body: knowledgeExtractFieldsInputSchema,
+    response: json(knowledgeExtractFieldsOutputSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "read"
+  }),
   "knowledge_bases.search": defineRegisteredOperation({
     ...BASE,
     id: "knowledge_bases.search",
@@ -335,3 +442,6 @@ export const knowledgeOperations = {
     rateClass: "read"
   })
 };
+
+// Contract only: routes and execution arrive with KBW-1 and PROC-W.
+export { knowledgeWriteContracts } from "@work-shape/catalyst-asset-schemas";

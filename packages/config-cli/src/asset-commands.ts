@@ -1,3 +1,4 @@
+import { cliVersionNotice, formatDocs } from "./instance-output";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -16,7 +17,10 @@ import {
   runAppCommand,
   type AppCommandOptions
 } from "./app-commands";
+import { pullSkill } from "./skill-pull";
+import { workflowPublishDetails } from "./workflow-publish-review";
 import { readAssetSource } from "./asset-sources";
+import { setAvailability, setDefault } from "./asset-pointers";
 import { runFollowCommand } from "./follow-commands";
 import {
   formatAsset,
@@ -71,6 +75,7 @@ const OPTIONS = {
   field: { type: "string" },
   asset: { type: "string" },
   confirm: { type: "string" },
+  audience: { type: "string" },
   yes: { type: "boolean", default: false },
   withdraw: { type: "string" },
   published: { type: "boolean", default: false },
@@ -86,6 +91,7 @@ type OptionName = keyof typeof OPTIONS;
 
 interface Session {
   api: ConfigApi;
+  instance: string;
   kind: AssetKind;
   values: Values;
   /** The workspace the call addresses. Left out, it addresses the instance's own assets. */
@@ -104,7 +110,13 @@ interface Verb {
   named: boolean;
   /** Options beside `--instance`, `--dir`, `--workspace` and `--json`. */
   flags: readonly OptionName[];
-  prepare(values: Values, name: string, cwd: string): (session: Session) => Promise<number>;
+  prepare(
+    values: Values,
+    name: string,
+    cwd: string,
+    noun: string,
+    folder?: string
+  ): (session: Session) => Promise<number>;
 }
 
 const COMMON_FLAGS: readonly OptionName[] = ["instance", "dir", "workspace", "json", "help"];
@@ -156,6 +168,33 @@ const VERBS: Record<string, Verb> = {
       return print(session, asset, () => formatAsset(asset));
     }
   },
+  pull: {
+    usage: "pull <name> <folder>",
+    summary: "Pull one skill as a folder, checking hashes and keeping local edits (assets.get)",
+    named: true,
+    flags: [],
+    prepare: (_values, name, cwd, noun, folder) => {
+      if (noun !== "skill" && noun !== "skills")
+        throw new UsageError("'pull' is a command of skills and Apps only.");
+      if (!folder) throw new UsageError("Usage: catalyst skill pull <name> <folder>");
+      const directory = resolve(cwd, folder);
+      return async (session) => {
+        const result = await pullSkill({
+          api: session.api,
+          instance: session.instance,
+          ...session.scope,
+          skill: name,
+          directory
+        });
+        return print(
+          session,
+          result,
+          () =>
+            `Pulled revision ${result.revision} of skill '${name}' into ${folder} (${result.files} files).`
+        );
+      };
+    }
+  },
   history: {
     usage: "history <name>",
     summary: "List the revisions of one asset, newest first (assets.revisions.list)",
@@ -192,7 +231,7 @@ const VERBS: Record<string, Verb> = {
       return async (session) => {
         // What put reads, validate reads. The instance checks a definition without writing
         // it; the files of a kind whose revision holds files it checks only as it writes them.
-        const source = await readAssetSource(from, session.kind.representation);
+        const source = await readAssetSource(from, session.kind.representation, session.kind.kind);
         if ("files" in source) return filesRead(session, from, source.files.length);
         const result = await session.api.read((client) =>
           client.assets.validate({
@@ -231,7 +270,7 @@ const VERBS: Record<string, Verb> = {
       const from = fromPath(values, cwd, "--from <file-or-folder>");
       return async (session) => {
         requireAgentForDraftFence(session, draftFence);
-        const source = await readAssetSource(from, session.kind.representation);
+        const source = await readAssetSource(from, session.kind.representation, session.kind.kind);
         if ("config" in source && source.config.name !== undefined && source.config.name !== name) {
           throw new UsageError(
             `The definition names '${String(source.config.name)}', and the command '${name}'.`
@@ -267,7 +306,7 @@ const VERBS: Record<string, Verb> = {
     }
   },
   publish: {
-    usage: "publish <name> --revision <n> [--confirm <blocked>]",
+    usage: "publish <name> --revision <n> [--yes] [--confirm <blocked>]",
     summary:
       "Make one revision the one its users are served (assets.publish). A guardrail shows its dry run first; an App or a Workflow asks you first",
     named: true,
@@ -278,7 +317,7 @@ const VERBS: Record<string, Verb> = {
         if (session.kind.kind === GUARDRAIL_KIND) {
           const proceed = await guardrailDryRunBeforePublish(session, name, revision);
           if (proceed !== undefined) return proceed;
-        } else if (values.confirm !== undefined) {
+        } else if (values.confirm !== undefined && session.kind.kind !== "knowledge_base") {
           throw new UsageError("--confirm answers the dry run of a guardrail's publish.");
         }
         if (session.kind.kind === "knowledge_base") {
@@ -297,15 +336,33 @@ const VERBS: Record<string, Verb> = {
           session.kind.actions.approve !== undefined ||
           (agent && session.scope.workspaceId !== undefined);
         if (asks) {
+          const details =
+            session.kind.kind === "workflow" && !values.yes && session.options.prompt
+              ? await workflowPublishDetails({
+                  api: session.api,
+                  options: session.options,
+                  scope: session.scope,
+                  name,
+                  revision,
+                  json: values.json
+                })
+              : undefined;
           const asked = {
             kind: session.kind.kind,
             command: kindNoun(session.kind),
             name,
             revision
           };
-          const answer = await askBeforePublish(session.options, { ...asked, yes: values.yes });
+          const answer = await askBeforePublish(session.options, {
+            ...asked,
+            yes: values.yes,
+            ...(details ? { details } : {})
+          });
           if (answer === "refused") return EXIT.refused;
           unattended = answer === "unattended";
+        } else if (values.yes && session.kind.kind === "data_store") {
+          // As for other publishes, --yes sends an unattended request; a held one exits 3.
+          unattended = true;
         } else if (values.yes) {
           throw new UsageError(
             agent
@@ -318,7 +375,13 @@ const VERBS: Record<string, Verb> = {
             (client, idempotencyKey) =>
               client.assets.publish({
                 params: { kind: session.kind.kind, name },
-                body: { revision, ...session.scope },
+                body: {
+                  revision,
+                  ...session.scope,
+                  ...(session.kind.kind === "knowledge_base" && values.confirm
+                    ? { confirmProcessing: values.confirm }
+                    : {})
+                },
                 idempotencyKey,
                 ...(unattended ? { unattended } : {})
               }),
@@ -543,14 +606,12 @@ const VERBS: Record<string, Verb> = {
         collaborationWorkspaceIds: values["available-in"] ?? []
       };
       return async (session) => {
-        const outcome = await session.api.change(
-          (client, idempotencyKey) =>
-            client.assets.set_availability({
-              params: { kind: session.kind.kind, name },
-              body,
-              idempotencyKey
-            }),
-          "It may have been applied: run 'show' before sending it again."
+        const outcome = await setAvailability(
+          session.api,
+          session.kind.kind,
+          name,
+          body,
+          session.scope
         );
         return settle(session, outcome, (output) => [
           `${session.kind.kind} '${name}' is offered in ${output.mode === "all" ? "every workspace" : `${output.personalWorkspaces ? "personal workspaces and " : ""}${output.collaborationWorkspaceIds.length} shared workspaces`}.`
@@ -569,15 +630,18 @@ const VERBS: Record<string, Verb> = {
       }
       const chosen = values.none ? null : name;
       return async (session) => {
-        const outcome = await session.api.change(
-          (client, idempotencyKey) =>
-            client.assets.set_default({
-              params: { kind: session.kind.kind },
-              body: { name: chosen },
-              idempotencyKey
-            }),
-          "It may have been applied: run 'list' before sending it again."
-        );
+        const outcome = await setDefault(
+          session.api,
+          session.kind.kind,
+          chosen,
+          session.scope
+        ).catch((error: unknown) => {
+          if (!(error instanceof ConfigApiError) || error.code !== "REVISION_CONFLICT") throw error;
+          throw new ExplainedRefusal(
+            error,
+            `Run 'catalyst ${session.kind.kind} list' and retry the default selection.`
+          );
+        });
         return settle(session, outcome, () => [
           chosen === null
             ? `The instance has no default ${session.kind.kind} now.`
@@ -672,12 +736,19 @@ async function guardrailDryRunBeforePublish(
 const APP_FLAGS = {
   pull: ["revision", "published"],
   push: [],
-  publish: ["revision", "yes"],
+  publish: ["revision", "yes", "audience"],
   status: []
 } as const satisfies Record<keyof typeof APP_VERBS, readonly OptionName[]>;
 
 /** The words before the kind that are commands of their own. */
-const INSTANCE_COMMANDS = ["context", "kinds", "references", "operation", "requests"] as const;
+const INSTANCE_COMMANDS = [
+  "context",
+  "kinds",
+  "docs",
+  "references",
+  "operation",
+  "requests"
+] as const;
 
 /** Runs `catalyst <argv>` for every command but `config`. */
 export async function runAssetCommand(
@@ -703,6 +774,21 @@ export async function runAssetCommand(
   };
   const instanceCommand = INSTANCE_COMMANDS.find((command) => command === noun);
   const [verbName = "", name = "", ...extra] = positionals;
+  const knownKind = [
+    "agent",
+    "skill",
+    "guardrail",
+    "app",
+    "workflow",
+    "connection",
+    "data-store",
+    "knowledge-base"
+  ].some((kind) => [kind, `${kind}s`, kind.replace("-", "_")].includes(noun));
+  // A registered kind unknown to this CLI can still use offline help with a kind verb.
+  if (instanceCommand === undefined && !knownKind && VERBS[verbName] === undefined) {
+    writeError(options, `Unknown command '${noun}'.\n\n${assetHelpText}`);
+    return EXIT.usage;
+  }
   if (values.help) {
     writeOutput(options, assetHelpText);
     return EXIT.done;
@@ -717,7 +803,7 @@ export async function runAssetCommand(
         if (verbName !== "show" || name === "" || extra.length > 0) {
           throw new UsageError("Usage: catalyst operation show <run-id>");
         }
-      } else if (positionals.length > 0) {
+      } else if (instanceCommand === "docs" ? positionals.length > 1 : positionals.length > 0) {
         throw new UsageError(`Unexpected argument '${positionals[0]}'.`);
       }
       refuseFlags(
@@ -730,7 +816,12 @@ export async function runAssetCommand(
         instanceCommand
       );
       if (values.withdraw !== undefined) required(values.withdraw, "--withdraw <id>");
-      return await runInstanceCommand(instanceCommand, values, options, name);
+      return await runInstanceCommand(
+        instanceCommand,
+        values,
+        options,
+        instanceCommand === "docs" ? verbName : name
+      );
     }
     if ((noun === "app" || noun === "apps") && isAppVerb(verbName)) {
       refuseFlags(values, [...COMMON_FLAGS, ...APP_FLAGS[verbName]], verbName);
@@ -740,15 +831,19 @@ export async function runAssetCommand(
     if (verb === undefined) throw new UsageError(`Unknown command '${noun} ${verbName}'.`);
     refuseFlags(values, [...COMMON_FLAGS, ...verb.flags], verbName);
     if (verb.named && name === "") throw new UsageError(`Usage: catalyst ${noun} ${verb.usage}`);
-    if (extra.length > 0 || (!verb.named && verbName !== "set-default" && name !== "")) {
+    if (
+      extra.length > (verbName === "pull" ? 1 : 0) ||
+      (!verb.named && verbName !== "set-default" && name !== "")
+    ) {
       throw new UsageError(`Unexpected argument '${extra[0] ?? name}'.`);
     }
-    const call = verb.prepare(values, name, options.cwd);
-    const { api, workspace } = await openInstance(options);
+    const call = verb.prepare(values, name, options.cwd, noun, extra[0]);
+    const { api, workspace, url } = await openInstance(options);
     const context = await api.read((client) => client.platform.context.get());
     const workspaceId = values.workspace ?? workspace;
     return await call({
       api,
+      instance: url,
       kind: findKind(context.kinds, noun),
       values,
       scope: workspaceId === undefined ? {} : { workspaceId },
@@ -788,13 +883,25 @@ async function runInstanceCommand(
   if (command === "operation" || command === "requests") {
     return runFollowCommand(api, command, { runId, json, withdraw: values.withdraw }, options);
   }
-  if (command === "references") {
+  if (command === "docs") {
+    const docs = await api.read((client) =>
+      client.platform.docs.get({ query: runId ? { page: runId } : {} })
+    );
+    // A page's Markdown is written byte for byte, without the normal output newline.
+    if (!json && "markdown" in docs)
+      (options.stdout ?? process.stdout.write.bind(process.stdout))(docs.markdown);
+    else out(docs, () => formatDocs(docs));
+  } else if (command === "references") {
     const references = await api.read((client) => client.platform.references.get());
     out(references, () => formatReferences(references));
   } else {
     const context = await api.read((client) => client.platform.context.get());
     if (command === "kinds") out(context.kinds, () => formatKinds(context.kinds));
-    else out(context, () => formatContext(context));
+    else {
+      const notice = cliVersionNotice(context.release.cliVersion);
+      if (notice !== undefined) writeError(options, notice);
+      out(context, () => formatContext(context));
+    }
   }
   return EXIT.done;
 }
@@ -918,4 +1025,8 @@ function refuseFlags(values: Values, allowed: readonly OptionName[], command: st
 /** A command line this tool cannot run. Nothing was sent. */
 class UsageError extends Error {}
 
-export const assetHelpText = formatAssetHelp(Object.values(VERBS));
+export const assetHelpText = formatAssetHelp(
+  Object.entries(VERBS)
+    .filter(([name]) => name !== "pull")
+    .map(([, verb]) => verb)
+);

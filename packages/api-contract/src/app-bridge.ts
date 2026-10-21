@@ -31,9 +31,28 @@ const requestId = z.string().min(1).max(APP_BRIDGE_REQUEST_ID_MAX_CHARS);
 const calledName = z.string().min(1).max(APP_BRIDGE_NAME_MAX_CHARS);
 const idempotencyKey = z.string().min(1).max(IDEMPOTENCY_KEY_MAX_LENGTH).optional();
 
+/** A localStorage mutation or coalesced batch. The server serializes it against the current person's state. */
+export const appStorageMutationSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("set"), key: z.string(), value: z.string() }),
+  z.strictObject({ type: z.literal("remove"), key: z.string() }),
+  z.strictObject({ type: z.literal("clear") }),
+  z.strictObject({
+    type: z.literal("batch"),
+    clear: z.boolean(),
+    values: z.record(z.string(), z.string().nullable())
+  })
+]);
+
 /** What a Page posts. Unknown keys are refused, so a message is exactly one of these. */
 export const appBridgePageMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...mark, type: z.literal("ready") }),
+  z.strictObject({
+    ...mark,
+    type: z.literal("storage_write"),
+    session,
+    requestId,
+    mutation: appStorageMutationSchema
+  }),
   z.strictObject({
     ...mark,
     type: z.literal("navigate"),
@@ -173,6 +192,13 @@ const callFailure = z.strictObject({
 
 /** What the interface posts into the frame of a Page. */
 export const appBridgeHostMessageSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    ...mark,
+    type: z.literal("storage_result"),
+    session,
+    requestId,
+    ok: z.boolean()
+  }),
   z.strictObject({ ...mark, type: z.literal("context"), session, context: appBridgeContextSchema }),
   z.strictObject({
     ...mark,

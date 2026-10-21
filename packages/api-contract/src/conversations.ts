@@ -1,4 +1,5 @@
 import {
+  AGENT_PREVIEW_SOURCES,
   FOLLOW_UP_MODES,
   FOLLOW_UP_STATUSES,
   TOOL_DECISION_MODES,
@@ -16,13 +17,16 @@ import {
   DECIDED_APPROVAL_REQUEST_STATUSES,
   ENDED_APPROVAL_EXECUTIONS,
   MESSAGE_FINISH_STATUSES,
+  MODEL_USAGE_LIMIT_PERIODS,
+  MODEL_USAGE_LIMIT_METRICS,
+  MODEL_USAGE_LIMIT_SCOPES,
   STRUCTURED_DATA_REVIEW_REASONS,
   TOOL_CALL_STATES,
   WEB_SOURCE_PROVIDERS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
-import { localeCodeSchema, reasoningEffortSchema } from "./configuration";
-import { timestampSchema } from "./shared";
+import { reasoningEffortSchema } from "./configuration";
+import { localeCodeSchema, timestampSchema } from "./shared";
 
 export const conversationVisibilitySchema = z.enum(CONVERSATION_VISIBILITIES);
 
@@ -89,6 +93,16 @@ export const webSourceSchema = z.object({
   resultPosition: z.number().optional()
 });
 
+const knowledgeCitationSourceSchema = z.object({
+  ref: z.string().regex(/^K[1-9][0-9]*$/),
+  knowledgeBase: z.string().min(1),
+  documentId: z.string().min(1),
+  fileId: z.string().min(1),
+  fileName: z.string().min(1),
+  page: z.number().int().positive().optional(),
+  originLink: z.string().optional()
+});
+
 export const messageCitationSchema = z.object({
   sourceId: z.string(),
   label: z.string().optional(),
@@ -104,6 +118,14 @@ export const messageCitationSchema = z.object({
 export const userMessageMetadataSchema = z.object({
   version: messageMetadataVersionSchema,
   kind: z.literal("user_message"),
+  // Provenance only: the private frozen config remains in the worker's stored message.
+  preview: z
+    .object({
+      agentId: z.string(),
+      revision: z.number().int().positive(),
+      source: z.enum(AGENT_PREVIEW_SOURCES)
+    })
+    .optional(),
   attachmentManifest: z.unknown()
 });
 
@@ -124,6 +146,7 @@ export const assistantFinalMessageMetadataSchema = z.object({
   cancellationReason: z.string().optional(),
   reasoning: z.array(storedReasoningSummarySchema).optional(),
   sources: z.array(webSourceSchema).optional(),
+  knowledgeSources: z.array(knowledgeCitationSourceSchema).optional(),
   citations: z.array(messageCitationSchema).optional(),
   modelContext: storedModelContextSnapshotSchema.optional()
 });
@@ -374,6 +397,8 @@ export const artifactPreviewResponseSchema = z.discriminatedUnion("status", [
 export type ArtifactPreviewResponse = z.infer<typeof artifactPreviewResponseSchema>;
 
 export const createConversationRequestSchema = z.object({
+  /** A build starts privately even in a workspace with shared conversations by default. */
+  visibility: z.literal("private").optional(),
   title: z.string().min(1).optional(),
   collaborationWorkspaceId: z.string().min(1).optional(),
   locale: localeCodeSchema.optional(),
@@ -407,7 +432,20 @@ export const agentRunErrorSchema = z.object({
   message: z.string(),
   category: z.enum(AGENT_RUN_FAILURE_CATEGORIES),
   /** The tool a run waited on when it was ended for standing still: its name only. */
-  tool: z.string().optional()
+  tool: z.string().optional(),
+  /**
+   * The usage limit that refused the run's model call: its window, what it counts and whose
+   * counter it is. A value this contract does not know is left out, so the reader says that
+   * a limit was reached without naming it.
+   */
+  usageLimit: z
+    .object({
+      period: z.enum(MODEL_USAGE_LIMIT_PERIODS),
+      metric: z.enum(MODEL_USAGE_LIMIT_METRICS),
+      scope: z.enum(MODEL_USAGE_LIMIT_SCOPES)
+    })
+    .optional()
+    .catch(undefined)
 });
 
 export const agentRuntimeEventSchema = z.discriminatedUnion("type", [
@@ -479,7 +517,9 @@ export const agentRuntimeEventSchema = z.discriminatedUnion("type", [
     operationRunId: z.string(),
     operationId: z.string(),
     mode: toolDecisionModeSchema,
+    targetTitle: z.string().optional(),
     inputPreview: z.unknown(),
+    simulation: z.unknown().optional(),
     expiresAt: timestampSchema
   }),
   z.object({
@@ -573,6 +613,8 @@ export const agentRunSchema = z.object({
 export const activeRunSummarySchema = z.object({
   id: z.string(),
   conversationId: z.string(),
+  ownerUserId: z.string().optional(),
+  inputMessageId: z.string().optional(),
   agentName: z.string(),
   status: agentRunStatusSchema,
   startedAt: timestampSchema,
@@ -593,7 +635,10 @@ const toolCallDecisionSchema = z.object({
   operationRunId: z.string(),
   operationId: z.string(),
   mode: toolDecisionModeSchema,
+  targetTitle: z.string().optional(),
   inputPreview: z.unknown(),
+  /** What the operation's own simulation answered, such as the mail `mail.send` would send. */
+  simulation: z.unknown().optional(),
   expiresAt: timestampSchema
 });
 
@@ -618,6 +663,7 @@ export const agentRunProjectionPartSchema = z.discriminatedUnion("type", [
     state: agentRunProjectionToolCallStateSchema,
     output: z.unknown().optional(),
     errorText: z.string().optional(),
+    errorReason: z.literal("subject_conversation_shared").optional(),
     decision: toolCallDecisionSchema.optional(),
     subagent: toolCallSubagentSchema.optional()
   })
@@ -625,6 +671,8 @@ export const agentRunProjectionPartSchema = z.discriminatedUnion("type", [
 
 export const agentRunProjectionSchema = z.object({
   runId: z.string(),
+  ownerUserId: z.string().optional(),
+  inputMessageId: z.string().optional(),
   lastSequence: z.number().int().nonnegative(),
   status: agentRunStatusSchema,
   durationMs: z.number().int().nonnegative().optional(),
@@ -651,6 +699,7 @@ export const agentRunProjectionSchema = z.object({
       state: agentRunProjectionToolCallStateSchema,
       output: z.unknown().optional(),
       errorText: z.string().optional(),
+      errorReason: z.literal("subject_conversation_shared").optional(),
       decision: toolCallDecisionSchema.optional(),
       subagent: toolCallSubagentSchema.optional()
     })

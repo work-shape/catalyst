@@ -1,4 +1,8 @@
+import { localeCodes } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
+
+/** A language the product ships its words in. */
+export const localeCodeSchema = z.enum(localeCodes);
 
 /** ISO 8601 timestamps always denote UTC, never a local offset. */
 export const timestampSchema = z.iso.datetime({ offset: false });

@@ -1,4 +1,8 @@
 import {
+  APP_AUDIENCES,
+  OPERATION_EFFECTS,
+  WORKSPACE_USE_ASSET_KINDS,
+  ASSET_ACCESS_VERBS,
   ASSET_NAME_REFUSAL_REASONS,
   ASSET_SYNC_CHANGE_TYPES
 } from "@work-shape/catalyst-asset-schemas";
@@ -81,7 +85,7 @@ const assetDefinitionSchema = configAssetConfigSchema.refine(
  * The scope a call addresses. Without it the call means the instance's own assets. An asset a
  * workspace owns is reached only by naming that workspace.
  */
-const workspaceIdSchema = z.string().min(1).optional();
+const workspaceIdSchema = nameText(z.string().min(1)).optional();
 
 /**
  * Set on the one asset that is the instance's default of its kind, and left out on every
@@ -97,6 +101,23 @@ const isDefaultSchema = z.literal(true).optional();
  * Whoever may not read the draft is answered the published view: `revision` and
  * `publishedRevision` both name the published revision, and `draftRevision` is left out.
  */
+/** Dependencies whose use is missing in one or more of the agent's workspaces. */
+export const dependencyAvailabilitySchema = z.object({
+  /** The workspaces reviewed by the publisher; a later change must be read again. */
+  availability: agentAvailabilitySchema.nullable().optional(),
+  /** Human names of the shared workspaces reviewed, including ones outside the editor's own list. */
+  workspaces: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+  missing: z.array(
+    z.object({
+      kind: z.enum(WORKSPACE_USE_ASSET_KINDS),
+      name: z.string(),
+      displayName: z.string(),
+      canMakeAvailable: z.boolean()
+    })
+  ),
+  administrators: z.array(z.string())
+});
+
 export const agentDraftSummarySchema = z.object({
   revision: revisionNumberSchema,
   baseRevision: revisionNumberSchema,
@@ -115,6 +136,9 @@ const pointerShape = {
   publishedRevision: revisionNumberSchema.optional()
 };
 
+/** What the instance allows the caller to do to one asset. */
+export const assetVerbSchema = z.enum(ASSET_ACCESS_VERBS);
+
 /** One asset as a list shows it: what every kind can say about itself, without its content. */
 export const assetSummarySchema = z.object({
   /** What an asset-scoped grant names as its `scopeId`. */
@@ -124,21 +148,21 @@ export const assetSummarySchema = z.object({
   title: z.string(),
   description: z.string().optional(),
   scope: assetScopeSchema,
-  /** The prefix of the Namespace the name belongs to, where it belongs to one. */
-  namespace: z.string().optional(),
   revision: revisionNumberSchema,
   ...pointerShape,
   isDefault: isDefaultSchema,
   /**
    * What the kind says of the asset beside its name, by the kind's own keys: a Connection
    * names its `connectorType`, its `origin`, whether it is `enabled` and, where it has one, its
-   * `service`, which picks its icon. A skill names its
+   * `service`, which picks its icon. Connection lists also carry runtime `health`. A skill names its
    * `origin`, who ships it: `instance` for a skill of the instance's own, `release` for one a
    * release ships. It names its `summary`, the sentence for people, where it has one. A skill
    * a release ships also names its `icon`, a key of the interface's icon registry; no other
    * skill names an icon.
    */
   attributes: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+  /** Per-asset rights from the same resolver as the asset read; absent on older instances. */
+  allowed: z.array(assetVerbSchema).optional(),
   updatedAt: timestampSchema
 });
 
@@ -157,22 +181,78 @@ export const assetFileSchema = z.object({
   base64: z.string().optional()
 });
 
-/** What a caller may do to an asset beyond reading it. */
-export const assetVerbSchema = z.enum(["write", "delete", "publish"]);
+/**
+ * The plain sentence a publish question leads with (PUBQ-1), in the reader's language: what
+ * runs, when, as which account, what it reads, writes and sends, and who sees it, then one
+ * warning for each step a guardrail in force will or may stop when the revision runs live.
+ * Names and counts only, never a row value. A held publish's review carries the same object.
+ */
+export const appAudienceSchema = z.enum(APP_AUDIENCES);
+
+export const publishNarrativeSchema = z.object({
+  summary: z.string(),
+  /** Empty where no guardrail in force stops a step, and for an App. */
+  warnings: z.array(z.string())
+});
+
+/** A save by the caller that waits for an approval, and up to three people who may decide it. */
+export const saveApprovalSchema = z.object({ approverNames: z.array(z.string()) });
+
+/** Facts resolved for the revision read, with unreadable sources reduced to their kind. */
+const workflowFactSourceSchema = z.object({
+  kind: z.enum(["connection", "data_store", "knowledge_base", "workflow", "other"]),
+  title: z.string().optional(),
+  service: z.string().optional()
+});
+const workflowOperationFactSchema = z.object({
+  source: workflowFactSourceSchema,
+  title: z.string().optional(),
+  effect: z.enum(OPERATION_EFFECTS).optional(),
+  description: z.string().optional(),
+  inputSchema: configAssetConfigSchema.optional(),
+  outputSchema: configAssetConfigSchema.optional(),
+  available: z.boolean().optional()
+});
+export const workflowStepFactSchema = workflowOperationFactSchema.partial().extend({
+  published: z.boolean().optional(),
+  model: z.string().optional(),
+  timeZone: z.string().optional(),
+  nextDueAt: timestampSchema.optional(),
+  /** Every AI step may use these Workflow tools. */
+  tools: z.array(workflowOperationFactSchema.extend({ name: z.string() })).optional()
+});
 
 export const assetSchema = z.object({
+  /** The retained publish event for the live revision, for a reader of an App draft. */
+  publication: z.object({ at: z.string().datetime(), by: z.string().optional() }).optional(),
   id: z.string(),
   kind: z.string(),
   name: z.string(),
   scope: assetScopeSchema,
-  namespace: z.string().optional(),
   revision: revisionNumberSchema,
   ...pointerShape,
   config: configAssetConfigSchema,
   /** The active account's display label for the Workflow revision returned by this read. */
   runsAs: z.string().optional(),
+  stepFacts: z.record(z.string(), workflowStepFactSchema).optional(),
   /** Unrecorded draft review lines naming its audience and shared source accounts. */
   publishQuestion: z.array(z.string()).optional(),
+  /**
+   * Of an App or a Workflow, for a reader of its draft: the publish question's sentence and
+   * warnings for the revision this read returns.
+   */
+  publishNarrative: publishNarrativeSchema.optional(),
+  appAudience: z
+    .object({
+      selected: appAudienceSchema,
+      live: appAudienceSchema.optional(),
+      liveLabel: z.string().optional(),
+      people: z.number().int().nonnegative().optional(),
+      choices: z.array(appAudienceSchema),
+      label: z.string(),
+      workspaceName: z.string().optional()
+    })
+    .optional(),
   /**
    * The revision `config` and `files` are of, for a kind with a draft and a published revision:
    * the draft where the call names none.
@@ -194,6 +274,8 @@ export const assetSchema = z.object({
    * out where none is stored: such an asset is hidden in every workspace.
    */
   availability: agentAvailabilitySchema.optional(),
+  dependencyAvailability: dependencyAvailabilitySchema.optional(),
+  canSetAvailability: z.boolean().optional(),
   /** Only on agent reads. The stored config stays intact; these references cannot run. */
   unavailableTools: z.array(unavailableToolSchema).optional(),
   unavailableSkills: z.array(unavailableSkillSchema).optional(),
@@ -202,10 +284,16 @@ export const assetSchema = z.object({
   chatAvailable: z.boolean().optional(),
   /**
    * What the caller may do to this asset, as the instance decides it on this asset: grants and
-   * denies on the instance, a Namespace, a workspace and the asset itself. A kind without a
+   * denies on the instance, a workspace and the asset itself. A kind without a
    * published revision names no `publish`. Left out by an instance from before AD-4.
    */
   allowed: z.array(assetVerbSchema).optional(),
+  /**
+   * A save of this asset by the caller files a request and takes effect once it is approved,
+   * as the instance's policy asks. Names up to three people the caller shares a workspace with
+   * who may decide it; none where none is known. Left out where a save takes effect at once.
+   */
+  saveApproval: saveApprovalSchema.optional(),
   updatedAt: timestampSchema
 });
 
@@ -213,7 +301,7 @@ export const assetSchema = z.object({
 export const assetWarningSchema = z.object({ code: z.string(), message: z.string() });
 
 export const listAssetsQuerySchema = z.object({
-  /** Only names that start with this text, such as a Namespace prefix. */
+  /** Only names that start with this text. */
   prefix: nameText(z.string().min(1).max(200)).optional(),
   /** Only assets whose name or title contains this text, whatever the case. */
   text: nameText(z.string().min(1).max(200)).optional(),
@@ -237,10 +325,16 @@ export const assetRevisionSelectorSchema = z
   .string()
   .regex(/^(?:draft|published|[1-9]\d{0,8})$/u, "draft, published, or a revision number");
 
+const queryBooleanSchema = z.enum(["true", "false"]);
+
 export const getAssetQuerySchema = assetScopeQuerySchema.extend({
+  availabilityMode: agentAvailabilitySchema.shape.mode.optional(),
+  availabilityPersonalWorkspaces: queryBooleanSchema.optional(),
+  availabilityWorkspaceIds: z.string().optional(),
+  audience: appAudienceSchema.optional(),
   revision: assetRevisionSelectorSchema.optional(),
   /** `true` adds the source files of the revision, for a kind whose revisions hold files. */
-  files: z.enum(["true", "false"]).optional()
+  files: queryBooleanSchema.optional()
 });
 
 const filePathSchema = nameText(z.string().min(1).max(FILE_SET_MAX_PATH_CHARS));
@@ -277,6 +371,10 @@ export const putAssetRequestSchema = z
     expectedRevision: expectedRevisionOrNewSchema,
     expectedDraftRevision: expectedRevisionOrNewSchema.optional(),
     workspaceId: workspaceIdSchema,
+    /** Include missing dependencies in a new agent's chosen workspaces, by explicit consent. */
+    makeDependenciesAvailable: z.boolean().optional(),
+    /** Availability shown with the dependency consent; a different audience is refused. */
+    expectedAvailability: agentAvailabilitySchema.optional(),
     /**
      * Where a new agent starts available: the shared workspace it is made in, or `all`, which
      * needs the agent write right on the whole instance. An agent's call in a conversation is
@@ -309,6 +407,14 @@ export const assetWriteResponseSchema = z.object({
 });
 
 export const publishAssetRequestSchema = z.object({
+  makeDependenciesAvailable: z.boolean().optional(),
+  expectedAvailability: agentAvailabilitySchema.nullable().optional(),
+  audience: appAudienceSchema.optional(),
+  /** Confirmation of the Knowledge Base processing count and cost; stale reviews are refused. */
+  confirmProcessing: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/u)
+    .optional(),
   /**
    * The number of the revision that becomes the published one. It is required: a publish
    * never means "whatever the draft is now". Naming an earlier number is the way back.
@@ -399,6 +505,9 @@ export const setAssetDefaultResponseSchema = z.object({
 });
 
 export const setAssetAvailabilityRequestSchema = z.object({
+  /** Required with dependency consent: refuse a definition changed since it was reviewed. */
+  expectedRevision: revisionNumberSchema.optional(),
+  makeDependenciesAvailable: z.boolean().optional(),
   mode: agentAvailabilitySchema.shape.mode,
   // Both apply to `selected` only and are ignored for `all`.
   personalWorkspaces: z.boolean().optional(),
@@ -414,6 +523,8 @@ export const setAssetAvailabilityRequestSchema = z.object({
 });
 
 export const validateAssetRequestSchema = z.object({
+  /** Preview dependency use in these workspaces without creating the agent. */
+  availability: agentAvailabilitySchema.optional(),
   config: assetDefinitionSchema,
   workspaceId: workspaceIdSchema
 });
@@ -430,7 +541,14 @@ export const checkAssetNameRequestSchema = z.object({
  * `name_taken` is the id of another asset; `message` says which rule or which id, in English.
  */
 export const checkAssetNameResponseSchema = z.discriminatedUnion("available", [
-  z.object({ available: z.literal(true) }),
+  z.object({
+    available: z.literal(true),
+    /**
+     * A create of the name by the caller files a request and takes effect once it is approved,
+     * as `saveApproval` of a read of the asset says. Left out where a create takes effect at once.
+     */
+    saveApproval: saveApprovalSchema.optional()
+  }),
   z.object({
     available: z.literal(false),
     reason: z.enum(ASSET_NAME_REFUSAL_REASONS),
@@ -446,6 +564,7 @@ export const assetValidationIssueSchema = z.object({
 });
 
 export const validateAssetResponseSchema = z.object({
+  dependencyAvailability: dependencyAvailabilitySchema.optional(),
   valid: z.boolean(),
   issues: z.array(assetValidationIssueSchema),
   warnings: z.array(assetWarningSchema).optional()
@@ -481,16 +600,9 @@ export const assetSyncItemSchema = z.discriminatedUnion("type", [
 
 export const syncAssetsRequestSchema = z.object({
   /**
-   * The prefix of the one Namespace the batch belongs to. No item may name an asset outside it.
-   * Only a holder of the release right may leave it out: a release names any asset of the
-   * instance.
-   */
-  namespace: nameText(z.string().min(1)).optional(),
-  /**
    * The workspace that owns every asset the batch names, as a CLI root bound with
    * `--workspace` sends it. Left out, the batch names the instance's own assets. A batch
-   * names a Namespace or a workspace, never both, and one that names a workspace is no
-   * release: its agents start hidden and its writer holds the rights on what the workspace
+   * that names a workspace is no release: its agents start hidden and its writer holds the rights on what the workspace
    * owns.
    */
   workspaceId: workspaceIdSchema,
@@ -601,6 +713,7 @@ export const assetPreconditionRequiredDetailsSchema = z.object({
 export type AssetScope = z.infer<typeof assetScopeSchema>;
 export type AssetSummary = z.infer<typeof assetSummarySchema>;
 export type Asset = z.infer<typeof assetSchema>;
+export type PublishNarrative = z.infer<typeof publishNarrativeSchema>;
 export type AssetSyncItem = z.infer<typeof assetSyncItemSchema>;
 export type AssetSyncRefusedItem = z.infer<typeof assetSyncRefusedItemSchema>;
 export type AssetRevisionConflict = z.infer<typeof assetRevisionConflictSchema>;

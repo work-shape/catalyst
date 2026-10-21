@@ -7,9 +7,10 @@ import { RELEASE_VERSION } from "@work-shape/catalyst-api-contract";
 import { assetHelpText, runAssetCommand } from "./asset-commands";
 import { runConfigCommand, type ConfigCommandName, type ConfigCommandOptions } from "./commands";
 import { operationHelpText, runOperationCommand } from "./operation-commands";
-import { isNamedCommand, namedHelpText, runNamedCommand } from "./named-commands";
+import { isNamedCommand, isNamedNoun, namedHelpText, runNamedCommand } from "./named-commands";
 import type { CommandInput } from "./input";
 import type { AssetKindName } from "./command-support";
+import { runInit } from "./init";
 import { loginCommand, logoutCommand } from "./login";
 import { isLocalAgentTool, SETUP_USAGE, setupCommand } from "./setup";
 
@@ -56,6 +57,10 @@ const helpText = `Usage: catalyst config <command> [options]
 
 Sync local config assets with a live Catalyst instance.
 
+Working copy:
+  init --instance <alias-or-url> [--dir <root>]
+             Bind a new folder and write agent guidance in AGENTS.md and CLAUDE.md
+
 Login:
   login      Show a connect code, wait until you confirm it on the instance at
              /settings/you/api-keys, and save the personal API key it issues, readable by
@@ -100,16 +105,11 @@ Environment:
                         a key 'catalyst login' saved
   CATALYST_CONFIG_HOME  Folder of the saved keys (default: ~/.config/catalyst)
 
-A working copy that belongs to one Namespace names it beside the instance's url in
-catalyst.yaml, as 'namespace: tax-'. Its push names that Namespace, as the instance asks
-of everyone but the holder of the release right; its pull, diff and list read only the
-assets the key may read, never the instance's version or default agent.
-
-A working copy bound to a workspace names it the same way, as 'workspace: <id>', which the
-first 'catalyst config pull --workspace <id>' writes. It holds what that workspace owns, and
-everything its push creates is owned by that workspace, guardrails included. Its push is never
-a release: a new agent starts hidden until an instance admin offers it. A working copy without
-either holds the instance's own assets.
+A working copy bound to a workspace names it beside the instance's url in catalyst.yaml,
+as 'workspace: <id>', which the first 'catalyst config pull --workspace <id>' writes. It
+holds what that workspace owns, and everything its push creates is owned by that workspace,
+guardrails included. Its push is never a release: a new agent starts hidden until an instance
+admin offers it. A working copy without one holds the instance's own assets.
 
 Guardrails join the working copy where catalyst.yaml lists their globs under 'guardrails',
 such as 'guardrails/*/guardrail.yaml'. Each is a folder with its guardrail.yaml and, for a
@@ -138,6 +138,13 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
     stdout(`${RELEASE_VERSION}\n`);
     return 0;
   }
+  if (argv[0] === "init")
+    return runInit(argv.slice(1), {
+      ...runtime,
+      cwd: runtime.cwd ?? process.cwd(),
+      stdout,
+      stderr
+    });
   if (argv[0] === "login" || argv[0] === "logout" || argv[0] === "setup") {
     return runLoginCommand(argv[0], argv.slice(1), runtime, stdout, stderr);
   }
@@ -148,6 +155,14 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
       stdout,
       stderr
     });
+  if (
+    isNamedNoun(argv[0]) &&
+    !isNamedCommand(argv) &&
+    (argv.length === 1 || argv.includes("--help"))
+  ) {
+    stdout(namedHelpText);
+    return 0;
+  }
   if (isNamedCommand(argv)) {
     return runNamedCommand(argv, {
       ...runtime,

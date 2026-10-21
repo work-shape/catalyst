@@ -1,3 +1,4 @@
+import { knowledgeWorkflowSourceSchema } from "./knowledge-write";
 import { z } from "zod";
 import {
   KNOWLEDGE_DOCUMENT_FAILURE_CODES,
@@ -8,7 +9,13 @@ import {
   KNOWLEDGE_SYNC_RUN_STATES,
   type KnowledgeSyncCount
 } from "./contract-values";
-const sourceIdSchema = z.string().min(1).max(63);
+const sourceIdSchema = z.union([
+  z
+    .string()
+    .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u)
+    .max(63),
+  knowledgeWorkflowSourceSchema.shape.id.regex(/^workflow:[a-z][a-z0-9_-]{0,62}$/u)
+]);
 const countSchema = z.number().int().min(0);
 /** What a sync run counts (`KNOWLEDGE_SYNC_COUNTS`). */
 const countsSchema = z.strictObject({
@@ -25,15 +32,7 @@ export const knowledgeSyncInputSchema = z.strictObject({
   /** The `id` of the source in the definition. */
   source: sourceIdSchema,
   /** `changes` unless `full`. The initial import is started by publish, not by this call. */
-  mode: z
-    .literal("full", {
-      // Keep SRC-0's accepted values frozen while explaining the deferred mode.
-      error: (issue) =>
-        issue.input === "changes"
-          ? "not_supported_yet: Change-feed sync is not supported yet; request mode full."
-          : undefined
-    })
-    .optional()
+  mode: z.enum(["changes", "full"]).optional()
 });
 
 export type KnowledgeSyncInput = z.infer<typeof knowledgeSyncInputSchema>;
@@ -76,39 +75,47 @@ const itemFailureCodeSchema = z.union([
   z.enum(KNOWLEDGE_DOCUMENT_FAILURE_CODES)
 ]);
 
+const sourceStatusSchema = z.strictObject({
+  id: z.string(),
+  /** The name of the Connection it reads through. */
+  connection: z.string(),
+  kind: z.literal("connector").optional(),
+  /** Items by the state the page shows. */
+  items: z.strictObject({
+    discovered: countSchema,
+    fetched: countSchema,
+    indexed: countSchema,
+    failed: countSchema,
+    withdrawn: countSchema
+  }) satisfies z.ZodType<Record<KnowledgeSourceItemShownState, number>>,
+  /** Failed items per code. */
+  failures: z.array(z.strictObject({ code: itemFailureCodeSchema, count: countSchema })),
+  /** The sync that runs now, with its rate in items per minute and its estimated end. */
+  running: z
+    .strictObject({
+      syncRunId: z.string(),
+      mode: z.enum(KNOWLEDGE_SYNC_MODES),
+      startedAt: z.string(),
+      itemsPerMinute: z.number().min(0).optional(),
+      estimatedEndAt: z.string().optional()
+    })
+    .optional(),
+  /** The last sync that ended. */
+  last: knowledgeSyncResultSchema.optional(),
+  /** "Letzte Änderung verarbeitet". */
+  lastChangeAt: z.string().optional(),
+  /** "Älteste offene Änderung". */
+  oldestOpenChangeAt: z.string().optional()
+});
+
 export const knowledgeSourcesOutputSchema = z.strictObject({
   sources: z.array(
-    z.strictObject({
-      id: z.string(),
-      /** The name of the Connection it reads through. */
-      connection: z.string(),
-      /** Items by the state the page shows. */
-      items: z.strictObject({
-        discovered: countSchema,
-        fetched: countSchema,
-        indexed: countSchema,
-        failed: countSchema,
-        withdrawn: countSchema
-      }) satisfies z.ZodType<Record<KnowledgeSourceItemShownState, number>>,
-      /** Failed items per code. */
-      failures: z.array(z.strictObject({ code: itemFailureCodeSchema, count: countSchema })),
-      /** The sync that runs now, with its rate in items per minute and its estimated end. */
-      running: z
-        .strictObject({
-          syncRunId: z.string(),
-          mode: z.enum(KNOWLEDGE_SYNC_MODES),
-          startedAt: z.string(),
-          itemsPerMinute: z.number().min(0).optional(),
-          estimatedEndAt: z.string().optional()
-        })
-        .optional(),
-      /** The last sync that ended. */
-      last: knowledgeSyncResultSchema.optional(),
-      /** "Letzte Änderung verarbeitet". */
-      lastChangeAt: z.string().optional(),
-      /** "Älteste offene Änderung". */
-      oldestOpenChangeAt: z.string().optional()
-    })
+    z.union([
+      sourceStatusSchema,
+      knowledgeWorkflowSourceSchema.safeExtend(
+        sourceStatusSchema.omit({ id: true, connection: true, kind: true }).shape
+      )
+    ])
   )
 });
 

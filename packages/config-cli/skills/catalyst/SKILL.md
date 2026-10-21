@@ -9,9 +9,9 @@ description: Work with a Workshape Catalyst instance through the catalyst comman
 
 ## Start here
 
-1. `catalyst context --json`: the instance, its release, your rights, your Namespaces and the kinds of assets it has.
-2. `catalyst kinds --json`: each kind with its command word, lifecycle and rights.
-3. `catalyst --help`: the commands and options of the CLI that is installed.
+1. `catalyst context --json`: the instance, its release, your rights, your workspaces and the kinds of assets it has.
+2. `catalyst kinds --json`: each kind with its command word, lifecycle and rights; `catalyst --help`: the commands and options of the CLI that is installed.
+3. `catalyst docs`: the index of this release's product docs; `catalyst docs <page>`: one page.
 
 Trust these answers over this skill. In a working copy, a command without `--instance` works on the instance its `catalyst.yaml` names as default, and is refused where it names none. Outside a working copy, it works on the one instance saved. When more than one is saved, or the working copy names no default, pass `--instance <name-or-url>` on every command.
 
@@ -32,6 +32,10 @@ catalyst references --json
 
 The kind is the first word: `agent`, `skill`, `guardrail`, `app`, `workflow`, `data-store` or any other kind `catalyst kinds` lists. Add `--workspace <id>` for the assets one workspace owns, and `--json` for the instance's answer as it came.
 
+## Use a skill of the instance here
+
+Only when the person asks to use a skill locally, run `catalyst skill pull <name> .claude/skills/<name>` for Claude Code or `catalyst skill pull <name> .agents/skills/<name>` for Codex. Pulling again refreshes the folder and refuses local edits. Its scripts may assume Catalyst's sandbox, so read them before running them.
+
 ## Change one asset
 
 1. Read it with `show` and note its revision.
@@ -41,9 +45,11 @@ The kind is the first word: `agent`, `skill`, `guardrail`, `app`, `workflow`, `d
 
 A write names the revision it was made against. When the instance says the asset moved on, read it again and redo the change on the new revision; do not overwrite another person's work. Publish (`catalyst app publish offers --revision 5`) only when the person asks for it.
 
+An App publish first asks who may use it: only its builder, its owning workspace, or the whole instance where allowed. The person chooses the audience. Pass their stated choice with `--audience` (`self`, `workspace` or `instance`); never choose it for them or widen a live App's audience on your own. An unattended publish needs that explicit flag. `--yes` submits it for a person to confirm in their Inbox; it does not make it live by itself.
+
 ## A working copy of agents, skills and guardrails
 
-A folder with a `catalyst.yaml` is a working copy. Work in this order:
+In a new folder, first run `catalyst init --instance <url>`. A folder with a `catalyst.yaml` is a working copy. Work in this order:
 
 1. `catalyst config pull` before you edit, and again before every push.
 2. Edit the files.
@@ -99,7 +105,7 @@ A change that exits 3 prints its Operation Run id. Follow it with `catalyst oper
 
 ## What the key may do
 
-The key acts as the person and never does more than they may at the moment of each call. Its scopes narrow it further, such as `agent.write` everywhere or `agent.write:tax-` in one Namespace. A right an administrator takes away is gone on the next call. The person sees and revokes the key on the instance at `/settings/you/api-keys`.
+The key acts as the person and never does more than they may at the moment of each call. Its scopes narrow it further, such as `agent.write` everywhere, `agent.write:<workspace id>` in one workspace or `agent.write:<workspace id>/<name>` on one of its agents. A right an administrator takes away is gone on the next call. The person sees and revokes the key on the instance at `/settings/you/api-keys`.
 
 ## Rules
 

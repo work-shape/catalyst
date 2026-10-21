@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dependencyAvailabilitySchema } from "./assets";
 import { configAssetConfigSchema } from "./configuration";
 import { conversationSchema } from "./conversations";
 import { timestampSchema } from "./shared";
@@ -11,6 +12,7 @@ export const agentDraftSchema = z.object({
   liveRevision: revisionNumberSchema,
   stale: z.boolean(),
   config: configAssetConfigSchema,
+  dependencyAvailability: dependencyAvailabilitySchema.optional(),
   author: z.object({
     userId: z.string().optional(),
     /** The name of the person who wrote the draft last, while their account exists. */

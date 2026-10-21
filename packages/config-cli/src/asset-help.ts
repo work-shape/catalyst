@@ -6,12 +6,15 @@ export function formatAssetHelp(verbs: readonly { usage: string; summary: string
 
 Instance:
   context                   The instance, your rights on it and its asset kinds (platform.context.get)
+  docs [<page>]             This release's product docs index, or one page as Markdown
   kinds                     The asset kinds: their command word, lifecycle and rights
   references                Models, efforts and tools a definition may name (platform.references.get)
   operation show <run-id>    Follow your call to its decision (operations.get_run)
   requests [--withdraw <id>] List your requests, or withdraw one of them
 
 Assets, for every kind the instance registers (agent, skill, app, workflow, data-store, ...):
+  catalyst skill pull <name> <folder>
+      Write every file of one skill locally; refresh only a clean earlier pull
 ${verbs.map((verb) => `  catalyst <kind> ${verb.usage}\n      ${verb.summary}`).join("\n")}
 
 An App as a folder (its draft is built on push; publish shows what goes live and asks):

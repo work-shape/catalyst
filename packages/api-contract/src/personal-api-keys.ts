@@ -2,8 +2,10 @@ import { z } from "zod";
 import { timestampSchema } from "./shared";
 
 /**
- * A scope of a personal API key: an action such as `agent.write`, optionally limited to one
- * Namespace, `agent.write:kai-`. The instance refuses any other text when a key is issued.
+ * A scope of a personal API key: an action such as `agent.write`, optionally limited to what
+ * one workspace owns, `agent.write:<workspace id>`, or to one asset in it,
+ * `agent.write:<workspace id>/<name>`. The instance refuses any other text when a key is
+ * issued, and a workspace it does not have.
  */
 export const personalApiKeyScopeSchema = z.string().min(1).max(200);
 

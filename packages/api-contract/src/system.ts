@@ -60,15 +60,38 @@ export const VIEW_SHELL_MESSAGES = {
   blocked: "vivd-catalyst:display-blocked"
 } as const;
 
+const capturedRecipientSchema = z.object({
+  email: z.string(),
+  displayLabel: z.string().optional()
+});
+
+/**
+ * A mail the development provider `capture` kept. `to` is its first recipient, which is all a
+ * mail to one person has; `recipients` lists every one, and `from` and `replyTo` are the
+ * envelope a provider would have sent.
+ */
 export const capturedMailSchema = z.object({
   id: z.string(),
-  to: z.object({
-    email: z.string(),
-    displayLabel: z.string().optional()
+  from: z.object({ email: z.string(), name: z.string() }),
+  to: capturedRecipientSchema,
+  recipients: z.object({
+    to: z.array(capturedRecipientSchema),
+    cc: z.array(capturedRecipientSchema),
+    bcc: z.array(capturedRecipientSchema)
   }),
+  replyTo: capturedRecipientSchema.optional(),
   subject: z.string(),
   text: z.string(),
   html: z.string(),
+  inlineImages: z
+    .array(
+      z.object({
+        contentId: z.string(),
+        contentType: z.string(),
+        bytes: z.number().int().min(0)
+      })
+    )
+    .optional(),
   sentAt: timestampSchema
 });
 

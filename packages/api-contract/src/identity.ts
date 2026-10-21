@@ -9,7 +9,7 @@ import {
   USER_STATUSES
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
-import { timestampSchema } from "./shared";
+import { localeCodeSchema, timestampSchema } from "./shared";
 
 export const authScopeSchema = z.enum(FIRST_PARTY_AUTH_SCOPES);
 
@@ -61,6 +61,8 @@ export const apiUserSchema = z.object({
   displayLabel: z.string(),
   email: z.string().optional(),
   emailVerified: z.boolean().optional(),
+  /** The language the person chose. Left out, they get the instance's default language. */
+  locale: localeCodeSchema.optional(),
   /** An active instance admin a signed-in person can ask for help; no directory access needed. */
   instanceAdminName: z.string().optional(),
   roles: z.array(z.string()),
@@ -159,9 +161,15 @@ export const updateAdministeredUserRequestSchema = z.object({
   status: userStatusSchema.optional()
 });
 
-export const updateCurrentUserRequestSchema = z.object({
-  displayLabel: z.string().min(1)
-});
+/** Changes what it names and keeps the rest. `locale: null` goes back to the instance's default. */
+export const updateCurrentUserRequestSchema = z
+  .object({
+    displayLabel: z.string().min(1).optional(),
+    locale: localeCodeSchema.nullable().optional()
+  })
+  .refine((body) => body.displayLabel !== undefined || body.locale !== undefined, {
+    message: "Name displayLabel, locale or both"
+  });
 
 export const changeCurrentUserPasswordRequestSchema = z.object({
   currentPassword: z.string().min(1),

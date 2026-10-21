@@ -9,7 +9,7 @@ import { z } from "zod";
 import { timestampSchema } from "./shared";
 
 /** What a row stands for: one of the provider ports, or the database of the instance. */
-export const infrastructureClassSchema = z.enum([...PROVIDER_PORTS, "database"]);
+export const infrastructureClassSchema = z.enum([...PROVIDER_PORTS, "database", "workers"]);
 export type InfrastructureClass = z.infer<typeof infrastructureClassSchema>;
 
 /**

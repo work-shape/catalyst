@@ -9,14 +9,11 @@ import {
   REASONING_EFFORTS,
   THEME_MODE_PREFERENCES,
   TOOL_GROUPS,
-  WORKSPACE_SECTIONS,
-  localeCodes
+  WORKSPACE_SECTIONS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { auditActorSchema } from "./identity";
-import { timestampSchema } from "./shared";
-
-export const localeCodeSchema = z.enum(localeCodes);
+import { localeCodeSchema, timestampSchema } from "./shared";
 
 export const localizationSchema = z.object({
   locale: localeCodeSchema,
@@ -104,7 +101,9 @@ export const safeConfigSchema = z.object({
     /** Absent in the answer of an API from before the setting; the interface reads that as false. */
     extendOnActivity: z.boolean().optional(),
     auditDays: z.number(),
-    allowUserDelete: z.boolean()
+    allowUserDelete: z.boolean(),
+    /** Absent in the answer of an API from before feedback. */
+    feedbackDays: z.number().optional()
   }),
   usage: z.object({
     safeguards: z.object({
@@ -119,6 +118,8 @@ export const safeConfigSchema = z.object({
   replies: z.object({ allowedLinkHosts: z.array(z.string()) }).default({ allowedLinkHosts: [] }),
   /** Every module of the product with its state on this instance. */
   modules: z.record(z.string(), z.object({ enabled: z.boolean() })).default({}),
+  /** Written feedback on agent messages: whether the comment may carry its exchange. */
+  feedback: z.object({ exchangeSnapshot: z.boolean() }).optional(),
   /** Derived from `modules` for one transition release. */
   features: z.object({
     attachments: z.object({
@@ -227,7 +228,7 @@ export const collaborationWorkspaceAgentsSchema = z.object({
   /**
    * The section rows of the interface's sidebar that are there for the caller in this
    * workspace. `agents`: at least two agents are available here, counted over every page, or
-   * the caller holds `agent.write` on the instance, in a Namespace or on one agent. With one
+   * the caller holds `agent.write` on the instance, in the workspace or on one agent. With one
    * agent there is nothing to choose: New chat starts a conversation with it. `apps`: the
    * Apps module is on, and `assets.list` lists the caller an App of this workspace or the
    * caller holds `app.write` in it or on one of its Apps. A member is never shown an empty row.
@@ -260,7 +261,7 @@ export const configAssetSummarySchema = z.object({
   name: z.string(),
   revision: z.number().int().positive(),
   updatedAt: timestampSchema,
-  // Agents only. An agent without availability is hidden in every workspace.
+  // Workspace availability of kinds that support it; no record grants no workspace use.
   availability: agentAvailabilitySchema.optional()
 });
 

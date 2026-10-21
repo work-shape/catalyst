@@ -8,7 +8,7 @@ import {
   loadYamlData,
   parseSkillMarkdown
 } from "@work-shape/catalyst-asset-schemas";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, realpath } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { GUARDRAIL_FILE, readGuardrailFolder } from "./guardrail-files";
 import { readSkillResources, walkFiles } from "./working-copy";
@@ -27,11 +27,12 @@ const SKILL_FILE = "SKILL.md";
 
 export async function readAssetSource(
   path: string,
-  representation: (typeof ASSET_REPRESENTATIONS)[number]
+  representation: (typeof ASSET_REPRESENTATIONS)[number],
+  kind?: string
 ): Promise<AssetSource> {
   return representation === "files"
     ? { files: await readFileSet(path) }
-    : { config: await readDefinition(path) };
+    : { config: await readDefinition(path, kind) };
 }
 
 /**
@@ -39,7 +40,7 @@ export async function readAssetSource(
  * the skill's resources, or from the folder of a guardrail, its `guardrail.yaml` with the
  * `check.md` beside it. A folder that holds a `SKILL.md` is read as that file.
  */
-async function readDefinition(path: string): Promise<Record<string, unknown>> {
+async function readDefinition(path: string, kind?: string): Promise<Record<string, unknown>> {
   const folder = (await stat(path)).isDirectory();
   const guardrailFolder = folder
     ? path
@@ -79,7 +80,53 @@ async function readDefinition(path: string): Promise<Record<string, unknown>> {
   if (!isMapping(definition)) {
     throw new Error(`'${file}' holds no definition: its top level is not a mapping.`);
   }
-  return { ...definitionOfShown(definition) };
+  const config = { ...definitionOfShown(definition) };
+  if (kind === "knowledge_base" && Array.isArray(config.queries)) {
+    if (config.queries.length > 50)
+      throw new Error("A Knowledge Base holds at most 50 named queries");
+    const base = await realpath(dirname(file));
+    for (const query of config.queries) {
+      if (
+        !isMapping(query) ||
+        typeof query.file !== "string" ||
+        !/^queries\/[a-z][a-z0-9_]{0,62}\.sql$/u.test(query.file)
+      )
+        throw new Error("A named query names queries/<name>.sql inside the Knowledge Base folder");
+      const queryPath = await realpath(resolve(base, query.file)).catch((error: unknown) => {
+        if (
+          typeof query.sql === "string" &&
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+          return undefined;
+        throw error;
+      });
+      if (queryPath === undefined) continue;
+      const local = relative(base, queryPath);
+      if (local === ".." || local.startsWith(`..${sep}`))
+        throw new Error("A named query must be inside the Knowledge Base folder");
+      if ((await stat(queryPath)).size > 12288)
+        throw new Error("A named query exceeds the SQL file byte limit");
+      query.sql = await readFile(queryPath, "utf8");
+    }
+  }
+  if (Array.isArray(config.documentTypes)) {
+    const base = await realpath(dirname(file));
+    for (const type of config.documentTypes) {
+      if (!isMapping(type) || typeof type.schema !== "string") continue;
+      const schemaPath = await realpath(resolve(base, type.schema));
+      const local = relative(base, schemaPath);
+      if (local === ".." || local.startsWith(`..${sep}`) || resolve(base, local) !== schemaPath)
+        throw new Error("documentTypes[].schema must be inside the Knowledge Base folder");
+      const info = await stat(schemaPath);
+      if (info.size > ASSET_SYNC_ITEM_MAX_BYTES)
+        throw new Error("documentTypes[].schema exceeds the definition byte limit");
+      type.schema = JSON.parse(await readFile(schemaPath, "utf8"));
+    }
+  }
+  return config;
 }
 
 function isMapping(value: unknown): value is Record<string, unknown> {

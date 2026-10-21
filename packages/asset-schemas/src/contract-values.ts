@@ -81,16 +81,23 @@ export const ACTIONS = [
   "data_store.delete",
   "data_store.insert",
   "data_store.execute",
+  "data_store.records",
   "knowledge_base.read",
   "knowledge_base.write",
   "knowledge_base.publish",
   "knowledge_base.delete",
   "knowledge_base.use",
+  // Sending e-mail as one sender of the instance (`mail.send`). The `admin` role holds it on
+  // the sender `system`; a member only by a grant.
+  "mail_sender.use",
   "guardrail.read",
   "guardrail.write",
   "guardrail.publish",
   "guardrail.delete",
   "operations.approve",
+  // Reading the written feedback on agent messages and marking it handled (LU-4): on the
+  // instance, or on one workspace for the agents it owns. No bundle carries it.
+  "feedback.review",
   "users.manage",
   "usage.view",
   "audit.view",
@@ -99,15 +106,13 @@ export const ACTIONS = [
   // Their keys stay with `api_access.manage`.
   "service_principals.manage",
   "agent_models.manage",
-  "assets.release"
+  "assets.release",
+  // The two bundles of a workspace: one row each, expanded by the evaluator (`bundleCarries`).
+  "builder",
+  "publisher"
 ] as const;
 
 export type PlatformAction = (typeof ACTIONS)[number];
-
-/** A Namespace prefix: lowercase words joined by single hyphens, ending in one hyphen. */
-export const NAMESPACE_PREFIX_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*-$/u;
-export const NAMESPACE_PREFIX_MIN_LENGTH = 2;
-export const NAMESPACE_PREFIX_MAX_LENGTH = 32;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
 
@@ -170,7 +175,7 @@ export type ProviderCheckErrorClass = (typeof PROVIDER_CHECK_ERROR_CLASSES)[numb
 
 /**
  * The immutable machine name. It is part of every operation name of the Connection
- * (`connection.<name>.<operation>`), so it holds no dot. A Namespace prefix fits in front.
+ * (`connection.<name>.<operation>`), so it holds no dot.
  */
 export const CONNECTION_NAME_PATTERN = /^[a-z][a-z0-9]*([_-][a-z0-9]+)*$/u;
 export const CONNECTION_NAME_MAX_LENGTH = 64;
@@ -203,8 +208,23 @@ export type ConnectionHealth = (typeof CONNECTION_HEALTH_STATES)[number];
 export const GRANT_HOLDER_KINDS = ["user", "service_principal", "role", "group"] as const;
 export type GrantHolderKind = (typeof GRANT_HOLDER_KINDS)[number];
 
-export const GRANT_SCOPE_KINDS = ["instance", "workspace", "namespace", "asset"] as const;
+export const GRANT_SCOPE_KINDS = ["instance", "workspace", "asset"] as const;
 export type GrantScopeKind = (typeof GRANT_SCOPE_KINDS)[number];
+
+/** Where a role's grant lies: the whole instance, one workspace or one asset. */
+export const ROLE_GRANT_SCOPE_KINDS = [
+  "instance",
+  "workspace",
+  "asset"
+] as const satisfies readonly GrantScopeKind[];
+export type RoleGrantScopeKind = (typeof ROLE_GRANT_SCOPE_KINDS)[number];
+
+/** What a release did to an action of a built-in role's default that waits for a superadmin. */
+export const ROLE_PENDING_CHANGES = ["added", "removed"] as const;
+
+/** A superadmin's decision on a pending action: apply what the release did, or dismiss it. */
+export const ROLE_PENDING_DECISIONS = ["apply", "dismiss"] as const;
+export type RolePendingDecision = (typeof ROLE_PENDING_DECISIONS)[number];
 
 export const GRANT_EFFECTS = ["allow", "deny"] as const;
 export type GrantEffect = (typeof GRANT_EFFECTS)[number];
@@ -223,6 +243,30 @@ export type AdministeredUserStatus = (typeof ADMINISTERED_USER_STATUSES)[number]
 
 export const SERVICE_PRINCIPAL_STATUSES = ["active", "disabled"] as const;
 export type ServicePrincipalStatus = (typeof SERVICE_PRINCIPAL_STATUSES)[number];
+
+/**
+ * When the account a Workflow runs as needs a right its definition names. `publish`: the
+ * publish is refused without it. `run`: the step that needs it fails when it runs.
+ */
+export const WORKFLOW_RIGHT_NEEDED_FOR = ["publish", "run"] as const;
+/** The revision of a publish's Workflow the rights are read from: the one published, or a live child. */
+export const WORKFLOW_RIGHTS_REVISIONS = ["draft", "published"] as const;
+/** How the account a Workflow names stands: a principal's status, or no principal of the name. */
+export const WORKFLOW_RUN_ACCOUNT_STATUSES = [...SERVICE_PRINCIPAL_STATUSES, "unknown"] as const;
+/**
+ * Why a reader cannot give an account a right it lacks. `not_grantable`: nobody can give it to
+ * an account here. `not_administrator`: giving needs someone who administers technical
+ * accounts. `not_held`: the reader does not hold it there. `account_unavailable`: the account
+ * is missing or disabled. `asset_unavailable`: no active asset of the name exists.
+ */
+export const WORKFLOW_RIGHT_REFUSALS = [
+  "not_grantable",
+  "not_administrator",
+  "not_held",
+  "account_unavailable",
+  "asset_unavailable",
+  "not_visible"
+] as const;
 
 export const SERVICE_PRINCIPAL_PERMISSIONS = [
   "config_assets.read",
@@ -701,13 +745,20 @@ export const KNOWLEDGE_DOCUMENT_STATES = ["pending", "indexed", "failed"] as con
 export type KnowledgeDocumentState = (typeof KNOWLEDGE_DOCUMENT_STATES)[number];
 
 /**
- * Why a document was not indexed. The first five can also come from the extraction of a PDF
- * or DOCX (`KNOWLEDGE_EXTRACTION_FAILURE_CODES` in core); the rest are the index job's own.
+ * The largest file a Knowledge Base takes, as document processing takes it. A larger file is
+ * refused when it is added, with this limit named.
+ */
+export const KNOWLEDGE_FILE_MAX_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Why a document was not indexed. The first five and `knowledge_file_too_many_pages` can also
+ * come from the extraction of a PDF or DOCX (`KNOWLEDGE_EXTRACTION_FAILURE_CODES` in core); the
+ * rest are the index job's own. The list only gains members.
  */
 export const KNOWLEDGE_DOCUMENT_FAILURE_CODES = [
   // The extractor does not read the file's format.
   "knowledge_file_format_unsupported",
-  // The file is over a limit of the extraction: size, pages or time.
+  // The file is over a limit of the extraction: its size or the size of its text.
   "knowledge_file_over_limit",
   // The file is corrupt, encrypted, or not the format it claims.
   "knowledge_file_unreadable",
@@ -722,7 +773,14 @@ export const KNOWLEDGE_DOCUMENT_FAILURE_CODES = [
   // No text to search, such as a scanned PDF without a text layer.
   "knowledge_text_empty",
   // Indexing failed on every attempt.
-  "knowledge_index_failed"
+  "knowledge_index_failed",
+  // A PDF or DOCX with more pages than `knowledge.maxPagesPerDocument`, counted before its text
+  // is read.
+  "knowledge_file_too_many_pages",
+  // A built-in or Workflow processor returned output outside its contract.
+  "knowledge_processor_output_invalid",
+  // Conversion exceeded its page-aware deadline.
+  "knowledge_conversion_timeout"
 ] as const;
 export type KnowledgeDocumentFailureCode = (typeof KNOWLEDGE_DOCUMENT_FAILURE_CODES)[number];
 
@@ -751,7 +809,9 @@ export const KNOWLEDGE_SOURCE_FAILURE_CODES = [
   // A fetch failed on every attempt.
   "knowledge_fetch_failed",
   // The Knowledge Base holds its document limit; the listing stopped discovering there.
-  "knowledge_source_limit_reached"
+  "knowledge_source_limit_reached",
+  "knowledge_item_invalid",
+  "knowledge_fetch_not_allowed"
 ] as const;
 export type KnowledgeSourceFailureCode = (typeof KNOWLEDGE_SOURCE_FAILURE_CODES)[number];
 
@@ -782,7 +842,7 @@ export type KnowledgeSourceItemState = (typeof KNOWLEDGE_SOURCE_ITEM_STATES)[num
 export const KNOWLEDGE_SYNC_MODES = ["initial", "changes", "full"] as const;
 export type KnowledgeSyncMode = (typeof KNOWLEDGE_SYNC_MODES)[number];
 
-export const KNOWLEDGE_SYNC_RUN_STATES = ["running", "done", "failed"] as const;
+export const KNOWLEDGE_SYNC_RUN_STATES = ["running", "done", "failed", "superseded"] as const;
 export type KnowledgeSyncRunState = (typeof KNOWLEDGE_SYNC_RUN_STATES)[number];
 
 /** What a sync run counts, in this order wherever it shows them. */
@@ -813,6 +873,7 @@ export const DATABASE_RELATION_TYPES = [
 export type DatabaseRelationType = (typeof DATABASE_RELATION_TYPES)[number];
 
 export const WORKFLOW_RUN_STATUSES = [
+  "continued",
   "queued",
   "running",
   "waiting",
@@ -847,6 +908,21 @@ export const WORKFLOW_TRIGGER_KINDS = ["manual", "schedule", "parent"] as const;
 export type WorkflowTriggerKind = (typeof WORKFLOW_TRIGGER_KINDS)[number];
 
 export const NOTIFY_CHANNELS = ["inbox", "mail"] as const;
+
+/**
+ * What an operation step's facts name as its source (`stepFacts`, workflow-canvas.md 9.8). A
+ * step on `mail.send` names its sender as `mail_sender`, with the sender's icon key as
+ * `service` (`MAIL_SENDER_SYSTEM_ICON`, or a Connection's service).
+ */
+export const WORKFLOW_STEP_SOURCE_KINDS = [
+  "connection",
+  "data_store",
+  "knowledge_base",
+  "workflow",
+  "mail_sender",
+  "other"
+] as const;
+export type WorkflowStepSourceKind = (typeof WORKFLOW_STEP_SOURCE_KINDS)[number];
 export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
 
 export const PRINCIPAL_HOLDER_KINDS = [
@@ -993,6 +1069,7 @@ export const WORKFLOW_STEP_RUN_STATUSES = [
 export type WorkflowStepRunStatus = (typeof WORKFLOW_STEP_RUN_STATUSES)[number];
 
 export const WORKFLOW_ENDED_STATUSES = [
+  "continued",
   "done",
   "failed",
   "cancelled",
@@ -1002,3 +1079,23 @@ export type WorkflowEndedStatus = (typeof WORKFLOW_ENDED_STATUSES)[number];
 
 /** A released Managed File keeps its identity; original bytes live at the synced source. */
 export const MANAGED_FILE_STATUSES = ["available", "released", "deleted"] as const;
+
+/** A Workflow automates a process unless it fills or processes data. */
+export const WORKFLOW_KINDS = ["process", "data"] as const;
+export type WorkflowKind = (typeof WORKFLOW_KINDS)[number];
+
+/** Wire formats for a streamed Workflow result dataset. */
+export const WORKFLOW_DATASET_DOWNLOAD_FORMATS = ["jsonl", "csv"] as const;
+export type WorkflowDatasetDownloadFormat = (typeof WORKFLOW_DATASET_DOWNLOAD_FORMATS)[number];
+
+/** Instance resources whose use may be inherited through workspace availability. */
+export const WORKSPACE_USE_ASSET_KINDS = ["knowledge_base", "connection"] as const;
+
+/** Published assets that consume Connections or stored data. Agents hold tools separately. */
+export const PUBLISHED_DATA_CONSUMER_KINDS = ["app", "workflow", "knowledge_base"] as const;
+export type PublishedDataConsumerKind = (typeof PUBLISHED_DATA_CONSUMER_KINDS)[number];
+/** State of a scheduled prompt. */
+export const SCHEDULED_START_STATES = ["active", "paused"] as const;
+
+/** Which revision answered an agent preview turn. */
+export const AGENT_PREVIEW_SOURCES = ["draft", "live"] as const;

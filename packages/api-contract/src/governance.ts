@@ -138,6 +138,9 @@ export const modelUsageAttributionGroupSchema = modelUsageWindowSummarySchema.ex
 });
 
 export const usageSpendBudgetSchema = z.object({
+  /** Settled spend excluding Knowledge Base ingestion. Absent on older servers. */
+  dailySpentMicros: z.number().int().nonnegative().optional(),
+  monthlySpentMicros: z.number().int().nonnegative().optional(),
   currency: z.string().optional(),
   dailyLimitMicros: z.number().int().nonnegative().optional(),
   monthlyLimitMicros: z.number().int().nonnegative().optional()

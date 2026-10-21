@@ -233,7 +233,7 @@ export function defineOperation<const Config extends OperationConfig>(
 /** What an operation of the registry leaves to `defineRegisteredOperation`. */
 type RegisteredOperationConfig = OperationConfig & {
   readonly auth: "user" | "principal";
-  readonly response: { readonly kind: "json" | "page" | "redirect" };
+  readonly response: { readonly kind: "json" | "page" | "redirect" | "blob" };
   readonly accepted?: never;
   readonly deferred?: never;
   readonly headers?: never;

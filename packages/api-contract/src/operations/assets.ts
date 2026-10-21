@@ -32,7 +32,7 @@ import { defineRegisteredOperation, json, page } from "./define-operation";
 
 // Every operation here is one of the registry: a call is an Operation Run. None names its
 // right in `requires`, because the right is the kind's own (`<kind>.read`, `<kind>.write`,
-// `<kind>.delete`) and is decided on the asset the call names: a grant in a Namespace, on a
+// `<kind>.delete`) and is decided on the asset the call names: a grant on the instance, on a
 // workspace or on the asset itself can answer it. The registration brings that check.
 export const assetOperations = {
   "assets.list": defineRegisteredOperation({
@@ -54,7 +54,7 @@ export const assetOperations = {
     id: "assets.sync",
     method: "POST",
     path: "/api/v1/assets/sync",
-    summary: "Apply puts and deletes in one Namespace or workspace, all of them or none",
+    summary: "Apply puts and deletes among the assets of one owner, all of them or none",
     tag: "Assets",
     auth: "principal",
     scope: "config_assets:write",
@@ -81,7 +81,7 @@ export const assetOperations = {
     rateClass: "read"
   }),
   // Valid for a kind that keeps an instance default. The right is the kind's write right on
-  // the whole instance: a grant in a Namespace or on one asset does not answer it.
+  // the whole instance: a grant in a workspace or on one asset does not answer it.
   "assets.set_default": defineRegisteredOperation({
     id: "assets.set_default",
     method: "POST",
@@ -178,7 +178,7 @@ export const assetOperations = {
     effect: "changing",
     body: publishAssetRequestSchema,
     response: json(assetPointersResponseSchema),
-    errors: ["NOT_FOUND", "VALIDATION_FAILED"],
+    errors: ["NOT_FOUND", "VALIDATION_FAILED", "CONFLICT", "PRECONDITION_REQUIRED"],
     rateClass: "write"
   }),
   "assets.discard_draft": defineRegisteredOperation({
@@ -243,7 +243,7 @@ export const assetOperations = {
     effect: "changing",
     body: deleteAssetRequestSchema,
     response: json(assetWriteResponseSchema),
-    errors: ["NOT_FOUND", "REVISION_CONFLICT", "PRECONDITION_REQUIRED"],
+    errors: ["NOT_FOUND", "REVISION_CONFLICT", "PRECONDITION_REQUIRED", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
   // Valid for a kind that is offered per workspace. The right is decided as for the default.
@@ -259,7 +259,7 @@ export const assetOperations = {
     effect: "changing",
     body: setAssetAvailabilityRequestSchema,
     response: json(agentAvailabilitySchema),
-    errors: ["NOT_FOUND", "CONFLICT"],
+    errors: ["NOT_FOUND", "CONFLICT", "PRECONDITION_REQUIRED"],
     rateClass: "write"
   }),
   "assets.revisions.list": defineRegisteredOperation({

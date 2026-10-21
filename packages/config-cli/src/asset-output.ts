@@ -23,10 +23,6 @@ export function formatContext(context: PlatformContext): string {
     ...(context.assetActions.length === 0
       ? []
       : [`Actions on single assets or workspaces: ${list(context.assetActions)}`]),
-    context.namespaces.length === 0 ? "Namespaces: none" : "Namespaces:",
-    ...context.namespaces.map(
-      (namespace) => `  ${namespace.prefix}  ${namespace.displayName}: ${list(namespace.actions)}`
-    ),
     context.workspaces.length === 0 ? "Workspaces: none" : "Workspaces:",
     ...context.workspaces.map(
       (workspace) => `  ${workspace.id}  ${workspace.name}: ${list(workspace.actions)}`
@@ -73,7 +69,6 @@ export function formatAssetList(kind: AssetKind, assets: readonly AssetSummary[]
       "REVISION",
       ...(published ? ["PUBLISHED"] : []),
       ...(drafts ? ["DRAFT"] : []),
-      "NAMESPACE",
       "SCOPE",
       "TITLE"
     ],
@@ -82,7 +77,6 @@ export function formatAssetList(kind: AssetKind, assets: readonly AssetSummary[]
       String(asset.revision),
       ...(published ? [asset.publishedRevision?.toString() ?? "-"] : []),
       ...(drafts ? [asset.agentDraft?.revision.toString() ?? "-"] : []),
-      asset.namespace ?? "-",
       scopeLabel(asset.scope),
       asset.title
     ])
@@ -98,7 +92,6 @@ export function formatAsset(asset: Asset): string {
     ["published revision", asset.publishedRevision?.toString()],
     ["pending draft", asset.agentDraft && `${formatDraft(asset.agentDraft)}, not live`],
     ["content of revision", asset.contentRevision?.toString()],
-    ["namespace", asset.namespace],
     ["scope", scopeLabel(asset.scope)],
     ["default", asset.isDefault ? "yes" : undefined],
     [

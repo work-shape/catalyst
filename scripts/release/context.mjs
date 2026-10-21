@@ -43,11 +43,16 @@ export function assertReleaseContext(root, { publicMirror = false } = {}) {
     const checked = runs.find(
       (run) =>
         run.head_sha === sha &&
-        run.event === "push" &&
-        (run.head_branch === "main" || run.head_branch.startsWith("release/"))
+        ["push", "workflow_dispatch", "schedule"].includes(run.event) &&
+        (run.head_branch === "main" || run.head_branch.startsWith("release/")) &&
+        run.status === "completed" &&
+        run.conclusion === "success"
     );
-    if (!checked || checked.status !== "completed" || checked.conclusion !== "success")
-      throw new Error("Release tag commit needs a successful Check push run on main or release/*");
+    // Main pushes no longer run Check, so a release of a main commit dispatches Check on main first.
+    if (!checked)
+      throw new Error(
+        "Release tag commit needs a successful Check run on main or release/* (dispatch Check on main)"
+      );
   } else if (process.env.GITHUB_REPOSITORY !== "work-shape/catalyst") {
     throw new Error("Unexpected public mirror repository");
   }

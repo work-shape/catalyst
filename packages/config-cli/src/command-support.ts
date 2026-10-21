@@ -24,6 +24,7 @@ import {
   type GuardrailDefinition
 } from "./guardrail-files";
 import {
+  CANONICAL_FORM_VERSION,
   canonicalizeSkillConfig,
   serializeAgentYaml,
   serializeSkillMarkdown,
@@ -165,7 +166,7 @@ export type LocalAsset = { key: string; name: string; contents: string } & Asset
 
 /**
  * The instance's config version and default agent. Only a reader of every agent and skill may
- * read them, so a working copy of one Namespace or of one workspace reads neither and knows
+ * read them, so a working copy of one workspace reads neither and knows
  * only its assets.
  */
 export async function readInstanceOverview(
@@ -175,20 +176,14 @@ export async function readInstanceOverview(
   return holdsWholeInstance(instance) ? api.getOverview() : {};
 }
 
-/** What a batch of the working copy names as its place: its Namespace or its workspace. */
-export function batchScope(instance: ManifestInstance): {
-  namespace?: string;
-  workspaceId?: string;
-} {
-  return {
-    ...(instance.namespace === undefined ? {} : { namespace: instance.namespace }),
-    ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace })
-  };
+/** What a batch of the working copy names as its place: its workspace, if it has one. */
+export function batchScope(instance: ManifestInstance): { workspaceId?: string } {
+  return instance.workspace === undefined ? {} : { workspaceId: instance.workspace };
 }
 
-/** A working copy of the instance's own assets as a whole: bound to no Namespace or workspace. */
+/** A working copy of the instance's own assets as a whole: bound to no workspace. */
 export function holdsWholeInstance(instance: ManifestInstance): boolean {
-  return instance.namespace === undefined && instance.workspace === undefined;
+  return instance.workspace === undefined;
 }
 
 /**
@@ -567,10 +562,14 @@ export async function connectApi(
 /** The selected instance and the workspace its working copy is bound to. */
 export async function openInstance(
   options: ConfigCommandOptions
-): Promise<{ api: ConfigApi; workspace: string | undefined }> {
+): Promise<{ api: ConfigApi; workspace: string | undefined; url: string }> {
   const manifest = await readManifestIfPresent(resolveWorkingDir(options));
   const instance = await resolveInstance(manifest, options);
-  return { api: await connectApi(instance.url, options), workspace: instance.workspace };
+  return {
+    api: await connectApi(instance.url, options),
+    workspace: instance.workspace,
+    url: instance.url
+  };
 }
 
 export function assetHash(contents: string): string {
@@ -611,7 +610,11 @@ export async function recordBaseline(
     for (const asset of assetEntries(bundle)) {
       const written = revisions[asset.key];
       if (written !== undefined) {
-        baseline.assets[asset.key] = { ...written, hash: assetHash(asset.contents) };
+        baseline.assets[asset.key] = {
+          ...written,
+          canonicalFormVersion: CANONICAL_FORM_VERSION,
+          hash: assetHash(asset.contents)
+        };
       }
     }
     const deleted: Record<string, DeletedAssetBaseline> = fullPull ? {} : { ...previous?.deleted };

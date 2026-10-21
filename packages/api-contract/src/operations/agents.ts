@@ -39,20 +39,17 @@ export const agentOperations = {
     errors: ["NOT_FOUND", "REVISION_CONFLICT"],
     rateClass: "write"
   }),
-  // Who may decide on the proposal may try it: the write right on the agent. The Build
-  // conversation is the caller's own conversation about the agent; any other is answered as a
-  // missing one. The Try conversation goes with an Apply, a Discard and the Build conversation.
   "agents.try.open": defineRegisteredOperation({
     id: "agents.try.open",
     method: "POST",
-    path: "/api/v1/agents/:name/try/:conversationId",
-    summary:
-      "Open the Try conversation of an agent beside a Build conversation, made where there is none",
+    path: "/api/v1/agents/:name/try",
+    summary: "Open the private Try conversation of this agent and person",
     tag: "Agents",
     auth: "user",
     scope: "config_assets:write",
     requires: [],
     effect: "changing",
+    query: assetScopeQuerySchema,
     response: json(agentTryConversationResponseSchema),
     errors: ["NOT_FOUND"],
     rateClass: "write"

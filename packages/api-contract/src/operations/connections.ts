@@ -1,5 +1,7 @@
 import {
+  PUBLISHED_DATA_CONSUMER_KINDS,
   CONNECTION_BINDING_STATES,
+  GRANT_HOLDER_KINDS,
   CONNECTION_EXPOSURES,
   CONNECTION_HEALTH_STATES,
   CONNECTION_NAME_MAX_LENGTH,
@@ -9,6 +11,7 @@ import {
   CONNECTION_PROVIDER_REVOCATIONS,
   CONNECTION_SECRET_STATES,
   CONNECTOR_TEST_STATUSES,
+  operationPagingSchema,
   OPERATION_EFFECTS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
@@ -41,6 +44,7 @@ export const connectionSecretStateSchema = z.object({
 });
 
 export const connectionOperationDetailSchema = z.object({
+  paging: operationPagingSchema.optional(),
   name: z.string(),
   /** The name an agent, an App and a Workflow hold: `connection.<name>.<operation>`. */
   toolName: z.string(),
@@ -50,6 +54,11 @@ export const connectionOperationDetailSchema = z.object({
   status: connectionOperationStatusSchema,
   /** As the outside system or the release describes it. Untrusted text, shown as text. */
   description: z.string().max(CONNECTION_OPERATION_DESCRIPTION_MAX_CHARS).optional(),
+  /**
+   * The bounded declaration read from the catalog; untrusted data, never instructions. With
+   * `needs_review` it is the newly read one, which no call runs on until it is accepted.
+   */
+  inputSchema: z.record(z.string(), z.unknown()).optional(),
   /** Only with status `needs_review`: the fingerprint to accept in the Connection's config. */
   discoveredFingerprint: z.string().optional(),
   /**
@@ -120,6 +129,19 @@ export const connectionDetailSchema = z.object({
   usedBy: z.array(
     z.object({ agentName: z.string(), title: z.string(), toolNames: z.array(z.string()) })
   ),
+  /** Published consumers the caller may read or use. No draft content or hidden names. */
+  usedByAssets: z
+    .array(
+      z.object({
+        kind: z.enum(PUBLISHED_DATA_CONSUMER_KINDS),
+        workspaceId: z.string().optional(),
+        name: z.string(),
+        title: z.string()
+      })
+    )
+    .optional(),
+  /** The published-asset scan reached its bound, so the list may be incomplete. */
+  usedByAssetsTruncated: z.boolean().optional(),
   discoveredAt: timestampSchema.optional(),
   /** The shared sign-in, where one was made for the Connection's address. */
   binding: connectionBindingSchema.optional(),
@@ -199,6 +221,16 @@ const connectionSecretWriteSchema = z.object({
 
 const connectionDiscoveryRequestSchema = z.object({ status: z.literal("queued") });
 
+const personContextSubjectSchema = z.object({
+  subjectKind: z.enum(GRANT_HOLDER_KINDS).extract(["user", "service_principal"]),
+  subjectId: z.string().min(1).max(256)
+});
+export const connectionPersonContextSchema = personContextSubjectSchema.extend({
+  value: z.string().optional(),
+  rowVersion: z.number().int().positive().nullable()
+});
+export type ConnectionPersonContext = z.infer<typeof connectionPersonContextSchema>;
+
 export type ConnectionDetail = z.infer<typeof connectionDetailSchema>;
 export type ConnectionSecretState = z.infer<typeof connectionSecretStateSchema>;
 export type ConnectionDiscoveredTool = z.infer<typeof connectionDiscoveredToolSchema>;
@@ -212,8 +244,51 @@ export const connectionNameParamsSchema = z.object({ name: connectionNameSchema 
 
 // Each is an operation of the registry. None names its right in `requires`: the right is the
 // Connection's own (`connection.read`, `connection.write`) and is decided on the Connection
-// the call names, where a grant in a Namespace or on the asset can answer it.
+// the call names, where a grant on the instance or on the asset can answer it.
 export const connectionOperations = {
+  "connections.person_context": defineRegisteredOperation({
+    id: "connections.person_context",
+    method: "GET",
+    path: "/api/v1/connections/:name/person-context",
+    summary:
+      "Read one person's or service principal's context mapping; requires Connection write access",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "reading",
+    query: personContextSubjectSchema,
+    response: json(connectionPersonContextSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "read"
+  }),
+  "connections.set_person_context": defineRegisteredOperation({
+    id: "connections.set_person_context",
+    method: "PUT",
+    path: "/api/v1/connections/:name/person-context",
+    summary:
+      "Map a person or service principal to the outside context value, or clear their mapping",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    // Context values are admin data, excluded from Operation Run inputs and outputs.
+    secret: true,
+    body: personContextSubjectSchema.extend({
+      value: z
+        .string()
+        .min(1)
+        .max(1024)
+        .regex(/^[\x20-\x7e]+$/u)
+        .refine((value) => value.trim().length > 0, "must contain non-space text")
+        .nullable(),
+      expectedRowVersion: z.number().int().positive().nullable()
+    }),
+    response: json(connectionPersonContextSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
   "connections.get": defineRegisteredOperation({
     id: "connections.get",
     method: "GET",
