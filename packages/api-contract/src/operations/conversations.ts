@@ -214,6 +214,23 @@ export const conversationOperations = {
     errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT"],
     rateClass: "write"
   }),
+  // As if it had been sent with `followUp: "steer"`: only its author, in their own run under the
+  // same credential, and only without attachments. Otherwise CONFLICT, and it stays queued.
+  "conversations.follow_ups.steer": defineOperation({
+    id: "conversations.follow_ups.steer",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/follow-ups/:followUpId/steer",
+    summary: "Hand your pending follow-up message to your running turn after its current step",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: z.object({}),
+    response: json(z.object({ followUp: conversationFollowUpSchema })),
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT"],
+    rateClass: "write"
+  }),
   "conversations.follow_ups.dispatch": defineOperation({
     id: "conversations.follow_ups.dispatch",
     method: "POST",

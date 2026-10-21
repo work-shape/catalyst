@@ -64,6 +64,23 @@ export const pagePreviewRequestSchema = z
   .strict();
 
 /**
+ * What a person may do about the outside hosts their preview of a draft holds back
+ * (DRAFT-HOSTS-1). Present where the release lets a draft reach a host after a click.
+ */
+export const draftHostsSchema = z.object({
+  /**
+   * The held-back hosts the caller may allow for their own view of this draft with
+   * `apps.allow_draft_host`. Empty where the caller may not.
+   */
+  allowable: z.array(z.string()),
+  /**
+   * Whether the draft reads data through its actions, from a Connection, a Data Store or a
+   * Workflow: what the preview reads, it can send to an allowed host.
+   */
+  readsData: z.boolean()
+});
+
+/**
  * Where a frame loads one revision of a Page. The address holds a token that is valid for the
  * caller and this revision until `expiresAt`. It is a credential: put it in the frame and
  * nowhere else.
@@ -75,7 +92,13 @@ export const pagePreviewSchema = z.object({
   fileSetId: z.string(),
   number: z.number().int().positive(),
   /** Names this mount of the frame. A bridge call of the frame carries it. */
-  pageSessionId: z.string()
+  pageSessionId: z.string(),
+  /**
+   * The outside hosts the manifest lists that this frame may not connect to. A Page of a
+   * conversation connects to none until a person allows one for their own view (DRAFT-HOSTS-1).
+   */
+  heldBackHosts: z.array(z.string()).optional(),
+  draftHosts: draftHostsSchema.optional()
 });
 
 export type PageResponse = z.infer<typeof pageSchema>;

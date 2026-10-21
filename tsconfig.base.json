@@ -24,14 +24,14 @@
     "skipLibCheck": true,
     "strict": true,
     "paths": {
-      "@work-shape/catalyst-asset-schemas": [
-        "packages/asset-schemas/src/index.ts"
+      "@work-shape/catalyst-api-client": [
+        "packages/api-client/src/index.ts"
       ],
       "@work-shape/catalyst-api-contract": [
         "packages/api-contract/src/index.ts"
       ],
-      "@work-shape/catalyst-api-client": [
-        "packages/api-client/src/index.ts"
+      "@work-shape/catalyst-asset-schemas": [
+        "packages/asset-schemas/src/index.ts"
       ],
       "@work-shape/catalyst-cli": [
         "packages/config-cli/src/index.ts"

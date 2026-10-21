@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.6",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.6, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.7",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.7, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -1905,6 +1905,128 @@
           },
           "409": {
             "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/apps/draft-hosts": {
+      "post": {
+        "operationId": "apps.allow_draft_host",
+        "summary": "Allow an outside host a draft lists for the caller's own view of that draft, before it is published",
+        "tags": [
+          "Apps"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowDraftHostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowDraftHostResponse"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/IdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
           },
           "422": {
             "$ref": "#/components/responses/ValidationFailed"
@@ -5293,6 +5415,97 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/connections/{name}/oauth/sign-ins/{signInId}": {
+      "get": {
+        "operationId": "connections.oauth_sign_in",
+        "summary": "Read whether a shared OAuth sign-in the caller started still waits for the browser to come back",
+        "tags": [
+          "Connections"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "signInId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "waiting",
+                        "ended"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "state"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/connections/{name}/oauth/start": {
       "post": {
         "operationId": "connections.oauth_start",
@@ -5341,6 +5554,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "signInId": {
+                      "type": "string"
+                    },
                     "authorizationUrl": {
                       "type": "string",
                       "format": "uri"
@@ -5359,6 +5575,7 @@
                     }
                   },
                   "required": [
+                    "signInId",
                     "authorizationUrl",
                     "providerHost",
                     "scopes",
@@ -6006,6 +6223,205 @@
         },
         "x-catalyst-effect": "changing",
         "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/connector-types": {
+      "get": {
+        "operationId": "connections.connector_types",
+        "summary": "List the Connector types a person who may make a Connection can connect from a form",
+        "tags": [
+          "Connections"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "en": {
+                                    "type": "string"
+                                  },
+                                  "de": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "description": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "en": {
+                                    "type": "string"
+                                  },
+                                  "de": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "service": {
+                            "type": "string"
+                          },
+                          "documentSource": {
+                            "type": "boolean"
+                          },
+                          "authScheme": {
+                            "type": "string"
+                          },
+                          "settings": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "label": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "en": {
+                                          "type": "string"
+                                        },
+                                        "de": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                "help": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "en": {
+                                          "type": "string"
+                                        },
+                                        "de": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                "optional": {
+                                  "type": "boolean"
+                                },
+                                "setting": {
+                                  "type": "string"
+                                },
+                                "secret": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "label",
+                                "optional",
+                                "secret"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "title",
+                          "description",
+                          "documentSource",
+                          "authScheme",
+                          "settings",
+                          "fields"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "types"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
       }
     },
     "/api/v1/context": {
@@ -7914,6 +8330,102 @@
                 "schema": {
                   "type": "object",
                   "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/conversations/{conversationId}/follow-ups/{followUpId}/steer": {
+      "post": {
+        "operationId": "conversations.follow_ups.steer",
+        "summary": "Hand your pending follow-up message to your running turn after its current step",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "followUpId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "followUp": {
+                      "$ref": "#/components/schemas/ConversationFollowUp"
+                    }
+                  },
+                  "required": [
+                    "followUp"
+                  ]
                 }
               }
             }
@@ -13588,6 +14100,103 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/instance/access/check": {
+      "get": {
+        "operationId": "permissions.check",
+        "summary": "Decide what one holder may do with one asset, with the entry that decides each right",
+        "tags": [
+          "Access"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "user_admin:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "user_admin:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "holderKind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "service_principal"
+              ]
+            }
+          },
+          {
+            "name": "holderId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "assetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetRightsCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/instance/access/effective": {
       "get": {
         "operationId": "permissions.effective",
@@ -14049,6 +14658,85 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/instance/access/rights": {
+      "get": {
+        "operationId": "permissions.rights",
+        "summary": "List what one holder holds and is refused, each right decided with where it comes from",
+        "tags": [
+          "Access"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "user_admin:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "user_admin:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "holderKind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "service_principal"
+              ]
+            }
+          },
+          {
+            "name": "holderId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolderRights"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/instance/access/roles": {
       "get": {
         "operationId": "roles.list",
@@ -14304,7 +14992,7 @@
       },
       "patch": {
         "operationId": "roles.update",
-        "summary": "Change a role's name, description or grants. Only a superadmin edits `user` and `admin`; `superadmin` is never edited.",
+        "summary": "Change a role's name, description or grants. Editing `user` and `admin` also needs `roles.edit_built_in`; `superadmin` is never edited.",
         "tags": [
           "Access"
         ],
@@ -14552,7 +15240,7 @@
     "/api/v1/instance/access/roles/{roleId}/pending": {
       "post": {
         "operationId": "roles.pending.decide",
-        "summary": "Decide one action a release changed in the default of an edited `user` or `admin`: apply it or dismiss it. Only a superadmin decides.",
+        "summary": "Decide one action a release changed in the default of an edited `user` or `admin`: apply it or dismiss it. Needs `users.manage` and `roles.edit_built_in`.",
         "tags": [
           "Access"
         ],
@@ -14682,7 +15370,7 @@
     "/api/v1/instance/access/roles/{roleId}/reset": {
       "post": {
         "operationId": "roles.reset",
-        "summary": "Reset `user` or `admin` to the release's default, which also settles every pending action. Only a superadmin resets.",
+        "summary": "Reset `user` or `admin` to the release's default, which also settles every pending action. Needs `users.manage` and `roles.edit_built_in`.",
         "tags": [
           "Access"
         ],
@@ -28123,11 +28811,18 @@
                       "type": "integer",
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AssetWarning"
+                      }
                     }
                   },
                   "required": [
                     "draftRevision",
-                    "unpublishedRevision"
+                    "unpublishedRevision",
+                    "warnings"
                   ]
                 }
               }
@@ -30615,6 +31310,91 @@
       }
     },
     "schemas": {
+      "AccessOrigin": {
+        "type": "object",
+        "properties": {
+          "effect": {
+            "$ref": "#/components/schemas/GrantEffect"
+          },
+          "scopeKind": {
+            "$ref": "#/components/schemas/GrantScopeKind"
+          },
+          "scopeId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "role",
+              "legacy_ref",
+              "grant",
+              "membership"
+            ]
+          },
+          "roleId": {
+            "type": "string"
+          },
+          "scopeAsset": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "active"
+            ]
+          },
+          "scopeWorkspace": {
+            "type": "object",
+            "properties": {
+              "personal": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "personal"
+            ]
+          }
+        },
+        "required": [
+          "effect",
+          "scopeKind",
+          "source"
+        ]
+      },
+      "AccessOriginRole": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "builtIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "builtIn"
+        ]
+      },
       "ActiveRunSummary": {
         "type": "object",
         "properties": {
@@ -31353,6 +32133,30 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "user_message"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            },
+            "required": [
+              "type",
+              "messageId",
+              "text",
+              "createdAt"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "tool_call"
               },
               "toolCallId": {
@@ -31595,6 +32399,66 @@
               "runId",
               "sequence",
               "createdAt",
+              "message"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "user_message_steered"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "number"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "followUpId": {
+                "type": "string"
+              },
+              "message": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "const": "user"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "id",
+                  "role",
+                  "text",
+                  "createdAt"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "runId",
+              "sequence",
+              "createdAt",
+              "followUpId",
               "message"
             ]
           },
@@ -32101,6 +32965,41 @@
           "preview"
         ]
       },
+      "AllowDraftHostRequest": {
+        "type": "object",
+        "properties": {
+          "fileSetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          }
+        },
+        "required": [
+          "fileSetId",
+          "host"
+        ]
+      },
+      "AllowDraftHostResponse": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "allowed": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "host",
+          "allowed"
+        ]
+      },
       "AnnotateFeedbackRequest": {
         "type": "object",
         "properties": {
@@ -32221,6 +33120,13 @@
           },
           "locale": {
             "$ref": "#/components/schemas/LocaleCode"
+          },
+          "followUpMode": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "steer"
+            ]
           },
           "instanceAdminName": {
             "type": "string"
@@ -32807,6 +33713,15 @@
           "pageSessionId": {
             "type": "string"
           },
+          "heldBackHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "draftHosts": {
+            "$ref": "#/components/schemas/DraftHosts"
+          },
           "unassignedScopes": {
             "type": "array",
             "items": {
@@ -32820,12 +33735,6 @@
           },
           "interfacePath": {
             "type": "string"
-          },
-          "heldBackHosts": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
         "required": [
@@ -32834,9 +33743,9 @@
           "fileSetId",
           "number",
           "pageSessionId",
+          "heldBackHosts",
           "revision",
-          "interfacePath",
-          "heldBackHosts"
+          "interfacePath"
         ]
       },
       "AppPreviewRequest": {
@@ -33905,6 +34814,98 @@
       "AssetRevisionSelector": {
         "type": "string",
         "pattern": "^(?:draft|published|[1-9]\\d{0,8})$"
+      },
+      "AssetRightsCheck": {
+        "type": "object",
+        "properties": {
+          "holderActive": {
+            "type": "boolean"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessOriginRole"
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "availability": {
+                  "type": "string",
+                  "enum": [
+                    "self",
+                    "workspace",
+                    "instance"
+                  ]
+                },
+                "onlyInWorkspaces": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "personal": {
+                        "type": "boolean"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "personal"
+                    ]
+                  }
+                },
+                "verb": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "use",
+                    "write",
+                    "delete"
+                  ]
+                },
+                "action": {
+                  "type": "string"
+                },
+                "allowed": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "denied",
+                    "no_grant",
+                    "holder_inactive"
+                  ]
+                },
+                "decidedBy": {
+                  "$ref": "#/components/schemas/AccessOrigin"
+                },
+                "deniedThrough": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "use",
+                    "write",
+                    "delete"
+                  ]
+                }
+              },
+              "required": [
+                "verb",
+                "action",
+                "allowed"
+              ]
+            }
+          }
+        },
+        "required": [
+          "holderActive",
+          "roles",
+          "actions"
+        ]
       },
       "AssetScope": {
         "oneOf": [
@@ -35799,7 +36800,8 @@
           "mode": {
             "type": "string",
             "enum": [
-              "queue"
+              "queue",
+              "steer"
             ]
           },
           "status": {
@@ -35807,6 +36809,7 @@
             "enum": [
               "pending",
               "dispatched",
+              "consumed",
               "cancelled"
             ]
           },
@@ -36617,9 +37620,12 @@
         "type": "object",
         "properties": {
           "followUp": {
-            "description": "Queue the message when this conversation has an active run. Without this option, an active run still returns CONFLICT.",
+            "description": "What happens when this conversation has an active run. `queue` sends the message as the next turn. `steer` hands it to the running turn at its next step when the run is the caller's own under the same credential and the message has no attachments, and queues it otherwise. Without this option, an active run still returns CONFLICT.",
             "type": "string",
-            "const": "queue"
+            "enum": [
+              "queue",
+              "steer"
+            ]
           },
           "idempotencyKey": {
             "type": "string",
@@ -37142,6 +38148,24 @@
           "attachments"
         ]
       },
+      "DraftHosts": {
+        "type": "object",
+        "properties": {
+          "allowable": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "readsData": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allowable",
+          "readsData"
+        ]
+      },
       "EffectivePermissions": {
         "type": "object",
         "properties": {
@@ -37376,6 +38400,128 @@
           "instance",
           "workspace",
           "asset"
+        ]
+      },
+      "HolderRights": {
+        "type": "object",
+        "properties": {
+          "holderActive": {
+            "type": "boolean"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessOriginRole"
+            }
+          },
+          "rights": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "scopeKind": {
+                  "$ref": "#/components/schemas/GrantScopeKind"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "allowed": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "denied",
+                    "no_grant",
+                    "holder_inactive"
+                  ]
+                },
+                "grantedBy": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccessOrigin"
+                  }
+                },
+                "deniedBy": {
+                  "$ref": "#/components/schemas/AccessOrigin"
+                },
+                "scopeAsset": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "active"
+                  ]
+                },
+                "scopeWorkspace": {
+                  "type": "object",
+                  "properties": {
+                    "personal": {
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "personal"
+                  ]
+                },
+                "availability": {
+                  "type": "string",
+                  "enum": [
+                    "self",
+                    "workspace",
+                    "instance"
+                  ]
+                },
+                "onlyInWorkspaces": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "personal": {
+                        "type": "boolean"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "personal"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "action",
+                "scopeKind",
+                "allowed",
+                "grantedBy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "holderActive",
+          "roles",
+          "rights"
         ]
       },
       "Infrastructure": {
@@ -39613,6 +40759,15 @@
           },
           "pageSessionId": {
             "type": "string"
+          },
+          "heldBackHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "draftHosts": {
+            "$ref": "#/components/schemas/DraftHosts"
           }
         },
         "required": [
@@ -41606,9 +42761,12 @@
         "type": "object",
         "properties": {
           "followUp": {
-            "description": "Queue the message when this conversation has an active run. Without this option, an active run still returns CONFLICT.",
+            "description": "What happens when this conversation has an active run. `queue` sends the message as the next turn. `steer` hands it to the running turn at its next step when the run is the caller's own under the same credential and the message has no attachments, and queues it otherwise. Without this option, an active run still returns CONFLICT.",
             "type": "string",
-            "const": "queue"
+            "enum": [
+              "queue",
+              "steer"
+            ]
           },
           "idempotencyKey": {
             "type": "string",
@@ -42272,6 +43430,13 @@
                 "type": "null"
               }
             ]
+          },
+          "followUpMode": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "steer"
+            ]
           }
         }
       },
@@ -42574,7 +43739,30 @@
               "source"
             ]
           },
-          "attachmentManifest": {}
+          "attachmentManifest": {},
+          "steered": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string"
+              },
+              "followUpId": {
+                "type": "string"
+              },
+              "authorUserId": {
+                "type": "string"
+              },
+              "typedAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            },
+            "required": [
+              "runId",
+              "followUpId",
+              "authorUserId",
+              "typedAt"
+            ]
+          }
         },
         "required": [
           "version",

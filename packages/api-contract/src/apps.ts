@@ -157,13 +157,30 @@ export const appPreviewSchema = pagePreviewSchema.extend({
   interfacePath: z.string(),
   /**
    * The outside hosts the shown revision's manifest lists that its frame may not connect to:
-   * those a draft adds to what is published, until it is published. Always empty for the
-   * published view.
+   * those a draft adds to what is published, until it is published or the caller allowed one
+   * for their own view (DRAFT-HOSTS-1). Always empty for the published view.
    */
   heldBackHosts: z.array(z.string())
 });
 
 export type AppPreviewResponse = z.infer<typeof appPreviewSchema>;
+
+/**
+ * A person allows an outside host for their own view of a draft (DRAFT-HOSTS-1): the draft of
+ * an App, or a Page of a conversation that is no App yet. `fileSetId` is the revision their
+ * preview shows; the host must be one its manifest lists and the frame holds back.
+ */
+export const allowDraftHostRequestSchema = z
+  .object({
+    fileSetId: z.string().min(1).max(200),
+    host: z.string().min(1).max(253)
+  })
+  .strict();
+
+export const allowDraftHostResponseSchema = z.object({
+  host: z.string(),
+  allowed: z.literal(true)
+});
 
 /**
  * What names the frame a call comes from: the file set it shows and the token of its address,

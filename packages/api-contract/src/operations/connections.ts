@@ -154,10 +154,21 @@ export const connectionDetailSchema = z.object({
  * kept nowhere. `providerHost` is the host the browser goes to and `scopes` what is asked for.
  */
 export const connectionOAuthStartSchema = z.object({
+  /** The sign-in, for `connections.oauth_sign_in`. It proves nothing and opens nothing. */
+  signInId: z.string(),
   authorizationUrl: z.string().url(),
   providerHost: z.string(),
   scopes: z.array(z.string()),
   expiresAt: timestampSchema
+});
+
+/**
+ * Whether a sign-in the caller started still waits for its callback. `ended` once a browser
+ * came back with it, whatever the outcome, once it expired, and for a sign-in of someone else:
+ * a sign-in that ended without connecting cannot be completed any more.
+ */
+export const connectionOAuthSignInSchema = z.object({
+  state: z.enum(["waiting", "ended"])
 });
 
 /**
@@ -209,6 +220,42 @@ export const connectionToolsSchema = z.object({
   )
 });
 
+/** A text in the reader's language: one for every language, or one per language. */
+const localizedTextSchema = z.union([
+  z.string(),
+  z.strictObject({ en: z.string().optional(), de: z.string().optional() })
+]);
+
+/**
+ * The Connector types the New connection dialog offers beside an MCP server and a REST API,
+ * each with its card and its form. A field fills a setting by its dotted path, or the secret.
+ * `documentSource` says that a Knowledge Base can sync documents through such a Connection.
+ */
+export const connectorTypeOffersSchema = z.object({
+  types: z.array(
+    z.object({
+      type: z.string(),
+      title: localizedTextSchema,
+      description: localizedTextSchema,
+      service: z.string().optional(),
+      documentSource: z.boolean(),
+      authScheme: z.string(),
+      settings: z.record(z.string(), z.unknown()),
+      fields: z.array(
+        z.object({
+          label: localizedTextSchema,
+          help: localizedTextSchema.optional(),
+          optional: z.boolean(),
+          setting: z.string().optional(),
+          secret: z.boolean()
+        })
+      )
+    })
+  )
+});
+
+export type ConnectorTypeOffers = z.infer<typeof connectorTypeOffersSchema>;
+
 /**
  * A secret entered once. It is never answered, logged or kept with the run of its call.
  * `expectedVersion` is the version the writer saw, `null` where none was set: a write over a
@@ -238,6 +285,7 @@ export type ConnectionOperationDetail = z.infer<typeof connectionOperationDetail
 export type ConnectionTestResult = z.infer<typeof connectionTestResultSchema>;
 export type ConnectionTools = z.infer<typeof connectionToolsSchema>;
 export type ConnectionOAuthStart = z.infer<typeof connectionOAuthStartSchema>;
+export type ConnectionOAuthSignIn = z.infer<typeof connectionOAuthSignInSchema>;
 
 /** The one field these operations take: the Connection's name, from the path. */
 export const connectionNameParamsSchema = z.object({ name: connectionNameSchema });
@@ -367,6 +415,21 @@ export const connectionOperations = {
     errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
   }),
+  "connections.oauth_sign_in": defineRegisteredOperation({
+    id: "connections.oauth_sign_in",
+    method: "GET",
+    path: "/api/v1/connections/:name/oauth/sign-ins/:signInId",
+    summary:
+      "Read whether a shared OAuth sign-in the caller started still waits for the browser to come back",
+    tag: "Connections",
+    auth: "user",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(connectionOAuthSignInSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
   // One callback per Connection: a code sent back for one Connection is never taken for
   // another's sign-in.
   "connections.oauth_complete": defineRegisteredOperation({
@@ -405,6 +468,20 @@ export const connectionOperations = {
     rateClass: "write"
   }),
   // A path of its own: `agent-tools` would be a valid Connection name under `/connections/`.
+  "connections.connector_types": defineRegisteredOperation({
+    id: "connections.connector_types",
+    method: "GET",
+    path: "/api/v1/connector-types",
+    summary: "List the Connector types a person who may make a Connection can connect from a form",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(connectorTypeOffersSchema),
+    errors: [],
+    rateClass: "read"
+  }),
   "connections.list_tools": defineRegisteredOperation({
     id: "connections.list_tools",
     method: "GET",

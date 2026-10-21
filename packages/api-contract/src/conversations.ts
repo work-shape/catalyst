@@ -126,7 +126,16 @@ export const userMessageMetadataSchema = z.object({
       source: z.enum(AGENT_PREVIEW_SOURCES)
     })
     .optional(),
-  attachmentManifest: z.unknown()
+  attachmentManifest: z.unknown(),
+  /** Set on a message its person steered into their running turn (FU-2). */
+  steered: z
+    .object({
+      runId: z.string(),
+      followUpId: z.string(),
+      authorUserId: z.string(),
+      typedAt: timestampSchema
+    })
+    .optional()
 });
 
 export const assistantToolCallsMessageMetadataSchema = z.object({
@@ -484,6 +493,20 @@ export const agentRuntimeEventSchema = z.discriminatedUnion("type", [
     })
   }),
   z.object({
+    type: z.literal("user_message_steered"),
+    runId: z.string(),
+    sequence: z.number(),
+    createdAt: timestampSchema,
+    followUpId: z.string(),
+    message: z.object({
+      id: z.string(),
+      role: z.literal("user"),
+      text: z.string(),
+      createdAt: timestampSchema,
+      metadata: z.record(z.string(), z.unknown()).optional()
+    })
+  }),
+  z.object({
     type: z.literal("tool_call_preparing"),
     runId: z.string(),
     sequence: z.number(),
@@ -656,6 +679,13 @@ export const agentRunProjectionPartSchema = z.discriminatedUnion("type", [
     open: z.boolean()
   }),
   z.object({
+    /** A message the run's person steered into it, where the run took it in (FU-2). */
+    type: z.literal("user_message"),
+    messageId: z.string(),
+    text: z.string(),
+    createdAt: timestampSchema
+  }),
+  z.object({
     type: z.literal("tool_call"),
     toolCallId: z.string(),
     toolName: z.string(),
@@ -773,10 +803,10 @@ export const queuedConversationRunResponseSchema = z.object({
 
 export const startConversationRunRequestSchema = z.object({
   followUp: z
-    .literal("queue")
+    .enum(FOLLOW_UP_MODES)
     .optional()
     .describe(
-      "Queue the message when this conversation has an active run. Without this option, an active run still returns CONFLICT."
+      "What happens when this conversation has an active run. `queue` sends the message as the next turn. `steer` hands it to the running turn at its next step when the run is the caller's own under the same credential and the message has no attachments, and queues it otherwise. Without this option, an active run still returns CONFLICT."
     ),
   idempotencyKey: z.string().min(1),
   agentName: z.string().min(1).optional(),
@@ -899,6 +929,8 @@ export type RunCommandRequest = z.infer<typeof runCommandRequestSchema>;
 export type RunCommandResponse = z.infer<typeof runCommandResponseSchema>;
 export type ConversationUserState = z.infer<typeof conversationUserStateSchema>;
 export type ConversationFollowUp = z.infer<typeof conversationFollowUpSchema>;
+/** What a message sent while a run goes does: wait as the next turn, or steer the run. */
+export type FollowUpMode = (typeof FOLLOW_UP_MODES)[number];
 export type SubagentSummary = z.infer<typeof subagentSummarySchema>;
 
 export type ConversationThreadSnapshot = z.infer<typeof conversationThreadSnapshotSchema>;

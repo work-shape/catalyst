@@ -8,8 +8,9 @@ import {
 import { defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
 // Roles as data (ADR-0028). The five changing operations are operations of the registry. The
-// rule is more than one right: `users.manage`, and only a superadmin edits, resets or decides
-// for a built-in role or hands out a right only a superadmin gives. Each checks it itself.
+// rule is more than one right: `users.manage`, `roles.edit_built_in` beside it to edit, reset or
+// decide for a built-in role, and only a superadmin hands out a right only a superadmin gives.
+// Each checks it itself.
 
 export const roleOperations = {
   "roles.list": defineOperation({
@@ -63,7 +64,7 @@ export const roleOperations = {
     method: "PATCH",
     path: "/api/v1/instance/access/roles/:roleId",
     summary:
-      "Change a role's name, description or grants. Only a superadmin edits `user` and `admin`; `superadmin` is never edited.",
+      "Change a role's name, description or grants. Editing `user` and `admin` also needs `roles.edit_built_in`; `superadmin` is never edited.",
     tag: "Access",
     auth: "user",
     scope: "user_admin:write",
@@ -94,7 +95,7 @@ export const roleOperations = {
     method: "POST",
     path: "/api/v1/instance/access/roles/:roleId/reset",
     summary:
-      "Reset `user` or `admin` to the release's default, which also settles every pending action. Only a superadmin resets.",
+      "Reset `user` or `admin` to the release's default, which also settles every pending action. Needs `users.manage` and `roles.edit_built_in`.",
     tag: "Access",
     auth: "user",
     scope: "user_admin:write",
@@ -109,7 +110,7 @@ export const roleOperations = {
     method: "POST",
     path: "/api/v1/instance/access/roles/:roleId/pending",
     summary:
-      "Decide one action a release changed in the default of an edited `user` or `admin`: apply it or dismiss it. Only a superadmin decides.",
+      "Decide one action a release changed in the default of an edited `user` or `admin`: apply it or dismiss it. Needs `users.manage` and `roles.edit_built_in`.",
     tag: "Access",
     auth: "user",
     scope: "user_admin:write",

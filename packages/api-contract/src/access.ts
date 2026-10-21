@@ -1,5 +1,6 @@
 import {
   ACCESS_SOURCES,
+  APP_AUDIENCES,
   GRANT_EFFECTS,
   GRANT_HOLDER_KINDS,
   GRANT_SCOPE_KINDS,
@@ -83,24 +84,138 @@ export const effectivePermissionsQuerySchema = z.object({
   holderId: storedText
 });
 
+/** One thing that allows or denies a holder something, with the source that says so. */
+const accessEntrySchema = z.object({
+  action: z.string(),
+  effect: grantEffectSchema,
+  scopeKind: grantScopeKindSchema,
+  scopeId: z.string().optional(),
+  /**
+   * `membership`: held by being a member of the workspace the entry names, such as opening
+   * the published Apps of that workspace. A legacy permission list is grant rows since AP-4
+   * and reads as `grant`.
+   */
+  source: z.enum(ACCESS_SOURCES),
+  /** The role the entry is held through, for the source `role`. */
+  roleId: z.string().optional()
+});
+
 /** Everything that allows or denies a holder something, each with the source that says so. */
 export const effectivePermissionsSchema = z.object({
   /** A holder that is not active holds nothing, whatever the entries say. */
   holderActive: z.boolean(),
-  items: z.array(
-    z.object({
+  items: z.array(accessEntrySchema)
+});
+
+const namedWorkspaceSchema = z.object({ personal: z.boolean(), name: z.string().optional() });
+
+/**
+ * The place an entry names, as far as the caller may read it. `scopeAsset` as on a grant row,
+ * with the asset's `title`, the name people read, beside its `name` where both are shown;
+ * `scopeWorkspace` for workspace scope, its name left out for a caller who may not read it.
+ */
+const namedPlaceSchema = z.object({
+  scopeAsset: z
+    .object({
+      kind: z.string(),
+      name: z.string().optional(),
+      title: z.string().optional(),
+      active: z.boolean()
+    })
+    .optional(),
+  scopeWorkspace: namedWorkspaceSchema.optional()
+});
+
+/**
+ * What decides a right beside the entries. `availability`: the App's audience decided its use
+ * (`instance`: anybody of the instance uses it; `self`: only the person who chose Only me does).
+ * `onlyInWorkspaces`: the right holds only while the holder works in one of these workspaces,
+ * because the asset is available there and nothing else gives it; outside them it is refused.
+ */
+const rightConditionsSchema = z.object({
+  availability: z.enum(APP_AUDIENCES).optional(),
+  onlyInWorkspaces: z.array(namedWorkspaceSchema).optional()
+});
+
+/** Where a right comes from: one entry that gives or refuses it, with its place named. */
+export const accessOriginSchema = accessEntrySchema
+  .omit({ action: true })
+  .extend(namedPlaceSchema.shape);
+
+/** A role an origin names. A built-in role's name is its id; the interface has words for it. */
+export const accessOriginRoleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  builtIn: z.boolean()
+});
+
+/**
+ * Why a right is refused: a covering deny, nothing that grants it, or a holder that is not
+ * active and so holds nothing.
+ */
+export const REFUSAL_REASONS = ["denied", "no_grant", "holder_inactive"] as const;
+export type RefusalReason = (typeof REFUSAL_REASONS)[number];
+const refusalReasonSchema = z.enum(REFUSAL_REASONS);
+
+/** The verbs a check on one asset answers for, in the order a screen lists them. */
+export const ASSET_CHECK_VERBS = ["read", "use", "write", "delete"] as const;
+const assetCheckVerbSchema = z.enum(ASSET_CHECK_VERBS);
+
+/**
+ * What one holder holds and is refused, each right at the place an entry names it, decided by
+ * the server's evaluator with where it comes from. A right a role, a grant or a membership
+ * gives is listed with every entry that gives it there (`grantedBy`). A deny that refuses it
+ * there is `deniedBy`, which can lie at a wider place. A deny with nothing it takes away is
+ * listed on its own place, refused, with no `grantedBy`.
+ */
+export const holderRightsSchema = z.object({
+  holderActive: z.boolean(),
+  /** Every role an origin names. */
+  roles: z.array(accessOriginRoleSchema),
+  rights: z.array(
+    z
+      .object({
+        action: z.string(),
+        scopeKind: grantScopeKindSchema,
+        scopeId: z.string().optional(),
+        allowed: z.boolean(),
+        /** For a right that is refused. */
+        reason: refusalReasonSchema.optional(),
+        grantedBy: z.array(accessOriginSchema),
+        deniedBy: accessOriginSchema.optional()
+      })
+      .extend(namedPlaceSchema.shape)
+      .extend(rightConditionsSchema.shape)
+  )
+});
+
+export const assetRightsCheckQuerySchema = effectivePermissionsQuerySchema.extend({
+  /** A kind the instance registers. */
+  kind: storedText,
+  /**
+   * The asset, by the id its asset rows name. Left out for a name no asset and no row has:
+   * then only what holds on every asset of the kind decides.
+   */
+  assetId: storedText.optional()
+});
+
+/**
+ * What one holder may do with one asset, per right of its kind, decided by the server's
+ * evaluator with the entry that decides it. A delete is refused, too, where reading or
+ * writing the asset is denied: `deniedThrough` names that verb.
+ */
+export const assetRightsCheckSchema = z.object({
+  holderActive: z.boolean(),
+  roles: z.array(accessOriginRoleSchema),
+  actions: z.array(
+    rightConditionsSchema.extend({
+      verb: assetCheckVerbSchema,
       action: z.string(),
-      effect: grantEffectSchema,
-      scopeKind: grantScopeKindSchema,
-      scopeId: z.string().optional(),
-      /**
-       * `membership`: held by being a member of the workspace the entry names, such as opening
-       * the published Apps of that workspace. A legacy permission list is grant rows since AP-4
-       * and reads as `grant`.
-       */
-      source: z.enum(ACCESS_SOURCES),
-      /** The role the entry is held through, for the source `role`. */
-      roleId: z.string().optional()
+      allowed: z.boolean(),
+      reason: refusalReasonSchema.optional(),
+      /** The covering deny that refuses, or the first covering allow. */
+      decidedBy: accessOriginSchema.optional(),
+      deniedThrough: assetCheckVerbSchema.optional()
     })
   )
 });
@@ -126,7 +241,7 @@ const roleGrantsSchema = z.array(roleGrantSchema).max(ROLE_GRANTS_MAX, {
 
 /**
  * An action a release added to (`added`) or took out of (`removed`) the default of a built-in
- * role that a superadmin had edited. It waits for a superadmin's decision.
+ * role that somebody had edited. It waits for the decision of a holder of `roles.edit_built_in`.
  */
 export const rolePendingActionSchema = z.object({
   action: z.string(),
@@ -134,8 +249,8 @@ export const rolePendingActionSchema = z.object({
 });
 
 /**
- * A role of the instance. `user` and `admin` are built in: a superadmin edits and resets them,
- * and nobody renames or deletes them. `superadmin` is built in and read-only: it holds every
+ * A role of the instance. `user` and `admin` are built in: a holder of `roles.edit_built_in`
+ * edits and resets them, and nobody renames or deletes them. `superadmin` is built in and read-only: it holds every
  * action of the release except `assets.release`. A custom role is written by a holder of
  * `users.manage`.
  */
@@ -219,6 +334,9 @@ export type Role = z.infer<typeof roleSchema>;
 export type RoleGrantInput = z.input<typeof roleGrantSchema>;
 export type CreatePermissionGrantRequest = z.input<typeof createPermissionGrantRequestSchema>;
 export type EffectivePermissions = z.infer<typeof effectivePermissionsSchema>;
+export type HolderRights = z.infer<typeof holderRightsSchema>;
+export type AssetRightsCheck = z.infer<typeof assetRightsCheckSchema>;
+export type AccessOrigin = z.infer<typeof accessOriginSchema>;
 export type WorkspaceBuildLimits = z.infer<typeof workspaceBuildLimitsSchema>;
 export type UpdateWorkspaceBuildLimitsRequest = z.input<
   typeof updateWorkspaceBuildLimitsRequestSchema

@@ -325,7 +325,14 @@ export const agentConfigSchema = z.object({
         prompt: localizedStringSchema
       })
     )
-    .default([])
+    .default([]),
+  /**
+   * An agent that ships with the platform, such as Workshaper: the fields as the release
+   * shipped them last. Only the release seed writes it, and every other write keeps it as
+   * stored. A field the instance left as shipped takes what the next release ships; one it
+   * changed stays the instance's.
+   */
+  shipped: z.record(z.string(), z.unknown()).optional()
 });
 
 /** The id of a Workflow, which is the name of its asset: part of `workflow.<id>.start`. */

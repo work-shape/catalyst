@@ -30,7 +30,12 @@ export function parseAgentYaml(contents: string): AgentConfig {
 }
 
 export function canonicalizeAgentConfig(input: unknown): AgentConfig {
-  return agentConfigSchema.parse(sortKeys(agentConfigSchema.parse(input)));
+  // What the release shipped of a shipped agent travels with the server asset alone: only the
+  // release seed writes it and every other write keeps it, so it counts as no local change.
+  const { shipped: _shipped, ...agent } = agentConfigSchema.parse(
+    sortKeys(agentConfigSchema.parse(input))
+  );
+  return agent;
 }
 
 export function serializeAgentYaml(input: unknown, provenance?: AssetProvenance): string {

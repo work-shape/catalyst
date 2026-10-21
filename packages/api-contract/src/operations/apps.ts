@@ -1,4 +1,6 @@
 import {
+  allowDraftHostRequestSchema,
+  allowDraftHostResponseSchema,
   appActionCallRequestSchema,
   appActionCallResultSchema,
   appActionsListQuerySchema,
@@ -86,6 +88,23 @@ export const appOperations = {
     body: updateAppFromPageRequestSchema,
     response: json(createAppFromPageResponseSchema),
     errors: ["NOT_FOUND", "CONFLICT", "REVISION_CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  // Only where release config sets `apps.draftHosts.enabled`; elsewhere it answers 404.
+  "apps.allow_draft_host": defineRegisteredOperation({
+    id: "apps.allow_draft_host",
+    method: "POST",
+    path: "/api/v1/apps/draft-hosts",
+    summary:
+      "Allow an outside host a draft lists for the caller's own view of that draft, before it is published",
+    tag: "Apps",
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: allowDraftHostRequestSchema,
+    response: json(allowDraftHostResponseSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
   "apps.get_from_page": defineOperation({

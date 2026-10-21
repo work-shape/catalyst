@@ -58,6 +58,11 @@ export interface AgentConfig {
    */
   knowledgeBases?: string[];
   initialPrompts: AgentInitialPromptConfig[];
+  /**
+   * An agent that ships with the platform: its fields as the release shipped them last. Only
+   * the release seed writes it; every other write keeps it as stored.
+   */
+  shipped?: Record<string, unknown>;
 }
 
 export interface SkillConfig {

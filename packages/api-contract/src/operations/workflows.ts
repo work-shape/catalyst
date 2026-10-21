@@ -14,6 +14,7 @@ import {
   WORKFLOW_TRIGGER_KINDS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
+import { assetWarningSchema } from "../assets";
 import { listQuerySchema, timestampSchema } from "../shared";
 import { defineRegisteredOperation, blob, json, page } from "./define-operation";
 
@@ -348,7 +349,9 @@ export const workflowOperations = {
     response: json(
       z.object({
         draftRevision: z.number().int().positive(),
-        unpublishedRevision: z.number().int().positive()
+        unpublishedRevision: z.number().int().positive(),
+        /** The live Apps that start the Workflow and stop working without it (DP-0). */
+        warnings: z.array(assetWarningSchema)
       })
     ),
     errors: ["NOT_FOUND", "VALIDATION_FAILED"],

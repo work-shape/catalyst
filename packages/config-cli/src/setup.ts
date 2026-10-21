@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
@@ -14,6 +13,7 @@ import {
 import { credentialOrigin, readStoredCredential, type StoredCredential } from "./credentials";
 import { type ConfigCliEnv, readConfigCliEnv } from "./env";
 import { apiKeysAddress, formatTime, loginByConnectCode, resolveInstanceUrl } from "./login";
+import { openInBrowser } from "./open-browser";
 
 /** The tools `catalyst setup` writes the Catalyst skill for, with where each reads skills. */
 const LOCAL_AGENT_TOOLS = {
@@ -93,7 +93,7 @@ export async function setupCommand(options: SetupOptions): Promise<number> {
         options,
         url,
         `${tool.label} on ${hostname()}`,
-        options.openUrl ?? openInBrowser(url),
+        options.openUrl ?? openInstanceAddress(url),
         // The key a local agent gets publishes what its person may publish (CLI-PUBLISH-USE).
         true
       );
@@ -224,25 +224,9 @@ function scopesOf(scopes: readonly string[] | undefined): string {
   return scopes === undefined ? "" : ` (${scopes.join(", ")})`;
 }
 
-/**
- * Opens the confirmation address in the default browser where the system has one. Only an
- * address of the instance is opened, and never through a shell. It is printed either way.
- */
-function openInBrowser(url: string): (address: string) => void {
+/** Opens the confirmation address, only an address of the instance. It is printed either way. */
+function openInstanceAddress(url: string): (address: string) => void {
   return (address) => {
-    if (new URL(address).origin !== credentialOrigin(url)) return;
-    const [command, args] =
-      process.platform === "darwin"
-        ? ["open", [address]]
-        : process.platform === "win32"
-          ? ["rundll32", ["url.dll,FileProtocolHandler", address]]
-          : ["xdg-open", [address]];
-    try {
-      const child = spawn(command, args, { detached: true, stdio: "ignore" });
-      child.on("error", () => undefined);
-      child.unref();
-    } catch {
-      // No browser to open: the printed address is enough.
-    }
+    if (new URL(address).origin === credentialOrigin(url)) openInBrowser(address);
   };
 }

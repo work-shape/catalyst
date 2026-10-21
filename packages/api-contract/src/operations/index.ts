@@ -30,6 +30,45 @@ import { userOperations } from "./users";
 import { workflowOperations } from "./workflows";
 import { workflowPrincipalRightsOperations } from "./workflow-principal-rights";
 
+/**
+ * The operations of each area, keyed by the file that declares them. The path inventory pins one
+ * file per area, so two changes to different areas do not edit the same pin. Typed loosely on
+ * purpose: its inferred type would repeat every operation's type in the published declarations.
+ */
+export const operationAreas: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  access: accessOperations,
+  account: accountOperations,
+  agents: agentOperations,
+  "api-access": apiAccessOperations,
+  "approval-requests": approvalRequestOperations,
+  apps: appOperations,
+  assets: assetOperations,
+  "collaboration-workspaces": collaborationWorkspaceOperations,
+  "config-assets": configAssetOperations,
+  connections: connectionOperations,
+  "conversation-files": conversationFileOperations,
+  conversations: conversationOperations,
+  credentials: credentialOperations,
+  "data-stores": dataStoreOperations,
+  feedback: feedbackOperations,
+  governance: governanceOperations,
+  guardrails: guardrailOperations,
+  instance: instanceOperations,
+  jobs: jobOperations,
+  knowledge: knowledgeOperations,
+  operations: operationRunOperations,
+  pages: pageOperations,
+  "personal-api-keys": personalApiKeyOperations,
+  platform: platformOperations,
+  reference: referenceOperations,
+  roles: roleOperations,
+  "scheduled-starts": scheduledStartOperations,
+  system: systemOperations,
+  users: userOperations,
+  "workflow-principal-rights": workflowPrincipalRightsOperations,
+  workflows: workflowOperations
+};
+
 /** Every product operation of the HTTP API, one file per area. */
 export const apiOperations = {
   ...scheduledStartOperations,

@@ -14,6 +14,7 @@ import {
   writeOutput,
   type ConfigCommandOptions
 } from "./command-support";
+import { connectConnection } from "./connection-sign-in";
 import { readSecret, readStdin, type CommandInput } from "./input";
 
 const requestSchema = z.strictObject({
@@ -26,7 +27,11 @@ type CallInput = Omit<z.infer<typeof requestSchema>, "file"> & {
   file?: File;
   idempotencyKey?: string;
 };
-type Options = ConfigCommandOptions & { stdin?: CommandInput };
+type Options = ConfigCommandOptions & {
+  stdin?: CommandInput;
+  /** Opens an address in the person's browser. Tests pass one that records it. */
+  openUrl?: (address: string) => void;
+};
 class UsageError extends Error {}
 
 export async function runOperationCommand(argv: readonly string[], base: Options): Promise<number> {
@@ -42,6 +47,7 @@ export async function runOperationCommand(argv: readonly string[], base: Options
           dir: { type: "string" },
           from: { type: "string" },
           json: { type: "boolean" },
+          "no-browser": { type: "boolean" },
           help: { type: "boolean", short: "h" }
         },
         allowPositionals: true,
@@ -57,6 +63,8 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       return 0;
     }
     const options: Options = { ...base, dir: values.dir, instance: values.instance };
+    if (values["no-browser"] && !(argv[0] === "connection" && argv[1] === "connect"))
+      throw new UsageError("--no-browser belongs to 'catalyst connection connect'.");
     const stdin = base.stdin ?? process.stdin;
     if (argv[0] === "call") {
       if (positionals.length !== 1)
@@ -142,18 +150,26 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       writeOutput(options, JSON.stringify(state, null, 2));
       return 0;
     }
+    if (verb === "connect") {
+      if (positionals.length !== 2 || !name)
+        throw new UsageError("Usage: catalyst connection connect <name> [--no-browser]");
+      const { api } = await openInstance(options);
+      return await connectConnection(api, name, { ...options, openBrowser: !values["no-browser"] });
+    }
     const operation =
       verb === "test"
         ? apiOperations["connections.test"]
         : verb === "discover"
           ? apiOperations["connections.discover"]
-          : apiOperations["connections.list_tools"];
+          : verb === "disconnect"
+            ? apiOperations["connections.disconnect"]
+            : apiOperations["connections.list_tools"];
     if (
       (verb === "tools" && positionals.length !== 1) ||
       (verb !== "tools" && (positionals.length !== 2 || !name))
     ) {
       throw new UsageError(
-        "Usage: catalyst connection test|discover <name>, or catalyst connection tools"
+        "Usage: catalyst connection test|discover|disconnect <name>, or catalyst connection tools"
       );
     }
     const { api } = await openInstance(options);
@@ -256,9 +272,17 @@ export const operationHelpText = `Operations (JSON output; the instance decides 
   connection test <name>            Check the Connection (connections.test)
   connection discover <name>        Queue discovery (connections.discover)
   connection tools                 List available tools (connections.list_tools)
+  connection connect <name>         Sign the Connection in with OAuth: opens the provider's page
+                                    in the browser and waits until the sign-in is in; prints
+                                    the binding's state, never a token (connections.oauth_start)
+                                    --no-browser prints the address without opening it
+  connection disconnect <name>      End the sign-in and revoke it at the provider
+                                    (connections.disconnect)
 
 Multi-line secrets (such as PEM keys) must use stdin, e.g. connection secret set <name> < key.pem.
 The hidden prompt accepts one line; Enter submits it.
+A sign-in needs a person's key and their signed-in browser; a service principal's key is
+refused.
 
 Options: --instance <name-or-url>, --dir <working-copy-dir>, --json, --help
 Exit codes: 0 done, 1 refused or failed, 2 usage, 3 waits for approval.

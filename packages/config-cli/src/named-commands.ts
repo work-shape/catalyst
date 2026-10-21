@@ -85,6 +85,10 @@ const commands: Readonly<Record<string, NamedCommand>> = {
   }
 };
 
+export function namedCommandNames(): string[] {
+  return Object.keys(commands);
+}
+
 export function isNamedCommand(argv: readonly string[]): boolean {
   return Object.hasOwn(commands, `${argv[0]} ${argv[1]}`);
 }

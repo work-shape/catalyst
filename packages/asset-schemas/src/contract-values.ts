@@ -5,6 +5,20 @@
  * drift apart.
  */
 
+import { AGENT_ACTIONS } from "./contract-values/agent";
+import { SKILL_ACTIONS } from "./contract-values/skill";
+import { CONNECTION_ACTIONS } from "./contract-values/connection";
+import { APP_ACTIONS } from "./contract-values/app";
+import { WORKFLOW_ACTIONS } from "./contract-values/workflow";
+import { DATA_STORE_ACTIONS } from "./contract-values/data-store";
+import { KNOWLEDGE_BASE_ACTIONS } from "./contract-values/knowledge-base";
+import { MAIL_SENDER_ACTIONS } from "./contract-values/mail-sender";
+import { GUARDRAIL_ACTIONS } from "./contract-values/guardrail";
+import { OPERATIONS_ACTIONS } from "./contract-values/operations";
+import { FEEDBACK_ACTIONS } from "./contract-values/feedback";
+import { ADMINISTRATION_ACTIONS } from "./contract-values/administration";
+import { WORKSPACE_ACTIONS } from "./contract-values/workspace";
+
 export const AUTH_SCOPE_WILDCARD = "*" as const;
 
 export const CHAT_SESSION_AUTH_SCOPES = [
@@ -48,68 +62,24 @@ export type ChatSessionAuthScope = (typeof CHAT_SESSION_AUTH_SCOPES)[number];
 export type FirstPartyAuthScope = (typeof FIRST_PARTY_AUTH_SCOPES)[number];
 export type OperationScope = Exclude<FirstPartyAuthScope, "*">;
 
+/**
+ * Every right of the platform, one file per domain under `contract-values/`. The order is kept:
+ * `GRANTABLE_ACTIONS` filters it, and the rights dialog lists rights in it.
+ */
 export const ACTIONS = [
-  "agent.read",
-  "agent.write",
-  "agent.publish",
-  "agent.delete",
-  "skill.read",
-  "skill.write",
-  "skill.delete",
-  "skill.approve",
-  "connection.read",
-  "connection.use",
-  "connection.write",
-  "connection.delete",
-  "connection.approve",
-  "app.read",
-  "app.write",
-  "app.publish",
-  "app.approve",
-  "app.delete",
-  "app.use",
-  "workflow.read",
-  "workflow.write",
-  "workflow.publish",
-  "workflow.approve",
-  "workflow.delete",
-  "workflow.use",
-  "workflow.read_run_data",
-  "data_store.read",
-  "data_store.write",
-  "data_store.publish",
-  "data_store.delete",
-  "data_store.insert",
-  "data_store.execute",
-  "data_store.records",
-  "knowledge_base.read",
-  "knowledge_base.write",
-  "knowledge_base.publish",
-  "knowledge_base.delete",
-  "knowledge_base.use",
-  // Sending e-mail as one sender of the instance (`mail.send`). The `admin` role holds it on
-  // the sender `system`; a member only by a grant.
-  "mail_sender.use",
-  "guardrail.read",
-  "guardrail.write",
-  "guardrail.publish",
-  "guardrail.delete",
-  "operations.approve",
-  // Reading the written feedback on agent messages and marking it handled (LU-4): on the
-  // instance, or on one workspace for the agents it owns. No bundle carries it.
-  "feedback.review",
-  "users.manage",
-  "usage.view",
-  "audit.view",
-  "api_access.manage",
-  // Creating service principals, giving and taking their rights, enabling and disabling them.
-  // Their keys stay with `api_access.manage`.
-  "service_principals.manage",
-  "agent_models.manage",
-  "assets.release",
-  // The two bundles of a workspace: one row each, expanded by the evaluator (`bundleCarries`).
-  "builder",
-  "publisher"
+  ...AGENT_ACTIONS,
+  ...SKILL_ACTIONS,
+  ...CONNECTION_ACTIONS,
+  ...APP_ACTIONS,
+  ...WORKFLOW_ACTIONS,
+  ...DATA_STORE_ACTIONS,
+  ...KNOWLEDGE_BASE_ACTIONS,
+  ...MAIL_SENDER_ACTIONS,
+  ...GUARDRAIL_ACTIONS,
+  ...OPERATIONS_ACTIONS,
+  ...FEEDBACK_ACTIONS,
+  ...ADMINISTRATION_ACTIONS,
+  ...WORKSPACE_ACTIONS
 ] as const;
 
 export type PlatformAction = (typeof ACTIONS)[number];
@@ -219,10 +189,10 @@ export const ROLE_GRANT_SCOPE_KINDS = [
 ] as const satisfies readonly GrantScopeKind[];
 export type RoleGrantScopeKind = (typeof ROLE_GRANT_SCOPE_KINDS)[number];
 
-/** What a release did to an action of a built-in role's default that waits for a superadmin. */
+/** What a release did to an action of a built-in role's default that waits for a decision. */
 export const ROLE_PENDING_CHANGES = ["added", "removed"] as const;
 
-/** A superadmin's decision on a pending action: apply what the release did, or dismiss it. */
+/** The decision on a pending action: apply what the release did, or dismiss it. */
 export const ROLE_PENDING_DECISIONS = ["apply", "dismiss"] as const;
 export type RolePendingDecision = (typeof ROLE_PENDING_DECISIONS)[number];
 
@@ -544,8 +514,10 @@ export type AttachmentCreateOutcome = (typeof ATTACHMENT_CREATE_OUTCOMES)[number
 export const STRUCTURED_DATA_REVIEW_REASONS = ["uncertain", "conflicting"] as const;
 export type StructuredDataReviewReason = (typeof STRUCTURED_DATA_REVIEW_REASONS)[number];
 
-export const FOLLOW_UP_MODES = ["queue"] as const;
-export const FOLLOW_UP_STATUSES = ["pending", "dispatched", "cancelled"] as const;
+/** Queued: sent as the next turn. Steer: taken in by the author's own running turn (FU-2). */
+export const FOLLOW_UP_MODES = ["queue", "steer"] as const;
+/** `consumed`: a steer the running turn took in; `dispatched`: started as a turn of its own. */
+export const FOLLOW_UP_STATUSES = ["pending", "dispatched", "consumed", "cancelled"] as const;
 
 export const AGENT_RUN_STATUSES = [
   "queued",

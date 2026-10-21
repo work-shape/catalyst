@@ -2,9 +2,12 @@ import { dataScopesSchema, scopeAssignmentInputSchema } from "@work-shape/cataly
 import { z } from "zod";
 import { listQuerySchema } from "../shared";
 import {
+  assetRightsCheckQuerySchema,
+  assetRightsCheckSchema,
   createPermissionGrantRequestSchema,
   effectivePermissionsQuerySchema,
   effectivePermissionsSchema,
+  holderRightsSchema,
   listPermissionGrantsQuerySchema,
   permissionGrantSchema,
   updateWorkspaceBuildLimitsRequestSchema,
@@ -13,7 +16,7 @@ import {
 import { defineOperation, defineRegisteredOperation, json, page } from "./define-operation";
 
 // The five changing operations are operations of the registry: a call is an Operation Run.
-// The three reads are plain.
+// The reads are plain.
 
 export const accessOperations = {
   "scope_assignments.list": defineOperation({
@@ -121,6 +124,41 @@ export const accessOperations = {
     effect: "reading",
     query: effectivePermissionsQuerySchema,
     response: json(effectivePermissionsSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "permissions.rights": defineOperation({
+    id: "permissions.rights",
+    method: "GET",
+    path: "/api/v1/instance/access/rights",
+    summary:
+      "List what one holder holds and is refused, each right decided with where it comes from",
+    tag: "Access",
+    auth: "user",
+    scope: "user_admin:read",
+    // The read of `permissions.effective`: one's own, or another holder's behind the right
+    // to administer them. The handler checks it.
+    requires: [],
+    effect: "reading",
+    query: effectivePermissionsQuerySchema,
+    response: json(holderRightsSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "permissions.check": defineOperation({
+    id: "permissions.check",
+    method: "GET",
+    path: "/api/v1/instance/access/check",
+    summary: "Decide what one holder may do with one asset, with the entry that decides each right",
+    tag: "Access",
+    auth: "user",
+    scope: "user_admin:read",
+    // The read of `permissions.effective`: one's own, or another holder's behind the right
+    // to administer them. The handler checks it.
+    requires: [],
+    effect: "reading",
+    query: assetRightsCheckQuerySchema,
+    response: json(assetRightsCheckSchema),
     errors: ["NOT_FOUND"],
     rateClass: "read"
   }),
