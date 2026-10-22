@@ -1,4 +1,5 @@
 import {
+  callableOperationsPageSchema,
   OPERATION_CONFIRMATION_DECISIONS,
   OPERATION_EFFECTS,
   OPERATION_ORIGIN_KINDS
@@ -71,6 +72,32 @@ export const operationRunOperations = {
       since: timestampSchema.optional()
     }),
     response: page(operationRunSchema, ["createdAt", "id"], true),
+    errors: [],
+    rateClass: "read"
+  }),
+  "operations.list_callable": defineRegisteredOperation({
+    id: "operations.list_callable",
+    method: "GET",
+    path: "/api/v1/operations/callable",
+    summary:
+      "List a page of the operations a step of a Workflow may call, as far as the caller may call them",
+    tag: "Operations",
+    auth: "principal",
+    scope: "config_assets:read",
+    // No right of its own: each operation is listed exactly where its own check of a call
+    // from a Workflow step lets the caller call it. The listing grants nothing.
+    requires: [],
+    effect: "reading",
+    query: z.object({
+      /** Who calls: a step of a Workflow. An App's listing is the agent's alone. */
+      for: z.enum(["workflow"]).default("workflow"),
+      cursor: z.string().min(1).optional(),
+      /** An exact full operation name. */
+      name: z.string().min(1).optional(),
+      /** Only operation names starting with this, such as `connection.crm.`. */
+      prefix: z.string().min(1).optional()
+    }),
+    response: json(callableOperationsPageSchema),
     errors: [],
     rateClass: "read"
   }),

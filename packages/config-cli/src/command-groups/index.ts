@@ -1,6 +1,7 @@
 import { assetsGroup } from "./assets";
 import { authGroup } from "./auth";
 import { configGroup } from "./config";
+import { catalogueGroup } from "./catalogue";
 import { initGroup } from "./init";
 import { knowledgeGroup } from "./knowledge";
 import { namedGroup } from "./named";
@@ -10,6 +11,7 @@ export const commandGroups = [
   assetsGroup,
   authGroup,
   configGroup,
+  catalogueGroup,
   initGroup,
   knowledgeGroup,
   namedGroup,

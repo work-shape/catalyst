@@ -9,6 +9,7 @@ import {
 import { ConfigApiError, type ConfigApi } from "./api";
 import { publishFileChanges } from "./publish-file-changes";
 import { appPublishData } from "./app-publish-data";
+import { appPublishTogether } from "./app-publish-together";
 import {
   APP_STATE_FILE,
   localChanges,
@@ -369,10 +370,19 @@ async function publish(
       ? `${candidate.appAudience.label}${candidate.appAudience.people === undefined ? "" : ` (${candidate.appAudience.people} people)`}`
       : undefined
   );
-  const question = [formatReview(app, review), storedData].filter(Boolean).join("\n");
+  // A publish of the draft makes the pending Workflows it reaches live with it.
+  const together =
+    number === (candidate.draftRevision ?? candidate.revision) && startsWorkflows(candidate.config)
+      ? await appPublishTogether(target.api, app)
+      : { workflows: [], lines: [] };
+  const question = [formatReview(app, review), storedData, together.lines.join("\n")]
+    .filter(Boolean)
+    .join("\n");
   const say = (text: string) => (values.json ? writeErr(options, text) : writeOut(options, text));
   const narrative = values.yes ? undefined : candidate.publishNarrative;
-  say(narrative ? [narrative.summary, ...narrative.warnings].join("\n") : question);
+  say(
+    narrative ? [narrative.summary, ...narrative.warnings, ...together.lines].join("\n") : question
+  );
   const answer = await askBeforePublish(options, {
     kind: APP_KIND,
     command: APP_KIND,
@@ -405,7 +415,12 @@ async function publish(
     (client, idempotencyKey) =>
       client.assets.publish({
         params: { kind: APP_KIND, name: app },
-        body: { revision: number, workspaceId: target.workspaceId, audience },
+        body: {
+          revision: number,
+          workspaceId: target.workspaceId,
+          audience,
+          ...(together.workflows.length > 0 ? { workflows: together.workflows } : {})
+        },
         idempotencyKey,
         ...(answer === "unattended" ? { unattended: true } : {})
       }),
@@ -423,9 +438,24 @@ async function publish(
     options,
     values.json
       ? JSON.stringify(outcome.output, null, 2)
-      : `Published revision ${outcome.output.publishedRevision} of App '${app}'${outcome.output.replacedRevision === undefined ? "" : ` in place of revision ${outcome.output.replacedRevision}`}.`
+      : [
+          ...(outcome.output.publishedWith ?? []).map(
+            (workflow) =>
+              `Published revision ${workflow.publishedRevision} of Workflow '${workflow.name}'.`
+          ),
+          `Published revision ${outcome.output.publishedRevision} of App '${app}'${outcome.output.replacedRevision === undefined ? "" : ` in place of revision ${outcome.output.replacedRevision}`}.`
+        ].join("\n")
   );
   return EXIT.done;
+}
+
+/** Whether a revision's manifest has a `workflow` action: only then can Workflows go with it. */
+function startsWorkflows(config: unknown): boolean {
+  const manifest = isRecord(config) && isRecord(config.manifest) ? config.manifest : undefined;
+  return (
+    Array.isArray(manifest?.actions) &&
+    manifest.actions.some((action: unknown) => isRecord(action) && action.kind === "workflow")
+  );
 }
 
 async function status(

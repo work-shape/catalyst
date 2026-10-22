@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dependencyAvailabilitySchema } from "./assets";
+import { agentUseSchema, dependencyAvailabilitySchema } from "./assets";
 import { configAssetConfigSchema } from "./configuration";
 import { conversationSchema } from "./conversations";
 import { timestampSchema } from "./shared";
@@ -32,6 +32,13 @@ export const discardAgentDraftRequestSchema = z.object({
   workspaceId: z.string().optional()
 });
 export const discardAgentDraftResponseSchema = z.object({ discarded: z.literal(true) });
+
+export const setAgentUseRequestSchema = z.object({
+  use: agentUseSchema,
+  /** The id of the agent as the caller read it. Another agent of the name is a conflict. */
+  expectedAssetId: z.string().min(1).optional()
+});
+export const setAgentUseResponseSchema = z.object({ use: agentUseSchema });
 
 // The Try conversation beside a Build conversation (TRY-1b): the person tries the agent under
 // construction there. No conversation list shows it, and its usage is marked `preview`.

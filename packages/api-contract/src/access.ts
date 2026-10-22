@@ -7,7 +7,9 @@ import {
   PRINCIPAL_HOLDER_KINDS,
   ROLE_GRANT_SCOPE_KINDS,
   ROLE_PENDING_CHANGES,
-  ROLE_PENDING_DECISIONS
+  ROLE_PENDING_DECISIONS,
+  dataScopesSchema,
+  scopeAssignmentInputSchema
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { listQuerySchema, timestampSchema } from "./shared";
@@ -341,3 +343,23 @@ export type WorkspaceBuildLimits = z.infer<typeof workspaceBuildLimitsSchema>;
 export type UpdateWorkspaceBuildLimitsRequest = z.input<
   typeof updateWorkspaceBuildLimitsRequestSchema
 >;
+
+const dataScopeValuesSchema = z.union([z.literal("all"), z.array(z.string())]);
+
+/**
+ * Instance > Access > Data access: the declared dimensions, every assignment the reader may
+ * see, and each active person the reader may manage with their groups and what they see.
+ */
+export const scopeAssignmentsOverviewSchema = z.object({
+  dimensions: dataScopesSchema,
+  assignments: z.array(scopeAssignmentInputSchema),
+  people: z.array(
+    z.object({
+      id: z.string(),
+      displayLabel: z.string(),
+      groups: z.array(z.string()),
+      effective: z.record(z.string(), dataScopeValuesSchema)
+    })
+  )
+});
+export type ScopeAssignmentsOverview = z.infer<typeof scopeAssignmentsOverviewSchema>;

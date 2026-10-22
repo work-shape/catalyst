@@ -1,12 +1,14 @@
 import {
   APP_ACTION_CALL_STATUSES,
   APP_MODES,
-  OPERATION_EFFECTS
+  OPERATION_EFFECTS,
+  WORKFLOW_RUN_STATUSES,
+  WORKFLOW_TEST_REVISIONS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { appActionPermissionSchema, appStorageMutationSchema } from "./app-bridge";
 import { operationTargetSchema } from "./operation-runs";
-import { assetScopeSchema } from "./assets";
+import { assetScopeSchema, publishNarrativeSchema } from "./assets";
 import { listQuerySchema } from "./shared";
 import { pagePreviewSchema } from "./pages";
 
@@ -235,6 +237,91 @@ export const appActionCallResultSchema = z.union([
 ]);
 
 export type AppSessionContextResponse = z.infer<typeof appSessionContextSchema>;
+
+/** What an agent tries one action of an App's draft with: the action's parameters, by name. */
+export const appTryActionRequestSchema = z
+  .object({ input: z.record(z.string(), z.unknown()).default({}) })
+  .strict();
+
+/**
+ * How a try of one action of an App's draft went (DP-2): the answer the button of the draft
+ * gets, with the run it left and where the call went. A `workflow` action names the test run
+ * it started and which revision of the Workflow runs in it; the run goes on after the answer
+ * and is followed with `workflows.get_run` and `workflows.list_step_runs`.
+ */
+export const appTryActionResultSchema = z.object({
+  operationRunId: z.string().optional(),
+  status: z.enum([...APP_ACTION_CALL_STATUSES, "dry_run"]),
+  target: operationTargetSchema.optional(),
+  result: z.unknown().optional(),
+  /** What a simulated call would have done. */
+  message: z.string().optional(),
+  workflowRun: z
+    .object({
+      runId: z.string(),
+      workflow: z.string(),
+      status: z.enum(WORKFLOW_RUN_STATUSES),
+      revision: z.object({
+        kind: z.enum(WORKFLOW_TEST_REVISIONS),
+        number: z.number().int().positive().optional()
+      })
+    })
+    .optional()
+});
+
+export type AppTryActionResult = z.infer<typeof appTryActionResultSchema>;
+
+/** Why one asset of a publish would be refused now: a missing right or a check of the publish. */
+export const appPublishRefusalSchema = z.object({
+  /** `no_grant`, `workflow_not_published`, `workflow_unavailable` and the like. */
+  reason: z.string(),
+  message: z.string(),
+  /** The right the caller lacks, where a right is missing. */
+  right: z.string().optional()
+});
+
+const appPublishReviewItemSchema = z.object({
+  name: z.string(),
+  title: z.string(),
+  draftRevision: z.number().int().positive(),
+  publishedRevision: z.number().int().positive().optional(),
+  /** The draft holds changes its published revision does not, or nothing is published yet. */
+  pending: z.boolean(),
+  /** The sentence the person's publish question leads with, for the draft revision. */
+  narrative: publishNarrativeSchema.optional(),
+  /** Who wrote the draft revision, as people read their name. */
+  lastChangedBy: z.string().optional(),
+  refusals: z.array(appPublishRefusalSchema)
+});
+
+/**
+ * What publishing an App's draft comes to, read before the person is asked (DP-2): the App and
+ * the Workflows it reaches, children before the Workflows that start them, each with its
+ * pending draft, what its publish question says, and what would refuse it. It changes nothing.
+ */
+export const appPublishReviewSchema = z.object({
+  app: appPublishReviewItemSchema,
+  workflows: z.array(
+    appPublishReviewItemSchema.extend({
+      /** The actions of the App's draft that call it. None for a child of another Workflow. */
+      actions: z.array(z.string()),
+      /** The newest test run of the Workflow among its recent runs, by anyone. */
+      lastTestRun: z
+        .object({ runId: z.string(), status: z.enum(WORKFLOW_RUN_STATUSES), at: z.string() })
+        .optional()
+    })
+  ),
+  /**
+   * One Publish of the App also publishes the pending Workflow drafts it reaches, when the
+   * publish names them in `workflows` (DP-3). Where false, each pending Workflow is published
+   * before the App, by its own publish.
+   */
+  publishesTogether: z.boolean(),
+  /** Nothing in the review would be refused. */
+  ready: z.boolean()
+});
+
+export type AppPublishReview = z.infer<typeof appPublishReviewSchema>;
 export type AppActionCallResult = z.infer<typeof appActionCallResultSchema>;
 
 export const appActionsListQuerySchema = listQuerySchema
@@ -282,8 +369,9 @@ const listedAppAction = {
   /**
    * In the draft (ADR-0031): where the caller's next call of the action goes. `live` for a
    * reading action, and for a changing one the caller switched "Run live once" on for;
-   * `dry_run` for any other changing action, which is simulated. Missing for a published
-   * revision, every call of which is live.
+   * `dry_run` for any other changing action, which is simulated; `test` for a `workflow` action,
+   * which starts a test run of the Workflow (DP-1). Missing for a published revision, every
+   * call of which is live.
    */
   target: operationTargetSchema.optional(),
   /** An agent that lists `toolName` carries the action as a tool now. */

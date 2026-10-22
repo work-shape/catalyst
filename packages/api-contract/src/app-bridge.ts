@@ -3,7 +3,8 @@ import {
   IDEMPOTENCY_KEY_MAX_LENGTH,
   POLICY_VALUES,
   THEME_MODES,
-  WORKFLOW_RUN_STATUSES
+  WORKFLOW_RUN_STATUSES,
+  WORKFLOW_TEST_REVISIONS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 
@@ -157,9 +158,9 @@ export type AppBridgeContext = z.infer<typeof appBridgeContextSchema>;
 
 /**
  * A Workflow Run that a `workflow` action of the shown manifest started, as the frame follows
- * it: its state and, once it is done, its result. The result is the run's own where it is at
- * most `WORKFLOW_RUN_OUTPUT_PREVIEW_MAX_CHARS` long as JSON; a longer one is not answered and
- * `outputTruncated` says so.
+ * it: its state and, once it is done, its result. The result is the run's whole output where
+ * it is at most `APP_WORKFLOW_RUN_OUTPUT_MAX_BYTES` (256 KiB) as JSON; a larger one is not
+ * answered and `outputTruncated` says so.
  */
 export const appWorkflowRunSchema = z.strictObject({
   id: z.string(),
@@ -170,7 +171,25 @@ export const appWorkflowRunSchema = z.strictObject({
   /** Why the run did not end `done`: a code and a sentence of the product. */
   error: z.strictObject({ code: z.string(), message: z.string() }).optional(),
   startedAt: z.string().optional(),
-  finishedAt: z.string().optional()
+  finishedAt: z.string().optional(),
+  /**
+   * `test` on a run a click in an App's draft started (DP-1): it ran in mode test, as the
+   * viewer bounded by the Workflow's principal, and nothing of it is live. Missing on a run of
+   * a published App.
+   */
+  mode: z.literal("test").optional(),
+  /**
+   * On a test run: the revision of the Workflow that ran, the draft or the published one, with
+   * its number where that revision is still the draft or the published one.
+   */
+  workflowRevision: z
+    .strictObject({
+      kind: z.enum(WORKFLOW_TEST_REVISIONS),
+      number: z.number().int().positive().optional()
+    })
+    .optional(),
+  /** On a test run: the steps whose calls were simulated, by step id. Their results are not real. */
+  simulatedSteps: z.array(z.string()).optional()
 });
 
 export type AppWorkflowRun = z.infer<typeof appWorkflowRunSchema>;

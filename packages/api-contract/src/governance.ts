@@ -40,7 +40,10 @@ export const auditActivityTargetSchema = z.object({
 export const auditActivitySchema = z.object({
   correlationId: z.string(),
   at: timestampSchema,
-  label: z.string(),
+  /** The type of the event that titles the activity; the interface words it. */
+  type: z.string(),
+  /** What a tool says it did, such as `workspace.exec`, where a tool's event titles it. */
+  action: z.string().optional(),
   tier: z.enum(AUDIT_TIERS),
   outcome: z.enum(AUDIT_OUTCOMES),
   actor: auditActivityActorSchema,

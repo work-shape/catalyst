@@ -2,7 +2,9 @@ import {
   agentTryConversationResponseSchema,
   agentDraftResponseSchema,
   discardAgentDraftRequestSchema,
-  discardAgentDraftResponseSchema
+  discardAgentDraftResponseSchema,
+  setAgentUseRequestSchema,
+  setAgentUseResponseSchema
 } from "../agent-proposals";
 import { assetScopeQuerySchema } from "../assets";
 import { defineRegisteredOperation, json } from "./define-operation";
@@ -37,6 +39,23 @@ export const agentOperations = {
     body: discardAgentDraftRequestSchema,
     response: json(discardAgentDraftResponseSchema),
     errors: ["NOT_FOUND", "REVISION_CONFLICT"],
+    rateClass: "write"
+  }),
+  // Who uses the agent where it is available (AGENT-USE-1). The right is decided as for its
+  // availability: the agent's write right on the whole instance.
+  "agents.use.set": defineRegisteredOperation({
+    id: "agents.use.set",
+    method: "PUT",
+    path: "/api/v1/agents/:name/use",
+    summary: "Set who uses one agent where it is available: everyone, or holders of agent.use",
+    tag: "Agents",
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: setAgentUseRequestSchema,
+    response: json(setAgentUseResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
   }),
   "agents.try.open": defineRegisteredOperation({

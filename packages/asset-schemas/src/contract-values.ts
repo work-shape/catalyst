@@ -273,6 +273,14 @@ export const APP_ERROR_CODES = [
 
 export const OPERATION_EFFECTS = ["reading", "changing"] as const;
 
+/** The parts a catalogue entry can bring: tools agents call, or a Knowledge Base source. */
+export const CATALOGUE_PARTS = ["tools", "source"] as const;
+export type CataloguePart = (typeof CATALOGUE_PARTS)[number];
+
+/** The categories a catalogue entry's card is filed under. */
+export const CATALOGUE_CATEGORIES = ["mail", "files", "accounting", "databases", "other"] as const;
+export type CatalogueCategory = (typeof CATALOGUE_CATEGORIES)[number];
+
 export const OPERATION_TARGETS = ["live", "test", "dry_run"] as const;
 export type OperationTarget = (typeof OPERATION_TARGETS)[number];
 
@@ -380,6 +388,13 @@ export type ConfigAssetChangeOperation = (typeof CONFIG_ASSET_CHANGE_OPERATIONS)
 
 export const AGENT_AVAILABILITY_MODES = ["all", "selected"] as const;
 export type AgentAvailabilityMode = (typeof AGENT_AVAILABILITY_MODES)[number];
+
+/**
+ * Who uses an agent where it is available (AGENT-USE-1): everyone who may work there, or only
+ * those `agent.use` allows on it. Every agent starts at `everyone`.
+ */
+export const AGENT_USE_SETTINGS = ["everyone", "granted"] as const;
+export type AgentUse = (typeof AGENT_USE_SETTINGS)[number];
 
 export const AGENT_EDITABLE_FIELDS = [
   "displayName",
@@ -869,6 +884,13 @@ export const WORKFLOW_STEP_TYPES = [
 ] as const;
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
 
+/**
+ * The step types this release executes. The engine accepts no definition that names another,
+ * and the interface offers no other in its palette (workflow-canvas 9.6). A list of its own, so
+ * it can be narrower than `WORKFLOW_STEP_TYPES` while a known type is not run yet.
+ */
+export const WORKFLOW_EXECUTED_STEP_TYPES = [...WORKFLOW_STEP_TYPES] as const;
+
 export const WORKFLOW_RESERVED_STEP_TYPES = [
   /** Reserved in the contract: drawn, and run by no engine yet. */
   "condition",
@@ -895,6 +917,19 @@ export const WORKFLOW_STEP_SOURCE_KINDS = [
   "other"
 ] as const;
 export type WorkflowStepSourceKind = (typeof WORKFLOW_STEP_SOURCE_KINDS)[number];
+
+/**
+ * What an operation a step may call belongs to (`operations.list_callable`, WF-EDIT-3). `other`
+ * is an operation of the release.
+ */
+export const OPERATION_SOURCE_KINDS = [
+  "connection",
+  "data_store",
+  "knowledge_base",
+  "workflow",
+  "other"
+] as const satisfies readonly WorkflowStepSourceKind[];
+export type OperationSourceKind = (typeof OPERATION_SOURCE_KINDS)[number];
 export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
 
 export const PRINCIPAL_HOLDER_KINDS = [
@@ -920,6 +955,13 @@ export type ConnectionOperationPolicy = (typeof CONNECTION_OPERATION_POLICIES)[n
 
 export const WORKFLOW_RUN_MODES = ["live", "test"] as const satisfies readonly OperationTarget[];
 export type WorkflowRunMode = (typeof WORKFLOW_RUN_MODES)[number];
+
+/**
+ * Which revision of a Workflow a test run an App's draft started ran (DP-1): its draft, for a
+ * tester who may write it, or its published revision.
+ */
+export const WORKFLOW_TEST_REVISIONS = ["draft", "published"] as const;
+export type WorkflowTestRevision = (typeof WORKFLOW_TEST_REVISIONS)[number];
 
 export const APP_ACTION_CALL_STATUSES = [
   "done",

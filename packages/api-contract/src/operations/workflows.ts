@@ -9,6 +9,7 @@ import {
   WORKFLOW_RUN_MODES,
   WORKFLOW_RUN_STATUSES,
   WORKFLOW_STEP_RUN_STATUSES,
+  WORKFLOW_TEST_REVISIONS,
   WORKFLOW_STEP_TYPES,
   WORKFLOW_DATASET_DOWNLOAD_FORMATS,
   WORKFLOW_TRIGGER_KINDS
@@ -116,6 +117,20 @@ export const workflowRunSchema = z.object({
     .optional(),
   /** The Operation Run of the call that started the run. */
   operationRunId: z.string().optional(),
+  /**
+   * The action of an App's draft whose click started this test run (DP-1): the App, the
+   * revision of its draft and the action, by name, and whether the Workflow's draft or its
+   * published revision ran. Missing on every other run.
+   */
+  startedFrom: z
+    .object({
+      kind: z.literal("app"),
+      app: z.string(),
+      appRevisionId: z.string(),
+      action: z.string(),
+      workflowRevision: z.enum(WORKFLOW_TEST_REVISIONS)
+    })
+    .optional(),
   parentRunId: z.string().optional(),
   parentStepRunId: z.string().optional(),
   rootRunId: z.string(),
@@ -295,6 +310,8 @@ export const workflowSummarySchema = z.object({
   description: z.string().optional(),
   /** The published revision: what a run started now has as its `definitionRevisionId`. */
   definitionRevisionId: z.string(),
+  /** The workspace that owns the Workflow (WS-OWN-1b). Missing where the instance owns it. */
+  workspaceId: z.string().optional(),
   /** Whether a start by hand is accepted now, as far as that is known before its input. */
   runnable: z.boolean(),
   /** Why not. Empty exactly where `runnable` is true. */
@@ -304,6 +321,11 @@ export const workflowSummarySchema = z.object({
    * from which a page builds its start form. Missing where the definition cannot be read.
    */
   inputs: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * How the published revision is started, the kinds of its trigger: `manual`, `schedule`,
+   * `parent` (by a step of another Workflow). Missing where the definition cannot be read.
+   */
+  triggers: z.array(z.string()).optional(),
   /**
    * The display label of the service principal every run of the Workflow acts as. Missing
    * where that principal is disabled or gone, which `reasons` then says.

@@ -1,4 +1,6 @@
 import {
+  CATALOGUE_CATEGORIES,
+  CATALOGUE_PARTS,
   PUBLISHED_DATA_CONSUMER_KINDS,
   CONNECTION_BINDING_STATES,
   GRANT_HOLDER_KINDS,
@@ -251,7 +253,64 @@ export const connectorTypeOffersSchema = z.object({
         })
       )
     })
-  )
+  ),
+  /**
+   * The catalogue's entries (CAT-1): one card each in "Dienste". `offered` is false for one
+   * the operator has not named, which is shown greyed and cannot be installed. A part lists the
+   * operations it proposes; none of them is enabled before the admin confirms the review step.
+   */
+  entries: z
+    .array(
+      z.object({
+        id: z.string(),
+        version: z.number().int(),
+        service: z.string(),
+        title: localizedTextSchema,
+        description: localizedTextSchema,
+        category: z.enum(CATALOGUE_CATEGORIES),
+        examplePrompts: z.array(localizedTextSchema),
+        mark: z.object({ color: z.string().optional(), logo: z.string().optional() }),
+        offered: z.boolean(),
+        parts: z.array(
+          z.object({
+            part: z.enum(CATALOGUE_PARTS),
+            connectorType: z.string(),
+            name: z.string(),
+            title: localizedTextSchema.optional(),
+            description: localizedTextSchema,
+            authScheme: z.string(),
+            settings: z.record(z.string(), z.unknown()),
+            fields: z.array(
+              z.object({
+                label: localizedTextSchema,
+                help: localizedTextSchema.optional(),
+                optional: z.boolean(),
+                setting: z.string().optional(),
+                secret: z.boolean(),
+                default: z.string().optional()
+              })
+            ),
+            prerequisites: z.array(
+              z.object({ text: localizedTextSchema, value: z.string().optional() })
+            ),
+            hosts: z.array(z.string()),
+            operations: z.array(
+              z.object({
+                name: z.string(),
+                title: z.string().optional(),
+                description: z.string().optional(),
+                effect: z.enum(OPERATION_EFFECTS),
+                recommended: z.boolean(),
+                declaration: z.record(z.string(), z.unknown()).optional()
+              })
+            ),
+            sharedAccountNote: localizedTextSchema,
+            documentSource: z.boolean()
+          })
+        )
+      })
+    )
+    .default([])
 });
 
 export type ConnectorTypeOffers = z.infer<typeof connectorTypeOffersSchema>;
@@ -259,11 +318,14 @@ export type ConnectorTypeOffers = z.infer<typeof connectorTypeOffersSchema>;
 /**
  * A secret entered once. It is never answered, logged or kept with the run of its call.
  * `expectedVersion` is the version the writer saw, `null` where none was set: a write over a
- * version somebody else set meanwhile is refused.
+ * version somebody else set meanwhile is refused. `expectedRevision` is the revision of the
+ * Connection the writer read: a secret is entered for the addresses that revision names, so a
+ * Connection changed since is refused with `connection_changed` and stores nothing.
  */
 const connectionSecretWriteSchema = z.object({
   value: z.string().min(1).max(SECRET_VALUE_MAX_CHARS),
-  expectedVersion: z.number().int().positive().nullable()
+  expectedVersion: z.number().int().positive().nullable(),
+  expectedRevision: z.number().int().positive()
 });
 
 const connectionDiscoveryRequestSchema = z.object({ status: z.literal("queued") });

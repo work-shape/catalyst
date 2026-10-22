@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.7",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.7, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.8",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.8, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -428,6 +428,136 @@
           },
           "409": {
             "$ref": "#/components/responses/IdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/agents/{name}/use": {
+      "put": {
+        "operationId": "agents.use.set",
+        "summary": "Set who uses one agent where it is available: everyone, or holders of agent.use",
+        "tags": [
+          "Agents"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAgentUseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetAgentUseResponse"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
           },
           "422": {
             "$ref": "#/components/responses/ValidationFailed"
@@ -949,6 +1079,36 @@
                     },
                     "finishedAt": {
                       "type": "string"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "const": "test"
+                    },
+                    "workflowRevision": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published"
+                          ]
+                        },
+                        "number": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    "simulatedSteps": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -2042,6 +2202,147 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/apps/{app}/draft-actions/{action}/tries": {
+      "post": {
+        "operationId": "apps.try_action",
+        "summary": "Try one action of an App's draft as its button does: reads read, changes are simulated, and a workflow action starts a test run",
+        "tags": [
+          "Apps"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppTryActionRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppTryActionResult"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
     "/api/v1/apps/{app}/preview": {
       "post": {
         "operationId": "apps.preview",
@@ -2100,6 +2401,77 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/apps/{app}/publish-review": {
+      "get": {
+        "operationId": "apps.publish_review",
+        "summary": "Read what publishing an App's draft comes to: the App and the Workflows it calls, their pending drafts, publish questions and what would refuse them",
+        "tags": [
+          "Apps"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppPublishReview"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -6005,11 +6377,17 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "expectedRevision": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": [
                   "value",
-                  "expectedVersion"
+                  "expectedVersion",
+                  "expectedRevision"
                 ]
               }
             }
@@ -6387,10 +6765,364 @@
                           "fields"
                         ]
                       }
+                    },
+                    "entries": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "service": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "en": {
+                                    "type": "string"
+                                  },
+                                  "de": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "description": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "en": {
+                                    "type": "string"
+                                  },
+                                  "de": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "mail",
+                              "files",
+                              "accounting",
+                              "databases",
+                              "other"
+                            ]
+                          },
+                          "examplePrompts": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "en": {
+                                      "type": "string"
+                                    },
+                                    "de": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          "mark": {
+                            "type": "object",
+                            "properties": {
+                              "color": {
+                                "type": "string"
+                              },
+                              "logo": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "offered": {
+                            "type": "boolean"
+                          },
+                          "parts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "part": {
+                                  "type": "string",
+                                  "enum": [
+                                    "tools",
+                                    "source"
+                                  ]
+                                },
+                                "connectorType": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "en": {
+                                          "type": "string"
+                                        },
+                                        "de": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                "description": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "en": {
+                                          "type": "string"
+                                        },
+                                        "de": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                "authScheme": {
+                                  "type": "string"
+                                },
+                                "settings": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "en": {
+                                                "type": "string"
+                                              },
+                                              "de": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      "help": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "en": {
+                                                "type": "string"
+                                              },
+                                              "de": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      "optional": {
+                                        "type": "boolean"
+                                      },
+                                      "setting": {
+                                        "type": "string"
+                                      },
+                                      "secret": {
+                                        "type": "boolean"
+                                      },
+                                      "default": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "label",
+                                      "optional",
+                                      "secret"
+                                    ]
+                                  }
+                                },
+                                "prerequisites": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "text": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "en": {
+                                                "type": "string"
+                                              },
+                                              "de": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      "value": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text"
+                                    ]
+                                  }
+                                },
+                                "hosts": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "operations": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "title": {
+                                        "type": "string"
+                                      },
+                                      "description": {
+                                        "type": "string"
+                                      },
+                                      "effect": {
+                                        "type": "string",
+                                        "enum": [
+                                          "reading",
+                                          "changing"
+                                        ]
+                                      },
+                                      "recommended": {
+                                        "type": "boolean"
+                                      },
+                                      "declaration": {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {}
+                                      }
+                                    },
+                                    "required": [
+                                      "name",
+                                      "effect",
+                                      "recommended"
+                                    ]
+                                  }
+                                },
+                                "sharedAccountNote": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "en": {
+                                          "type": "string"
+                                        },
+                                        "de": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                "documentSource": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "part",
+                                "connectorType",
+                                "name",
+                                "description",
+                                "authScheme",
+                                "settings",
+                                "fields",
+                                "prerequisites",
+                                "hosts",
+                                "operations",
+                                "sharedAccountNote",
+                                "documentSource"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "version",
+                          "service",
+                          "title",
+                          "description",
+                          "category",
+                          "examplePrompts",
+                          "mark",
+                          "offered",
+                          "parts"
+                        ]
+                      }
                     }
                   },
                   "required": [
-                    "types"
+                    "types",
+                    "entries"
                   ]
                 }
               }
@@ -15902,6 +16634,63 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/instance/access/scope-assignments/overview": {
+      "get": {
+        "operationId": "scope_assignments.overview",
+        "summary": "Read the declared data scope, every assignment the reader may see, and each active person's groups and effective values",
+        "tags": [
+          "Access"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "user_admin:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "user_admin:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeAssignmentsOverview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-requires": [
+          "users.manage"
+        ],
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/instance/access/workspaces": {
       "get": {
         "operationId": "workspaces.limits.list",
@@ -23522,6 +24311,194 @@
         "x-catalyst-rate-class": "read"
       }
     },
+    "/api/v1/operations/callable": {
+      "get": {
+        "operationId": "operations.list_callable",
+        "summary": "List a page of the operations a step of a Workflow may call, as far as the caller may call them",
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "for",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "workflow",
+              "type": "string",
+              "enum": [
+                "workflow"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "effect": {
+                            "type": "string",
+                            "enum": [
+                              "reading",
+                              "changing"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "connection",
+                                  "data_store",
+                                  "knowledge_base",
+                                  "workflow",
+                                  "other"
+                                ]
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "service": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          },
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "inputSchema": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "outputSchema": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "effect",
+                          "title",
+                          "source",
+                          "available"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "operations",
+                    "truncated"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/operations/runs": {
       "get": {
         "operationId": "operations.list_runs",
@@ -25679,6 +26656,38 @@
                     "operationRunId": {
                       "type": "string"
                     },
+                    "startedFrom": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "app"
+                        },
+                        "app": {
+                          "type": "string"
+                        },
+                        "appRevisionId": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "workflowRevision": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "app",
+                        "appRevisionId",
+                        "action",
+                        "workflowRevision"
+                      ]
+                    },
                     "parentRunId": {
                       "type": "string"
                     },
@@ -26063,6 +27072,38 @@
                     },
                     "operationRunId": {
                       "type": "string"
+                    },
+                    "startedFrom": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "app"
+                        },
+                        "app": {
+                          "type": "string"
+                        },
+                        "appRevisionId": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "workflowRevision": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "app",
+                        "appRevisionId",
+                        "action",
+                        "workflowRevision"
+                      ]
                     },
                     "parentRunId": {
                       "type": "string"
@@ -27122,6 +28163,9 @@
                           "definitionRevisionId": {
                             "type": "string"
                           },
+                          "workspaceId": {
+                            "type": "string"
+                          },
                           "runnable": {
                             "type": "boolean"
                           },
@@ -27155,6 +28199,12 @@
                               "type": "string"
                             },
                             "additionalProperties": {}
+                          },
+                          "triggers": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "runsAs": {
                             "type": "string"
@@ -27679,6 +28729,38 @@
                           "operationRunId": {
                             "type": "string"
                           },
+                          "startedFrom": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "app"
+                              },
+                              "app": {
+                                "type": "string"
+                              },
+                              "appRevisionId": {
+                                "type": "string"
+                              },
+                              "action": {
+                                "type": "string"
+                              },
+                              "workflowRevision": {
+                                "type": "string",
+                                "enum": [
+                                  "draft",
+                                  "published"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "app",
+                              "appRevisionId",
+                              "action",
+                              "workflowRevision"
+                            ]
+                          },
                           "parentRunId": {
                             "type": "string"
                           },
@@ -28091,6 +29173,38 @@
                     },
                     "operationRunId": {
                       "type": "string"
+                    },
+                    "startedFrom": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "app"
+                        },
+                        "app": {
+                          "type": "string"
+                        },
+                        "appRevisionId": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "workflowRevision": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "app",
+                        "appRevisionId",
+                        "action",
+                        "workflowRevision"
+                      ]
                     },
                     "parentRunId": {
                       "type": "string"
@@ -28527,6 +29641,38 @@
                     },
                     "operationRunId": {
                       "type": "string"
+                    },
+                    "startedFrom": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "app"
+                        },
+                        "app": {
+                          "type": "string"
+                        },
+                        "appRevisionId": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "workflowRevision": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "app",
+                        "appRevisionId",
+                        "action",
+                        "workflowRevision"
+                      ]
                     },
                     "parentRunId": {
                       "type": "string"
@@ -32965,6 +34111,13 @@
           "preview"
         ]
       },
+      "AgentUse": {
+        "type": "string",
+        "enum": [
+          "everyone",
+          "granted"
+        ]
+      },
       "AllowDraftHostRequest": {
         "type": "object",
         "properties": {
@@ -33759,6 +34912,166 @@
           "mode"
         ]
       },
+      "AppPublishRefusal": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "right": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "message"
+        ]
+      },
+      "AppPublishReview": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "draftRevision": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "publishedRevision": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pending": {
+                "type": "boolean"
+              },
+              "narrative": {
+                "$ref": "#/components/schemas/PublishNarrative"
+              },
+              "lastChangedBy": {
+                "type": "string"
+              },
+              "refusals": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AppPublishRefusal"
+                }
+              }
+            },
+            "required": [
+              "name",
+              "title",
+              "draftRevision",
+              "pending",
+              "refusals"
+            ]
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "draftRevision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "publishedRevision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "pending": {
+                  "type": "boolean"
+                },
+                "narrative": {
+                  "$ref": "#/components/schemas/PublishNarrative"
+                },
+                "lastChangedBy": {
+                  "type": "string"
+                },
+                "refusals": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppPublishRefusal"
+                  }
+                },
+                "actions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "lastTestRun": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "continued",
+                        "queued",
+                        "running",
+                        "waiting",
+                        "done",
+                        "failed",
+                        "cancelled",
+                        "limit_reached"
+                      ]
+                    },
+                    "at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "status",
+                    "at"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "title",
+                "draftRevision",
+                "pending",
+                "refusals",
+                "actions"
+              ]
+            }
+          },
+          "publishesTogether": {
+            "type": "boolean"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app",
+          "workflows",
+          "publishesTogether",
+          "ready"
+        ]
+      },
       "AppSessionContext": {
         "type": "object",
         "properties": {
@@ -33922,6 +35235,96 @@
         },
         "required": [
           "saved"
+        ]
+      },
+      "AppTryActionRequestInput": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false
+      },
+      "AppTryActionResult": {
+        "type": "object",
+        "properties": {
+          "operationRunId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "pending_approval",
+              "dry_run"
+            ]
+          },
+          "target": {
+            "$ref": "#/components/schemas/OperationTarget"
+          },
+          "result": {},
+          "message": {
+            "type": "string"
+          },
+          "workflowRun": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string"
+              },
+              "workflow": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "continued",
+                  "queued",
+                  "running",
+                  "waiting",
+                  "done",
+                  "failed",
+                  "cancelled",
+                  "limit_reached"
+                ]
+              },
+              "revision": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "published"
+                    ]
+                  },
+                  "number": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "runId",
+              "workflow",
+              "status",
+              "revision"
+            ]
+          }
+        },
+        "required": [
+          "status"
         ]
       },
       "AppWorkflowActionUnavailable": {
@@ -34650,6 +36053,9 @@
           "canSetAvailability": {
             "type": "boolean"
           },
+          "agentUse": {
+            "$ref": "#/components/schemas/AgentUse"
+          },
           "unavailableTools": {
             "type": "array",
             "items": {
@@ -34804,6 +36210,36 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "publishedWith": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "workflow"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "publishedRevision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "replacedRevision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "publishedRevision"
+              ]
+            }
           }
         },
         "required": [
@@ -35408,7 +36844,10 @@
           "at": {
             "$ref": "#/components/schemas/Timestamp"
           },
-          "label": {
+          "type": {
+            "type": "string"
+          },
+          "action": {
             "type": "string"
           },
           "tier": {
@@ -35458,7 +36897,7 @@
         "required": [
           "correlationId",
           "at",
-          "label",
+          "type",
           "tier",
           "outcome",
           "actor",
@@ -41370,6 +42809,28 @@
           "workspaceId": {
             "type": "string",
             "minLength": 1
+          },
+          "workflows": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "revision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "revision"
+              ]
+            }
           }
         },
         "required": [
@@ -42464,6 +43925,143 @@
           "approverNames"
         ]
       },
+      "ScopeAssignmentsOverview": {
+        "type": "object",
+        "properties": {
+          "dimensions": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,62}$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "valueType": {
+                  "type": "string",
+                  "const": "text"
+                }
+              },
+              "required": [
+                "label",
+                "valueType"
+              ]
+            }
+          },
+          "assignments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                },
+                "holderKind": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "group",
+                    "service_principal"
+                  ]
+                },
+                "holderId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "effect": {
+                  "type": "string",
+                  "enum": [
+                    "allow",
+                    "deny"
+                  ]
+                },
+                "values": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "all"
+                    },
+                    {
+                      "maxItems": 10000,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "dimension",
+                "holderKind",
+                "holderId",
+                "effect",
+                "values"
+              ]
+            }
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "displayLabel": {
+                  "type": "string"
+                },
+                "groups": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "effective": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "all"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "displayLabel",
+                "groups",
+                "effective"
+              ]
+            }
+          }
+        },
+        "required": [
+          "dimensions",
+          "assignments",
+          "people"
+        ]
+      },
       "SendAdministeredUserInvitationResponse": {
         "type": "object",
         "properties": {
@@ -42633,6 +44231,32 @@
         "required": [
           "id",
           "authSource"
+        ]
+      },
+      "SetAgentUseRequest": {
+        "type": "object",
+        "properties": {
+          "use": {
+            "$ref": "#/components/schemas/AgentUse"
+          },
+          "expectedAssetId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "use"
+        ]
+      },
+      "SetAgentUseResponse": {
+        "type": "object",
+        "properties": {
+          "use": {
+            "$ref": "#/components/schemas/AgentUse"
+          }
+        },
+        "required": [
+          "use"
         ]
       },
       "SetAssetAvailabilityRequest": {

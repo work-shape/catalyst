@@ -121,6 +121,11 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       const detail = await api.read((client) =>
         client.connections.get({ params: { name: connectionName } })
       );
+      // The secret is for the Connection as it stands before the prompt: a change of its
+      // addresses or client while the secret is typed refuses the write.
+      const { revision } = await api.read((client) =>
+        client.assets.get({ params: { kind: "connection", name: connectionName }, query: {} })
+      );
       const value = await readSecret(stdin, (text) =>
         (options.stderr ?? process.stderr.write.bind(process.stderr))(text)
       );
@@ -131,7 +136,11 @@ export async function runOperationCommand(argv: readonly string[], base: Options
           (client, idempotencyKey) =>
             client.connections.set_secret({
               params: { name: connectionName },
-              body: { value, expectedVersion: detail.secret.version ?? null },
+              body: {
+                value,
+                expectedVersion: detail.secret.version ?? null,
+                expectedRevision: revision
+              },
               idempotencyKey
             }),
           "Read the connection's secret state before trying again."

@@ -1,10 +1,12 @@
 import {
+  AGENT_USE_SETTINGS,
   APP_AUDIENCES,
   OPERATION_EFFECTS,
   WORKSPACE_USE_ASSET_KINDS,
   ASSET_ACCESS_VERBS,
   ASSET_NAME_REFUSAL_REASONS,
-  ASSET_SYNC_CHANGE_TYPES
+  ASSET_SYNC_CHANGE_TYPES,
+  operationSourceSchema
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import {
@@ -52,6 +54,9 @@ export const assetScopeSchema = z.discriminatedUnion("kind", [
 ]);
 
 const revisionNumberSchema = z.number().int().positive();
+
+/** How many Workflow drafts one publish of an App makes live with it at most. */
+export const APP_PUBLISH_WORKFLOWS_MAX = 20;
 
 /**
  * The revision a write was made against. Every write of an asset names one: the server
@@ -102,6 +107,13 @@ const isDefaultSchema = z.literal(true).optional();
  * `publishedRevision` both name the published revision, and `draftRevision` is left out.
  */
 /** Dependencies whose use is missing in one or more of the agent's workspaces. */
+/**
+ * Who uses an agent where it is available (AGENT-USE-1): `everyone` who may work there, or only
+ * those `agent.use` allows on it (`granted`).
+ */
+export const agentUseSchema = z.enum(AGENT_USE_SETTINGS);
+export type AgentUse = z.infer<typeof agentUseSchema>;
+
 export const dependencyAvailabilitySchema = z.object({
   /** The workspaces reviewed by the publisher; a later change must be read again. */
   availability: agentAvailabilitySchema.nullable().optional(),
@@ -199,11 +211,7 @@ export const publishNarrativeSchema = z.object({
 export const saveApprovalSchema = z.object({ approverNames: z.array(z.string()) });
 
 /** Facts resolved for the revision read, with unreadable sources reduced to their kind. */
-const workflowFactSourceSchema = z.object({
-  kind: z.enum(["connection", "data_store", "knowledge_base", "workflow", "other"]),
-  title: z.string().optional(),
-  service: z.string().optional()
-});
+const workflowFactSourceSchema = operationSourceSchema;
 const workflowOperationFactSchema = z.object({
   source: workflowFactSourceSchema,
   title: z.string().optional(),
@@ -276,6 +284,8 @@ export const assetSchema = z.object({
   availability: agentAvailabilitySchema.optional(),
   dependencyAvailability: dependencyAvailabilitySchema.optional(),
   canSetAvailability: z.boolean().optional(),
+  /** Only on agent reads: who uses the agent where it is available (AGENT-USE-1). */
+  agentUse: agentUseSchema.optional(),
   /** Only on agent reads. The stored config stays intact; these references cannot run. */
   unavailableTools: z.array(unavailableToolSchema).optional(),
   unavailableSkills: z.array(unavailableSkillSchema).optional(),
@@ -420,7 +430,17 @@ export const publishAssetRequestSchema = z.object({
    * never means "whatever the draft is now". Naming an earlier number is the way back.
    */
   revision: revisionNumberSchema,
-  workspaceId: workspaceIdSchema
+  workspaceId: workspaceIdSchema,
+  /**
+   * Of an App only: the Workflow drafts this publish makes live with it (DP-3), each with the
+   * revision the person reviewed, as `apps.publish_review` lists the pending ones. Each must be
+   * a Workflow the App's revision reaches, directly or as a child. They are published children
+   * first and then the App, in one transaction: a refusal of any publishes none of them.
+   */
+  workflows: z
+    .array(z.object({ name: z.string().min(1), revision: revisionNumberSchema }).strict())
+    .max(APP_PUBLISH_WORKFLOWS_MAX)
+    .optional()
 });
 
 export const discardAssetDraftRequestSchema = z.object({
@@ -434,7 +454,18 @@ export const assetPointersResponseSchema = z.object({
   draftRevision: revisionNumberSchema,
   publishedRevision: revisionNumberSchema,
   /** The revision that was published before a publish, left out on the first one. */
-  replacedRevision: revisionNumberSchema.optional()
+  replacedRevision: revisionNumberSchema.optional(),
+  /** The Workflows a publish of an App made live with it, in the order they were published. */
+  publishedWith: z
+    .array(
+      z.object({
+        kind: z.literal("workflow"),
+        name: z.string(),
+        publishedRevision: revisionNumberSchema,
+        replacedRevision: revisionNumberSchema.optional()
+      })
+    )
+    .optional()
 });
 
 /** The bound of the name of an App action or a Workflow step that "Run live once" names. */

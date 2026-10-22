@@ -10,6 +10,7 @@ import {
   holderRightsSchema,
   listPermissionGrantsQuerySchema,
   permissionGrantSchema,
+  scopeAssignmentsOverviewSchema,
   updateWorkspaceBuildLimitsRequestSchema,
   workspaceBuildLimitsSchema
 } from "../access";
@@ -38,6 +39,21 @@ export const accessOperations = {
       })
     ),
     errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "scope_assignments.overview": defineOperation({
+    id: "scope_assignments.overview",
+    method: "GET",
+    path: "/api/v1/instance/access/scope-assignments/overview",
+    summary:
+      "Read the declared data scope, every assignment the reader may see, and each active person's groups and effective values",
+    tag: "Access",
+    auth: "user",
+    scope: "user_admin:read",
+    requires: ["users.manage"],
+    effect: "reading",
+    response: json(scopeAssignmentsOverviewSchema),
+    errors: [],
     rateClass: "read"
   }),
   "scope_assignments.set": defineRegisteredOperation({

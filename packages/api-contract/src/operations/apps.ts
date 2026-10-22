@@ -13,6 +13,9 @@ import {
   appStorageWriteRequestSchema,
   appStorageWriteResponseSchema,
   appPreviewSchema,
+  appPublishReviewSchema,
+  appTryActionRequestSchema,
+  appTryActionResultSchema,
   createAppFromPageRequestSchema,
   createAppFromPageResponseSchema,
   updateAppFromPageRequestSchema
@@ -136,6 +139,40 @@ export const appOperations = {
     body: appPreviewRequestSchema,
     response: json(appPreviewSchema),
     errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  // An agent tries an action of an App's draft as the person's click would (DP-2): the same
+  // draft context and answer, without a frame. An agent tries only the conversation's subject
+  // App or an App the conversation created.
+  "apps.try_action": defineRegisteredOperation({
+    id: "apps.try_action",
+    method: "POST",
+    path: "/api/v1/apps/:app/draft-actions/:action/tries",
+    summary:
+      "Try one action of an App's draft as its button does: reads read, changes are simulated, and a workflow action starts a test run",
+    tag: "Apps",
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: appTryActionRequestSchema,
+    response: json(appTryActionResultSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT", "TIMEOUT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "apps.publish_review": defineRegisteredOperation({
+    id: "apps.publish_review",
+    method: "GET",
+    path: "/api/v1/apps/:app/publish-review",
+    summary:
+      "Read what publishing an App's draft comes to: the App and the Workflows it calls, their pending drafts, publish questions and what would refuse them",
+    tag: "Apps",
+    auth: "user",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(appPublishReviewSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN"],
     rateClass: "read"
   }),
   // POST because it carries the token of the frame's address, which never stands in a path.
