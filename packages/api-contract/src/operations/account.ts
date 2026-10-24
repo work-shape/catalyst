@@ -11,7 +11,12 @@ import {
   requestPasswordResetResponseSchema,
   updateCurrentUserRequestSchema
 } from "../identity";
-import { defineOperation, json } from "./define-operation";
+import {
+  operationSettingSchema,
+  operationSettingsSchema,
+  setOperationSettingRequestSchema
+} from "../operation-settings";
+import { defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
 export const accountOperations = {
   "me.get": defineOperation({
@@ -40,6 +45,39 @@ export const accountOperations = {
     effect: "changing",
     body: updateCurrentUserRequestSchema,
     response: json(apiUserSchema),
+    errors: [],
+    rateClass: "write"
+  }),
+  // A person's own confirmation settings (OP-6). Only the person reads and sets their own, in
+  // the interface: no personal key carries them, and no agent is given them as a tool.
+  "me.operation_settings.list": defineOperation({
+    id: "me.operation_settings.list",
+    method: "GET",
+    path: "/api/v1/me/operation-settings",
+    summary:
+      "List the signed-in user's own confirmation settings and the operations their agents called lately",
+    tag: "Account",
+    auth: "user",
+    scope: "me:read",
+    requires: [],
+    effect: "reading",
+    response: json(operationSettingsSchema),
+    errors: [],
+    rateClass: "read"
+  }),
+  "me.operation_settings.set": defineRegisteredOperation({
+    id: "me.operation_settings.set",
+    method: "PUT",
+    path: "/api/v1/me/operation-settings",
+    summary:
+      "Set the signed-in user's own value for an operation: Always allow, Ask me or Never, or none",
+    tag: "Account",
+    auth: "user",
+    scope: "me:write",
+    requires: [],
+    effect: "changing",
+    body: setOperationSettingRequestSchema,
+    response: json(operationSettingSchema),
     errors: [],
     rateClass: "write"
   }),

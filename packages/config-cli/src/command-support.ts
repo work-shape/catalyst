@@ -14,6 +14,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { ConfigApiError, createConfigApi, type ConfigApi } from "./api";
+import { refuseLinks, writeFolderFiles, sha256 } from "./asset-folder";
+import { extraHashes, fileBytes, folderHashes, type SkillFolderFile } from "./skill-folder";
 import { credentialOrigin, readStoredCredential } from "./credentials";
 import { readConfigCliEnv, type ConfigCliEnv } from "./env";
 import {
@@ -125,10 +127,11 @@ export function workingCopyKinds(
 /** How many assets are read from the instance side by side in one pull. */
 const PULL_CONCURRENCY = 8;
 
-type AssetDefinition =
+type AssetDefinition = { folderFiles?: SkillFolderFile[] } & (
   | { kind: "agent"; config: AgentConfig }
   | { kind: "skill"; config: SkillConfig }
-  | { kind: "guardrail"; config: GuardrailDefinition };
+  | { kind: "guardrail"; config: GuardrailDefinition }
+);
 
 /** One asset as the instance lists it: its place and its revision, without its content. */
 export interface RemoteAsset {
@@ -219,14 +222,39 @@ export async function fetchRemoteAsset(
   kind: AssetKindName,
   name: string
 ): Promise<FetchedAsset | undefined> {
-  const asset = await api.getAsset(kind, name);
-  return (
-    asset &&
-    readDefinition(
-      { key: `${kind}:${name}`, kind, name, id: asset.id, revision: asset.revision },
-      asset.config
-    )
-  );
+  let asset = await api.getAsset(kind, name);
+  if (asset?.kind === "skill" && skillConfigSchema.parse(asset.config).files?.length) {
+    asset = await api.getAsset(kind, name, true);
+    if (!asset || asset.filesOmitted || asset.files === undefined)
+      throw new Error(`The skill '${name}' cannot be read with all its files.`);
+    for (const file of asset.files) {
+      const bytes =
+        file.base64 === undefined
+          ? Buffer.from(file.text ?? "", "utf8")
+          : Buffer.from(file.base64, "base64");
+      if (sha256(bytes) !== file.sha256)
+        throw new Error(
+          `The file '${file.path}' did not arrive as the instance holds it (its SHA-256 differs). Pull again.`
+        );
+    }
+  }
+  return asset
+    ? {
+        ...readDefinition(
+          { key: `${kind}:${name}`, kind, name, id: asset.id, revision: asset.revision },
+          asset.config
+        ),
+        ...(asset.files === undefined
+          ? {}
+          : {
+              folderFiles: asset.files.map((file) =>
+                file.base64 === undefined
+                  ? { path: file.path, text: file.text ?? "" }
+                  : { path: file.path, base64: file.base64 }
+              )
+            })
+      }
+    : undefined;
 }
 
 /** A definition read with the schema of its kind, at the place and revision it was found. */
@@ -263,6 +291,13 @@ export function bundleOf(assets: readonly AssetDefinition[]): WorkingCopyBundle 
   return {
     agents: assets.flatMap((asset) => (asset.kind === "agent" ? [asset.config] : [])),
     skills: assets.flatMap((asset) => (asset.kind === "skill" ? [asset.config] : [])),
+    skillFiles: Object.fromEntries(
+      assets.flatMap((asset) =>
+        asset.kind === "skill" && asset.folderFiles !== undefined
+          ? [[asset.config.name, asset.folderFiles]]
+          : []
+      )
+    ),
     guardrails: assets.flatMap((asset) => (asset.kind === "guardrail" ? [asset.config] : []))
   };
 }
@@ -359,7 +394,12 @@ export function assetEntries(bundle: WorkingCopyBundle): LocalAsset[] {
       key: `skill:${skill.name}`,
       kind: "skill" as const,
       name: skill.name,
-      contents: assetContents({ kind: "skill", config: skill }),
+      folderFiles: bundle.skillFiles?.[skill.name],
+      contents: assetContents({
+        kind: "skill",
+        config: skill,
+        folderFiles: bundle.skillFiles?.[skill.name]
+      }),
       config: skill
     })),
     ...bundle.guardrails.map((guardrail) => ({
@@ -381,6 +421,7 @@ export function assetContents(asset: AssetDefinition): string {
       // Match the root serializer/parser, which trims surrounding Markdown whitespace.
       return JSON.stringify({
         ...canonicalizeSkillConfig(asset.config),
+        ...(skillExtraHashes(asset) === undefined ? {} : { files: skillExtraHashes(asset) }),
         content: asset.config.content.trim()
       });
     case "guardrail": {
@@ -390,6 +431,17 @@ export function assetContents(asset: AssetDefinition): string {
       return JSON.stringify(sortKeys(definition));
     }
   }
+}
+
+/** The stable identity of non-resource bytes, independent of transport and media type. */
+function skillExtraHashes(asset: AssetDefinition): Record<string, string> | undefined {
+  if (asset.kind !== "skill") return undefined;
+  const hashes = extraHashes(
+    asset.folderFiles === undefined
+      ? Object.fromEntries((asset.config.files ?? []).map((file) => [file.path, file.sha256]))
+      : folderHashes(asset.folderFiles)
+  );
+  return Object.keys(hashes).length ? hashes : undefined;
 }
 
 /** The value with the keys of every object in it sorted, so the order of a file is no edit. */
@@ -406,10 +458,31 @@ function sortKeys(value: unknown): unknown {
 export async function replaceSkillPackage(
   skillFilePath: string,
   skill: SkillConfig,
-  provenance: AssetProvenance
+  provenance: AssetProvenance,
+  files?: SkillFolderFile[]
 ): Promise<void> {
+  // The canonical skills parent and target must be real directories. The working-copy
+  // root may itself live below an OS alias, such as macOS /var -> /private/var.
+  await refuseLinks(dirname(dirname(skillFilePath)), false);
+  await refuseLinks(dirname(skillFilePath));
+  if (
+    files?.some((file) =>
+      [".catalyst-state.json", ".catalyst-skill.json"].includes(basename(file.path))
+    )
+  )
+    throw new Error("The instance named a reserved skill state file.");
   await replaceFolder(dirname(skillFilePath), `skill package '${skill.name}'`, (directory) =>
-    writeSkillPackage(directory, skill, provenance)
+    files === undefined
+      ? writeSkillPackage(directory, skill, provenance)
+      : writeFolderFiles(
+          directory,
+          files.map((file) => ({
+            ...file,
+            sha256: sha256(fileBytes(file)),
+            bytes: fileBytes(file).length,
+            contentType: "application/octet-stream"
+          }))
+        ).then(() => undefined)
   );
 }
 
@@ -613,7 +686,8 @@ export async function recordBaseline(
         baseline.assets[asset.key] = {
           ...written,
           canonicalFormVersion: CANONICAL_FORM_VERSION,
-          hash: assetHash(asset.contents)
+          hash: assetHash(asset.contents),
+          ...(asset.folderFiles === undefined ? {} : { files: folderHashes(asset.folderFiles) })
         };
       }
     }

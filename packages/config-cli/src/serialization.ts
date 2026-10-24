@@ -16,7 +16,7 @@ export interface AssetProvenance {
 }
 
 /** Bump when a working copy's field projection or content hashing changes. */
-export const CANONICAL_FORM_VERSION = 1;
+export const CANONICAL_FORM_VERSION = 2;
 
 const yamlDumpOptions: yaml.DumpOptions = {
   lineWidth: -1,

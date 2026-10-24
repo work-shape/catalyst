@@ -1,3 +1,4 @@
+import { extraHashes, folderHashes } from "./skill-folder";
 import { resolve } from "node:path";
 import { ASSET_RELEASE_SYNC_MAX_ITEMS } from "@work-shape/catalyst-api-contract";
 import { ConfigApiError, type ConfigApi, type SyncBatch, type SyncOutput } from "./api";
@@ -177,7 +178,18 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   }
   // Guardrails are no part of a release: each is written alone, after the batch.
   const isGuardrail = (asset: { kind: string }) => asset.kind === "guardrail";
-  const syncTouched = touched.filter((asset) => !isGuardrail(asset));
+  const fileSkills = touched.flatMap((asset) =>
+    asset.kind === "skill" &&
+    asset.folderFiles !== undefined &&
+    JSON.stringify(extraHashes(folderHashes(asset.folderFiles))) !==
+      JSON.stringify(extraHashes(baselineAssets[asset.key]?.files))
+      ? [{ ...asset, folderFiles: asset.folderFiles }]
+      : []
+  );
+  const fileSkillKeys = new Set(fileSkills.map((asset) => asset.key));
+  const syncTouched = touched.filter(
+    (asset) => !isGuardrail(asset) && !fileSkillKeys.has(asset.key)
+  );
   const syncDeletes = deleteAssets.filter((asset) => !isGuardrail(asset));
   const items: SyncBatch["items"] = [
     ...syncTouched.map((asset) => {
@@ -232,6 +244,39 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     }))
   )
     return 1;
+  for (const asset of fileSkills) {
+    const current = listing.get(asset.key);
+    const base = baseOf(asset.key);
+    const revision =
+      current?.revision ??
+      (base === undefined
+        ? undefined
+        : (await api.getLatestRevision("skill", asset.name))?.revision);
+    if ((revision ?? null) !== (base?.revision ?? null)) {
+      writeError(
+        options,
+        formatPushConflict(
+          [{ kind: "skill", name: asset.name, currentRevision: current?.revision ?? null }],
+          false,
+          options
+        )
+      );
+      return 1;
+    }
+    const checked = await api.read((client) =>
+      client.assets.validate({
+        params: { kind: "skill" },
+        body: { config: { name: asset.name }, files: asset.folderFiles, ...batchScope(instance) }
+      })
+    );
+    if (!checked.valid) {
+      writeError(
+        options,
+        `Validation failed for ${asset.key}: ${checked.issues.map((issue) => `${issue.path?.join(".") ?? ""}: ${issue.message}`).join("; ")}; nothing was applied.`
+      );
+      return 1;
+    }
+  }
   /** The agents this push wrote as drafts, which `--publish` makes live. */
   const drafted: PushedDraft[] = [];
   if (items.length > 0 || changesDefault) {
@@ -286,7 +331,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       pushed,
       revisions,
       false,
-      changesDefault ? (bundle.defaultAgentName ?? null) : undefined,
+      changesDefault ? (bundle.defaultAgentName ?? null) : baseline.defaultAgentName,
       Object.fromEntries(
         result.items.flatMap((item) =>
           item.status === "applied" && item.type === "delete"
@@ -313,6 +358,73 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       );
     }
   }
+  let skillsWritten = false;
+  for (const asset of fileSkills) {
+    const base = baseOf(asset.key);
+    try {
+      const outcome = await api.change(
+        (client, idempotencyKey) =>
+          client.assets.put({
+            params: { kind: "skill", name: asset.name },
+            body: {
+              files: asset.folderFiles,
+              expectedRevision: base?.revision ?? null,
+              ...batchScope(instance)
+            },
+            idempotencyKey
+          }),
+        "It may have been written: run 'catalyst config diff' before pushing again."
+      );
+      if (outcome.status === "pending_approval") {
+        writeError(
+          options,
+          waitingGuardrail(
+            asset.key,
+            outcome.run.id,
+            skillsWritten || items.length > 0 || changesDefault
+          )
+        );
+        return 1;
+      }
+      const id = listing.get(asset.key)?.id ?? (await api.getAsset("skill", asset.name))?.id;
+      if (id !== undefined)
+        await recordBaseline(
+          workingDir,
+          instance.key,
+          outcome.output.version ?? baseline.lastPulledVersion,
+          bundleOf([asset]),
+          { [asset.key]: { id, revision: outcome.output.revision } },
+          false,
+          baseline.defaultAgentName
+        );
+      skillsWritten = true;
+      writeOutput(options, `Wrote ${asset.key} at revision ${outcome.output.revision}.`);
+      for (const warning of outcome.output.warnings ?? [])
+        writeOutput(options, `Warning: ${warning.message}`);
+    } catch (error) {
+      if (!(error instanceof ConfigApiError)) throw error;
+      const conflicts =
+        error.code === "REVISION_CONFLICT" || error.code === "CONFLICT"
+          ? readConflicts(error.details)
+          : [];
+      if (conflicts.length)
+        writeError(
+          options,
+          formatPushConflict(
+            conflicts,
+            false,
+            options,
+            skillsWritten || items.length > 0 || changesDefault
+          )
+        );
+      else
+        writeError(
+          options,
+          `${asset.key}: ${error.code ?? "refused"}: ${error.message}. ${skillsWritten || items.length > 0 || changesDefault ? "What is reported above was applied; nothing after it." : "Nothing was applied."}`
+        );
+      return 1;
+    }
+  }
   const guardrailsWritten = await writeGuardrails(api, {
     workingDir,
     instanceKey: instance.key,
@@ -321,7 +433,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     deletes: deleteAssets.filter(isGuardrail),
     baseOf,
     listing,
-    afterSync: items.length > 0 || changesDefault,
+    afterSync: items.length > 0 || changesDefault || skillsWritten,
     ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
     options
   });

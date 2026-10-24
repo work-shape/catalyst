@@ -21,7 +21,8 @@ export const API_ERROR_MEANINGS: Record<z.infer<typeof appErrorCodeSchema>, stri
     "The caller sent too many requests of this operation's rate class. `details.retryAfterSeconds` and the `Retry-After` header give the seconds to wait. The numbers are the instance's, set under `rateLimits` in its release config.",
   POLICY_DENIED:
     "The instance's policy does not allow this operation from here. `details.operation` names it. `details.reason` is `approval_unavailable` where the policy asks for another person's approval and the call cannot wait for one; `details.guardrailId` then names the guardrail that asked for it, where one did. It is `workflow_deleted` where a step of a run of a published Workflow needs the confirmation its publish gave, and the Workflow was deleted since. It is `approval_stale` where a call that waited can no longer be approved because what it is about changed or a newer call replaced it. It is `confirmation_required` where a subagent made a call that needs a person's confirmation or approval: a subagent never waits for one, and the agent that started it makes the call instead.",
-  GUARDRAIL_BLOCKED: "A guardrail refused the call. `details.guardrailId` names it.",
+  GUARDRAIL_BLOCKED:
+    "A guardrail refused the call. `details.guardrailId` names it. `details.reason` is `check_unavailable` where a check could not answer, by an error or a timeout; `details.guardrailId` then names the event that was checked.",
   DECLINED:
     "The person asked to approve the call declined it. `details.by` names them, `details.comment` holds their reason where they gave one.",
   IDEMPOTENCY_KEY_REUSED:

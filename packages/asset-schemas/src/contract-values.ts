@@ -121,11 +121,11 @@ export const PROVIDER_PORTS = ["models", "mail", "objectStorage", "sandbox", "se
 export type ProviderPort = (typeof PROVIDER_PORTS)[number];
 
 /**
- * Where a provider processes the data an instance sends it. Product-owned and closed: a vendor's
- * own region name is a separate field of its adapter, such as `bucketRegion`.
+ * Where a provider processes the data an instance sends it. Only `eu` admits personal
+ * Connections; other short strings describe routes outside that boundary.
  */
 export const PROVIDER_REGIONS = ["eu", "global"] as const;
-export type ProviderRegion = (typeof PROVIDER_REGIONS)[number];
+export type ProviderRegion = string;
 
 /**
  * Why a check failed. Product-owned and closed: it is all of a failure that reaches a log, the
@@ -564,6 +564,10 @@ export const WAITING_OPERATION_RUN_STATUSES = [
 ] as const satisfies readonly OperationRunStatus[];
 
 export const OPERATION_CONFIRMATION_DECISIONS = ["confirm", "decline"] as const;
+/** A person's own value for an operation (OP-6): Always allow, Ask me, Never. */
+export const PERSON_POLICY_SETTINGS = ["always_allow", "ask", "never"] as const;
+/** How far a changing operation reaches. One that declares none counts as `irreversible`. */
+export const OPERATION_CHANGE_CLASSES = ["reversible", "irreversible", "outward"] as const;
 export const TOOL_DECISION_MODES = ["confirm", "approval"] as const;
 export const TOOL_DECISION_OUTCOMES = ["confirmed", "declined", "expired", "cancelled"] as const;
 
@@ -655,6 +659,10 @@ export const CONNECTOR_TEST_STATUSES = [
 ] as const;
 export type ConnectorTestStatus = (typeof CONNECTOR_TEST_STATUSES)[number];
 
+/** Shared account, or the acting person's own account. */
+export const CONNECTION_CREDENTIAL_MODES = ["shared", "user"] as const;
+export type ConnectionCredentialMode = (typeof CONNECTION_CREDENTIAL_MODES)[number];
+
 /**
  * The state of a Connection's sign-in. `connected`: calls use it. `needs_reconnect`: the
  * outside system refused it and a new sign-in is needed. `revoked`: someone disconnected it,
@@ -662,6 +670,20 @@ export type ConnectorTestStatus = (typeof CONNECTOR_TEST_STATUSES)[number];
  */
 export const CONNECTION_BINDING_STATES = ["connected", "needs_reconnect", "revoked"] as const;
 export type ConnectionBindingState = (typeof CONNECTION_BINDING_STATES)[number];
+
+/** What a chat Connection proposal's card needs to start setup or sign-in. */
+export const CONNECTION_PROPOSAL_STATES = ["ready", "needs_setup"] as const;
+export type ConnectionProposalState = (typeof CONNECTION_PROPOSAL_STATES)[number];
+export const CONNECTION_PROPOSAL_BINDING_STATES = [
+  "connected",
+  "needs_reconnect",
+  "not_connected"
+] as const;
+export type ConnectionProposalBindingState = (typeof CONNECTION_PROPOSAL_BINDING_STATES)[number];
+
+/** What a refused call of a personal Connection needs of its person: a first or a new sign-in. */
+export const CONNECTION_SIGN_IN_NEEDS = ["not_connected", "needs_reconnect"] as const;
+export type ConnectionSignInNeed = (typeof CONNECTION_SIGN_IN_NEEDS)[number];
 
 /**
  * How a Connection that signs in with OAuth has its client: registered by the platform

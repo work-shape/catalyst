@@ -80,7 +80,15 @@ export const pendingApprovalRequestCountSchema = z.object({
   })
 });
 export const decideApprovalRequestSchema = z.discriminatedUnion("decision", [
-  z.object({ decision: z.literal("approve"), comment: z.string().optional() }),
+  z.object({
+    decision: z.literal("approve"),
+    comment: z.string().optional(),
+    /**
+     * On a confirmation in the person's own Inbox: Allow, and set "Always allow" for the call's
+     * operation (OP-6). Refused where the confirmation did not offer it.
+     */
+    alwaysAllow: z.literal(true).optional()
+  }),
   z.object({ decision: z.literal("reject"), comment: z.string().optional() }),
   z.object({ decision: z.literal("request_changes"), comment: z.string().trim().min(1) })
 ]);

@@ -5,7 +5,7 @@ import {
   CONFIG_ASSET_KINDS,
   MODEL_USAGE_TIERS,
   OPERATION_EFFECTS,
-  PROVIDER_REGIONS,
+  providerRegionSchema,
   REASONING_EFFORTS,
   THEME_MODE_PREFERENCES,
   TOOL_GROUPS,
@@ -33,7 +33,7 @@ export const userModelPreferenceSchema = z.object({
 });
 export const modelUsageTierSchema = z.enum(MODEL_USAGE_TIERS);
 /** Where a model's provider processes data. Absent for a provider inside the instance. */
-export const modelRegionSchema = z.enum(PROVIDER_REGIONS);
+export const modelRegionSchema = providerRegionSchema;
 
 export const agentEditableFieldSchema = z.enum(AGENT_EDITABLE_FIELDS);
 

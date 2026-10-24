@@ -40,7 +40,10 @@ A put of an agent that exists writes its one shared draft, and nothing is live u
 'catalyst agent publish <name> --revision <n>' names that draft revision. A put over a pending
 draft names the draft revision it read with --if-draft-revision <n>. An instance's own
 agent is published without a question unless a guardrail asks for an approval; a workspace's
-agent asks first. A service principal's key publishes no agent. 'catalyst agent discard
+agent asks first and then waits in the Inbox for a holder of agent.approve, and its first
+publish offers it in its workspace. A workspace's agent made by someone without agent.approve
+starts offered nowhere; 'catalyst agent publish <name> --revision 1' publishes it as made,
+without a draft. A service principal's key publishes no agent. 'catalyst agent discard
 <name> --revision <n>' drops the draft.
 Exit codes: 0 done, 1 refused or failed, 2 usage, 3 waits for an approval (nothing changed yet).
 `;

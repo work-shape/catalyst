@@ -12,6 +12,7 @@ import {
   ARTIFACT_PREVIEW_IMAGE_MIME_TYPES,
   ATTACHMENT_CREATE_OUTCOMES,
   CHAT_MESSAGE_ROLES,
+  CONNECTION_SIGN_IN_NEEDS,
   CONVERSATION_ATTACHMENT_STATUSES,
   CONVERSATION_VISIBILITIES,
   DECIDED_APPROVAL_REQUEST_STATUSES,
@@ -40,6 +41,12 @@ export const conversationSubjectSchema = z.object({
   name: z.string().min(1).max(200)
 });
 
+/**
+ * Where a conversation's first saves create an agent, skill or guardrail: `instance` for one
+ * started under Studio's scope "Instance". Set when the conversation is created, never changed.
+ */
+export const conversationCreationTargetSchema = z.literal("instance");
+
 export const conversationSchema = z.object({
   id: z.string(),
   clientInstanceId: z.string(),
@@ -54,7 +61,9 @@ export const conversationSchema = z.object({
   retainedUntil: timestampSchema,
   deletedAt: timestampSchema.optional(),
   /** The asset the conversation is about. Missing on a conversation about none. */
-  subject: conversationSubjectSchema.optional()
+  subject: conversationSubjectSchema.optional(),
+  /** `instance`: its first saves create agents, skills and guardrails for the instance. */
+  creationTarget: conversationCreationTargetSchema.optional()
 });
 
 export const moveConversationRequestSchema = z.object({
@@ -415,7 +424,13 @@ export const createConversationRequestSchema = z.object({
    * The asset the conversation is about. The caller holds the read right on it; a subject the
    * caller may not read and one that does not exist are refused alike.
    */
-  subject: conversationSubjectSchema.optional()
+  subject: conversationSubjectSchema.optional(),
+  /**
+   * `instance` for a conversation started under Studio's scope "Instance": its first saves
+   * create agents, skills and guardrails for the instance, where the person may create them
+   * there, and are refused where not. Set only here; nothing changes it later.
+   */
+  creationTarget: conversationCreationTargetSchema.optional()
 });
 
 /**
@@ -543,6 +558,7 @@ export const agentRuntimeEventSchema = z.discriminatedUnion("type", [
     targetTitle: z.string().optional(),
     inputPreview: z.unknown(),
     simulation: z.unknown().optional(),
+    alwaysAllow: z.literal(true).optional(),
     expiresAt: timestampSchema
   }),
   z.object({
@@ -645,6 +661,18 @@ export const activeRunSummarySchema = z.object({
   lastSequence: z.number().int().nonnegative()
 });
 
+/** The person's own sign-in a failed call of a personal Connection needs (CHAT-CONN-2b). */
+const toolConnectionSignInRequestSchema = z.object({
+  connection: z.object({
+    name: z.string(),
+    title: z.string(),
+    service: z.string().optional(),
+    catalogue: z.object({ entry: z.string(), part: z.string() }).optional()
+  }),
+  state: z.enum(CONNECTION_SIGN_IN_NEEDS),
+  agentName: z.string().optional()
+});
+
 /** On a `run_agent` call that started its subagent: the subagent, for its card. */
 const toolCallSubagentSchema = z.object({
   runId: z.string(),
@@ -662,6 +690,8 @@ const toolCallDecisionSchema = z.object({
   inputPreview: z.unknown(),
   /** What the operation's own simulation answered, such as the mail `mail.send` would send. */
   simulation: z.unknown().optional(),
+  /** The person may answer "Always allow": the admin permits it and nothing else holds the call. */
+  alwaysAllow: z.literal(true).optional(),
   expiresAt: timestampSchema
 });
 
@@ -694,6 +724,7 @@ export const agentRunProjectionPartSchema = z.discriminatedUnion("type", [
     output: z.unknown().optional(),
     errorText: z.string().optional(),
     errorReason: z.literal("subject_conversation_shared").optional(),
+    connect: toolConnectionSignInRequestSchema.optional(),
     decision: toolCallDecisionSchema.optional(),
     subagent: toolCallSubagentSchema.optional()
   })
@@ -730,6 +761,7 @@ export const agentRunProjectionSchema = z.object({
       output: z.unknown().optional(),
       errorText: z.string().optional(),
       errorReason: z.literal("subject_conversation_shared").optional(),
+      connect: toolConnectionSignInRequestSchema.optional(),
       decision: toolCallDecisionSchema.optional(),
       subagent: toolCallSubagentSchema.optional()
     })
@@ -862,6 +894,8 @@ export const conversationUserStateSchema = z.object({
 });
 
 export const conversationThreadSnapshotSchema = z.object({
+  /** Effective root mark. Missing means unknown and must disable scripted file previews. */
+  personalData: z.boolean().optional(),
   followUps: z.array(conversationFollowUpSchema).optional(),
   conversation: conversationSchema,
   messages: z.array(messageSchema),

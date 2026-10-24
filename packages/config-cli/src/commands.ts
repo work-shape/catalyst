@@ -1,7 +1,8 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { ConfigApiError } from "./api";
-import { createUnifiedDiff } from "./diff";
+import { createSkillFileDiff, createUnifiedDiff } from "./diff";
+import { readSkillFolder, extraHashes, folderHashes } from "./skill-folder";
 import { serializeGuardrailFiles } from "./guardrail-files";
 import {
   CANONICAL_FORM_VERSION,
@@ -131,7 +132,7 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
       // What this working copy pushed as an agent's draft is not its live revision.
       base.draftPushed !== true
     ) {
-      return readDefinition(remote, mine.config);
+      return { ...readDefinition(remote, mine.config), folderFiles: mine.folderFiles };
     }
     // Deleted since it was listed: it is not on the instance.
     return fetchRemoteAsset(api, remote.kind, remote.name);
@@ -190,7 +191,8 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
     await writeFile(path, serializeAgentYaml(agent, provenance), "utf8");
   }
   for (const { skill, path } of skillTargets) {
-    await replaceSkillPackage(path, skill, provenance);
+    await replaceSkillPackage(path, skill, provenance, selected.skillFiles?.[skill.name]);
+    (selected.skillFiles ??= {})[skill.name] = (await readSkillFolder(dirname(path))).files;
   }
   for (const { guardrail, path } of guardrailTargets) {
     await replaceGuardrailFolder(path, guardrail);
@@ -394,6 +396,15 @@ export async function diffConfig(options: ConfigCommandOptions): Promise<number>
       const fetched = remoteAsset
         ? await fetchRemoteAsset(api, remoteAsset.kind, remoteAsset.name)
         : undefined;
+      if (localAsset?.kind === "skill" || fetched?.kind === "skill") {
+        output.push(
+          ...createSkillFileDiff(
+            localAsset?.name ?? fetched?.name ?? "",
+            fetched?.folderFiles ?? [],
+            localAsset?.folderFiles ?? []
+          )
+        );
+      }
       const localFiles = canonicalBundleFiles(bundleOf(localAsset ? [localAsset] : []));
       const remoteFiles = canonicalBundleFiles(bundleOf(fetched ? [fetched] : []));
       for (const path of [...new Set([...localFiles.keys(), ...remoteFiles.keys()])].sort()) {
@@ -435,7 +446,14 @@ export async function validateConfig(options: ConfigCommandOptions): Promise<num
   // saw of it where there was one. Guardrails are no part of the batch: a push writes each
   // alone, and the instance checks it then.
   const items = assetEntries(bundle)
-    .filter((asset) => asset.kind !== "guardrail")
+    .filter(
+      (asset) =>
+        asset.kind !== "guardrail" &&
+        !(
+          asset.kind === "skill" &&
+          Object.keys(extraHashes(folderHashes(asset.folderFiles ?? []))).length
+        )
+    )
     .map((asset) => ({
       type: "put" as const,
       kind: asset.kind,
@@ -448,6 +466,25 @@ export async function validateConfig(options: ConfigCommandOptions): Promise<num
       ? ""
       : ` ${formatCount(guardrails, "guardrail")} ${guardrails === 1 ? "is" : "are"} checked by the instance when a push writes ${guardrails === 1 ? "it" : "them"}.`;
   try {
+    for (const skill of bundle.skills) {
+      const files = bundle.skillFiles?.[skill.name];
+      if (!files || !Object.keys(extraHashes(folderHashes(files))).length) continue;
+      const checked = await api.read((client) =>
+        client.assets.validate({
+          params: { kind: "skill" },
+          body: { config: { name: skill.name }, files, ...batchScope(instance) }
+        })
+      );
+      if (!checked.valid) {
+        writeError(
+          options,
+          `Validation failed for skill:${skill.name}: ${checked.issues.map((issue) => `${issue.path?.join(".") ?? ""}: ${issue.message}`).join("; ")}`
+        );
+        return 1;
+      }
+      for (const warning of checked.warnings ?? [])
+        writeOutput(options, `Warning: ${warning.message}`);
+    }
     if (items.length > 0 || bundle.defaultAgentName !== undefined) {
       const checked = await checkSyncOnThisRelease(api, {
         ...batchScope(instance),

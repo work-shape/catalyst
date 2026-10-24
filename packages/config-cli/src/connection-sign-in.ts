@@ -33,6 +33,11 @@ export async function connectConnection(
   name: string,
   options: SignInOptions & { openBrowser: boolean }
 ): Promise<number> {
+  const detail = await readDetail(api, name);
+  if (!detail.sharedCredential) {
+    writeError(options, "personal_connect_in_browser: connect under Settings > You > Verbindungen");
+    return 1;
+  }
   const start = await api.change(
     (client, idempotencyKey) =>
       client.connections.oauth_start({ params: { name }, idempotencyKey }),

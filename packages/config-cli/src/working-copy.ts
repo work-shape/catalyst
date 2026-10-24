@@ -6,12 +6,12 @@ import {
   agentConfigSchema,
   loadYamlData,
   parseSkillMarkdown,
-  skillResourceMediaTypeForPath,
   skillConfigSchema,
   type AgentConfig,
   type SkillConfig,
   type SkillResourceConfig
 } from "@work-shape/catalyst-asset-schemas";
+import { readSkillFolder, type SkillFolderFile } from "./skill-folder";
 import { savedInstanceOrigins } from "./credentials";
 import { type ConfigCliEnv, readConfigCliEnv } from "./env";
 import { GUARDRAIL_FILE, readGuardrailFolder, type GuardrailDefinition } from "./guardrail-files";
@@ -55,6 +55,8 @@ export interface AssetBaseline {
   /** For an agent: its live revision. A draft never moves it. */
   revision: number;
   hash: string;
+  /** SHA-256 of every file in a skill folder. */
+  files?: Record<string, string>;
   /**
    * For an agent: the draft revision the last pull or push saw, or null where it saw none. A
    * push names it, so it never writes over a draft somebody changed since. Left out by a CLI
@@ -93,6 +95,7 @@ export interface WorkingCopyBundle {
   defaultAgentName?: string;
   agents: AgentConfig[];
   skills: SkillConfig[];
+  skillFiles?: Record<string, SkillFolderFile[]>;
   guardrails: GuardrailDefinition[];
 }
 
@@ -257,6 +260,11 @@ export async function readStateFile(path: string): Promise<CatalystState> {
               Number.isInteger(asset.draftRevision) &&
               asset.draftRevision >= 1)
           ) ||
+          (asset.files !== undefined &&
+            (!isRecord(asset.files) ||
+              Object.values(asset.files).some(
+                (hash) => typeof hash !== "string" || !/^[a-f0-9]{64}$/u.test(hash)
+              ))) ||
           (asset.draftPushed !== undefined && asset.draftPushed !== true)
         ) {
           throw new Error(`${path} has an invalid asset baseline for '${key}'`);
@@ -268,6 +276,7 @@ export async function readStateFile(path: string): Promise<CatalystState> {
           ...(asset.id === undefined ? {} : { id: asset.id }),
           revision: asset.revision,
           hash: asset.hash,
+          ...(asset.files === undefined ? {} : { files: readBaselineHashes(asset.files) }),
           ...(asset.draftRevision === undefined ? {} : { draftRevision: asset.draftRevision }),
           ...(asset.draftPushed === true ? { draftPushed: true as const } : {})
         };
@@ -308,6 +317,16 @@ export async function readStateFile(path: string): Promise<CatalystState> {
   return { instances };
 }
 
+function readBaselineHashes(input: unknown): Record<string, string> {
+  if (!isRecord(input)) throw new Error("Invalid skill file hashes");
+  return Object.fromEntries(
+    Object.entries(input).map(([path, hash]) => {
+      if (typeof hash !== "string") throw new Error(`Invalid skill file hash: ${path}`);
+      return [path, hash];
+    })
+  );
+}
+
 export async function writeStateFile(path: string, state: CatalystState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temporaryPath = `${path}.${process.pid}.tmp`;
@@ -319,13 +338,14 @@ export async function readWorkingCopy(
   workingDir: string,
   manifest: CatalystManifest
 ): Promise<WorkingCopyBundle> {
-  const [agentFiles, skillFiles, guardrailFiles] = await Promise.all([
+  const [agentFiles, skillPaths, guardrailFiles] = await Promise.all([
     matchManifestFiles(workingDir, manifest.agents),
     matchManifestFiles(workingDir, manifest.skills),
     matchManifestFiles(workingDir, manifest.guardrails ?? [])
   ]);
   const agents: AgentConfig[] = [];
   const skills: SkillConfig[] = [];
+  const skillFiles: Record<string, SkillFolderFile[]> = {};
   const guardrails: GuardrailDefinition[] = [];
   const issues: WorkingCopyIssue[] = [];
 
@@ -344,12 +364,12 @@ export async function readWorkingCopy(
     }
   }
 
-  for (const path of skillFiles) {
+  for (const path of skillPaths) {
     const file = toRelativePath(workingDir, path);
     try {
       const contents = await readFile(path, "utf8");
       const parsedMarkdown = parseSkillMarkdown(contents, file, toPosixPath(path));
-      const resources = await readSkillResources(path);
+      const { resources, files } = await readSkillFolder(dirname(path));
       const parsed = skillConfigSchema.safeParse(
         isRecord(parsedMarkdown)
           ? { ...parsedMarkdown, ...(resources.length ? { resources } : {}) }
@@ -357,6 +377,7 @@ export async function readWorkingCopy(
       );
       if (parsed.success) {
         skills.push(parsed.data);
+        skillFiles[parsed.data.name] = files;
       } else {
         issues.push(...schemaIssues(file, parsed.error.issues));
       }
@@ -386,6 +407,7 @@ export async function readWorkingCopy(
       : { defaultAgentName: manifest.defaultAgentName }),
     agents,
     skills,
+    skillFiles,
     guardrails
   };
 }
@@ -432,34 +454,7 @@ export function guardrailAssetPath(workingDir: string, name: string): string {
 }
 
 export async function readSkillResources(skillFilePath: string): Promise<SkillResourceConfig[]> {
-  const skillDirectory = dirname(skillFilePath);
-  const files: string[] = [];
-  await walkFiles(skillDirectory, skillDirectory, files);
-  const resources: SkillResourceConfig[] = [];
-  for (const path of files.sort((left, right) => left.localeCompare(right))) {
-    if (path === skillFilePath || path === resolve(skillDirectory, ".catalyst-skill.json")) {
-      continue;
-    }
-    const resourcePath = toRelativePath(skillDirectory, path);
-    const mediaType = skillResourceMediaTypeForPath(resourcePath);
-    if (!mediaType) {
-      throw new Error(
-        `Unsupported skill resource '${resourcePath}'; supported extensions are .md, .txt, .json, .yaml, and .yml`
-      );
-    }
-    const bytes = await readFile(path);
-    let content: string;
-    try {
-      content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    } catch {
-      throw new Error(`Skill resource '${resourcePath}' is not valid UTF-8 text`);
-    }
-    if (content.includes("\0")) {
-      throw new Error(`Skill resource '${resourcePath}' contains binary data`);
-    }
-    resources.push({ path: resourcePath, mediaType, content });
-  }
-  return resources;
+  return (await readSkillFolder(dirname(skillFilePath))).resources;
 }
 
 export async function removeStaleManifestAssets(

@@ -139,10 +139,13 @@ export async function createConfigApi(options: ConfigApiOptions) {
       return assets;
     },
     /** One asset with its content, or nothing where the instance holds none of that name. */
-    getAsset: async (kind: string, name: string): Promise<Asset | undefined> => {
+    getAsset: async (kind: string, name: string, files = false): Promise<Asset | undefined> => {
       try {
         return await read(sleep, () =>
-          client.assets.get({ params: { kind, name }, query: { ...scope } })
+          client.assets.get({
+            params: { kind, name },
+            query: { ...scope, ...(files ? { files: "true" as const } : {}) }
+          })
         );
       } catch (error) {
         if (isMissingAsset(error)) return undefined;

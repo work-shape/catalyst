@@ -14,6 +14,7 @@ export * from "./identity";
 export * from "./infrastructure";
 export * from "./jobs";
 export * from "./openapi-document";
+export * from "./operation-settings";
 export * from "./operation-runs";
 export * from "./pages";
 export * from "./personal-api-keys";

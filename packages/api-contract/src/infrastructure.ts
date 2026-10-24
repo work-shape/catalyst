@@ -3,7 +3,7 @@ import {
   INFRASTRUCTURE_WITHHELD_FIELDS,
   PROVIDER_CHECK_ERROR_CLASSES,
   PROVIDER_PORTS,
-  PROVIDER_REGIONS
+  providerRegionSchema
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { timestampSchema } from "./shared";
@@ -68,9 +68,9 @@ export const infrastructureProviderSchema = z.object({
   /** The adapter that serves it, such as `openai-compatible`, `s3` or `postgres`. */
   type: z.string(),
   origin: infrastructureOriginSchema,
-  /** True when data leaves the instance to reach it. It then states a region. */
+  /** True when data leaves the instance to reach it. Models may leave their region unset. */
   external: z.boolean(),
-  region: z.enum(PROVIDER_REGIONS).optional(),
+  region: providerRegionSchema.optional(),
   /** The host the instance calls, without a path, a query or credentials. */
   endpointHost: z.string().optional(),
   bucket: z.string().optional(),

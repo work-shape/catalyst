@@ -6,6 +6,8 @@ import {
   ASSET_ACCESS_VERBS,
   ASSET_NAME_REFUSAL_REASONS,
   ASSET_SYNC_CHANGE_TYPES,
+  WORKFLOW_STEP_SOURCE_KINDS,
+  workflowMailSenderFactSchema,
   operationSourceSchema
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
@@ -211,9 +213,13 @@ export const publishNarrativeSchema = z.object({
 export const saveApprovalSchema = z.object({ approverNames: z.array(z.string()) });
 
 /** Facts resolved for the revision read, with unreadable sources reduced to their kind. */
-const workflowFactSourceSchema = operationSourceSchema;
+const workflowFactSourceSchema = operationSourceSchema.extend({
+  kind: z.enum(WORKFLOW_STEP_SOURCE_KINDS)
+});
 const workflowOperationFactSchema = z.object({
   source: workflowFactSourceSchema,
+  /** The system sender and recipient policy of a mail.send step, while outbound mail is on. */
+  mailSender: workflowMailSenderFactSchema.optional(),
   title: z.string().optional(),
   effect: z.enum(OPERATION_EFFECTS).optional(),
   description: z.string().optional(),
@@ -243,6 +249,13 @@ export const assetSchema = z.object({
   /** The active account's display label for the Workflow revision returned by this read. */
   runsAs: z.string().optional(),
   stepFacts: z.record(z.string(), workflowStepFactSchema).optional(),
+  /**
+   * Workflows with a step that calls this Workflow, once each, from their published revision
+   * or a draft the reader may see. Absent on other asset kinds. No unreadable caller is named.
+   */
+  workflowCallers: z
+    .array(z.object({ name: z.string(), title: z.string(), scope: assetScopeSchema }))
+    .optional(),
   /** Unrecorded draft review lines naming its audience and shared source accounts. */
   publishQuestion: z.array(z.string()).optional(),
   /**
@@ -554,6 +567,8 @@ export const setAssetAvailabilityRequestSchema = z.object({
 });
 
 export const validateAssetRequestSchema = z.object({
+  /** With files, config supplies the name; the whole folder supplies the definition. */
+  files: z.array(assetFileInputSchema).min(1).max(FILE_SET_MAX_FILES).optional(),
   /** Preview dependency use in these workspaces without creating the agent. */
   availability: agentAvailabilitySchema.optional(),
   config: assetDefinitionSchema,

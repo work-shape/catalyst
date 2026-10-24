@@ -18,7 +18,7 @@ import type { Verb } from "./types";
 export const publishVerb: Verb = {
   usage: "publish <name> --revision <n> [--yes] [--confirm <blocked>]",
   summary:
-    "Make one revision the one its users are served (assets.publish). A guardrail shows its dry run first; an App or a Workflow asks you first",
+    "Make one revision the one its users are served (assets.publish). A guardrail shows its dry run first; an App, a Workflow or a workspace's agent asks you first",
   named: true,
   options: {
     revision: { type: "string" },
@@ -46,9 +46,9 @@ export const publishVerb: Verb = {
       let unattended = false;
       // A workspace's agent keeps the question of its publish; the instance's own does not.
       const agent = session.kind.kind === AGENT_KIND;
-      const asks =
-        session.kind.actions.approve !== undefined ||
-        (agent && session.scope.workspaceId !== undefined);
+      const asks = agent
+        ? session.scope.workspaceId !== undefined
+        : session.kind.actions.approve !== undefined;
       if (asks) {
         const details =
           session.kind.kind === "workflow" && !values.yes && session.options.prompt
@@ -110,13 +110,12 @@ export const publishVerb: Verb = {
         session,
         outcome,
         (output) => [
-          output.draftRevision !== undefined && agent
+          // An agent's first version without a draft replaces nothing: it is offered as made.
+          output.replacedRevision !== undefined && agent
             ? `Published draft revision ${output.draftRevision} of agent '${name}' as live revision ${output.publishedRevision}${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
             : `Published revision ${output.publishedRevision} of ${session.kind.kind} '${name}'${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
         ],
-        session.kind.actions.approve === undefined
-          ? undefined
-          : "If you are an instance approver, you can approve it in the Inbox."
+        asks ? "If you are an instance approver, you can approve it in the Inbox." : undefined
       );
     };
   }

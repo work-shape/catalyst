@@ -1,3 +1,5 @@
+import { fileBytes, resourceMediaType, utf8Text, type SkillFolderFile } from "./skill-folder";
+import { sha256 } from "./asset-folder";
 export interface DiffFile {
   path: string;
   contents?: string;
@@ -120,4 +122,50 @@ function consumedNew(lines: DiffLine[]): number {
 
 function linePrefix(line: DiffLine): " " | "-" | "+" {
   return line.kind === "context" ? " " : line.kind === "delete" ? "-" : "+";
+}
+
+/** Resource text already appears in the canonical config diff. Other files compare by hash. */
+export function createSkillFileDiff(
+  name: string,
+  oldFiles: SkillFolderFile[],
+  newFiles: SkillFolderFile[]
+): string[] {
+  const before = new Map(
+    oldFiles
+      .filter((file) => file.path !== "SKILL.md" && !resourceMediaType(file.path))
+      .map((file) => [file.path, fileBytes(file)])
+  );
+  const after = new Map(
+    newFiles
+      .filter((file) => file.path !== "SKILL.md" && !resourceMediaType(file.path))
+      .map((file) => [file.path, fileBytes(file)])
+  );
+  const output: string[] = [];
+  for (const path of [...new Set([...before.keys(), ...after.keys()])].sort()) {
+    const oldBytes = before.get(path),
+      newBytes = after.get(path);
+    if (oldBytes && newBytes && sha256(oldBytes) === sha256(newBytes)) continue;
+    const oldText = oldBytes === undefined ? undefined : utf8Text(oldBytes);
+    const newText = newBytes === undefined ? undefined : utf8Text(newBytes);
+    const fullPath = `skills/${name}/${path}`;
+    if (
+      (oldBytes === undefined || oldText !== undefined) &&
+      (newBytes === undefined || newText !== undefined)
+    ) {
+      output.push(
+        createUnifiedDiff(
+          { path: fullPath, contents: oldText },
+          { path: fullPath, contents: newText }
+        ).trimEnd()
+      );
+    } else
+      output.push(
+        `${fullPath}: binary, ${formatBytes(oldBytes?.length ?? 0)} → ${formatBytes(newBytes?.length ?? 0)}`
+      );
+  }
+  return output.filter(Boolean);
+}
+
+function formatBytes(bytes: number): string {
+  return bytes < 1024 ? `${bytes} B` : `${Number((bytes / 1024).toFixed(1))} KiB`;
 }

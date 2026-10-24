@@ -9,6 +9,9 @@ import {
   type SkillResourceMediaType
 } from "./asset-types";
 
+/** A short operator declaration of where a provider processes data. */
+export const providerRegionSchema = z.string().trim().min(1).max(32);
+
 const localizedStringMapSchema = z
   .object({
     en: z.string().min(1).optional(),

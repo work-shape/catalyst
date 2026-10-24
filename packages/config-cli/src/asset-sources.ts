@@ -11,6 +11,7 @@ import {
 import { readFile, stat, realpath } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { GUARDRAIL_FILE, readGuardrailFolder } from "./guardrail-files";
+import { readSkillFolder } from "./skill-folder";
 import { readSkillResources, walkFiles } from "./working-copy";
 
 // What `--from` names, read as a write of one asset carries it: the definition of a kind whose
@@ -30,6 +31,11 @@ export async function readAssetSource(
   representation: (typeof ASSET_REPRESENTATIONS)[number],
   kind?: string
 ): Promise<AssetSource> {
+  if (kind === "skill" && ((await stat(path)).isDirectory() || basename(path) === SKILL_FILE)) {
+    return {
+      files: (await readSkillFolder((await stat(path)).isDirectory() ? path : dirname(path))).files
+    };
+  }
   return representation === "files"
     ? { files: await readFileSet(path) }
     : { config: await readDefinition(path, kind) };

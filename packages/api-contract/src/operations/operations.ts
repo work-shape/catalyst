@@ -17,7 +17,12 @@ const decideOperationRunRequestSchema = z.object({
   /** For a waiting App publish: the audience chosen by the person. */
   audience: appAudienceSchema.optional(),
   /** Why, for a decline: the agent reads it. */
-  reason: z.string().trim().min(1).max(500).optional()
+  reason: z.string().trim().min(1).max(500).optional(),
+  /**
+   * With `confirm`: the person also sets "Always allow" for the call's operation, which runs
+   * their agents' next calls of it without asking (OP-6). Refused where the call did not offer it.
+   */
+  alwaysAllow: z.literal(true).optional()
 });
 
 const decideOperationRunResponseSchema = z.object({

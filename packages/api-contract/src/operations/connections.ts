@@ -5,6 +5,7 @@ import {
   CONNECTION_BINDING_STATES,
   GRANT_HOLDER_KINDS,
   CONNECTION_EXPOSURES,
+  CONNECTION_CREDENTIAL_MODES,
   CONNECTION_HEALTH_STATES,
   CONNECTION_NAME_MAX_LENGTH,
   CONNECTION_NAME_PATTERN,
@@ -217,6 +218,8 @@ export const connectionToolsSchema = z.object({
       service: z.string().optional(),
       /** The Connector type. The interface shows the icon of its category without a `service`. */
       connectorType: z.string().optional(),
+      /** Each person uses their own account: its tools run only in that person's private chats. */
+      personal: z.literal(true).optional(),
       tools: z.array(connectionToolSchema)
     })
   )
@@ -279,6 +282,17 @@ export const connectorTypeOffersSchema = z.object({
             title: localizedTextSchema.optional(),
             description: localizedTextSchema,
             authScheme: z.string(),
+            credentialModes: z.array(z.enum(CONNECTION_CREDENTIAL_MODES)).optional(),
+            defaultCredentialMode: z.enum(CONNECTION_CREDENTIAL_MODES).optional(),
+            groups: z
+              .array(
+                z.object({
+                  id: z.string(),
+                  title: localizedTextSchema,
+                  scopes: z.array(z.string())
+                })
+              )
+              .optional(),
             settings: z.record(z.string(), z.unknown()),
             fields: z.array(
               z.object({
@@ -294,9 +308,15 @@ export const connectorTypeOffersSchema = z.object({
               z.object({ text: localizedTextSchema, value: z.string().optional() })
             ),
             hosts: z.array(z.string()),
+            /**
+             * For an OAuth part: the instance's redirect URI for the part's fixed name, to
+             * register at the provider. Missing while release config sets no public address.
+             */
+            redirectUri: z.string().optional(),
             operations: z.array(
               z.object({
                 name: z.string(),
+                group: z.string().optional(),
                 title: z.string().optional(),
                 description: z.string().optional(),
                 effect: z.enum(OPERATION_EFFECTS),
@@ -355,7 +375,85 @@ export const connectionNameParamsSchema = z.object({ name: connectionNameSchema 
 // Each is an operation of the registry. None names its right in `requires`: the right is the
 // Connection's own (`connection.read`, `connection.write`) and is decided on the Connection
 // the call names, where a grant on the instance or on the asset can answer it.
+const personalConnectionStateSchema = z.object({
+  state: z.enum(["not_connected", ...CONNECTION_BINDING_STATES]),
+  account: z.string().optional(),
+  connectedAt: timestampSchema.optional(),
+  lastUsedOn: z.string().optional(),
+  reason: z.string().optional()
+});
+export const personalConnectionsSchema = z.object({
+  connections: z.array(
+    personalConnectionStateSchema.extend({
+      name: z.string(),
+      title: z.string(),
+      service: z.string().optional(),
+      catalogue: z
+        .object({ entry: z.string(), part: z.enum(CATALOGUE_PARTS), version: z.number().int() })
+        .optional()
+    })
+  )
+});
+export const connectionPeopleSchema = z.object({
+  people: z.array(
+    personalConnectionStateSchema.extend({
+      userId: z.string(),
+      /**
+       * The person's name as the instance's list of users shows it, so who may change the
+       * Connection sees who connected without the right to list users. Absent for a person the
+       * instance no longer knows.
+       */
+      displayLabel: z.string().optional()
+    })
+  )
+});
+export type PersonalConnections = z.infer<typeof personalConnectionsSchema>;
+export type ConnectionPeople = z.infer<typeof connectionPeopleSchema>;
+
 export const connectionOperations = {
+  "connections.mine": defineRegisteredOperation({
+    id: "connections.mine",
+    method: "GET",
+    path: "/api/v1/me/connections",
+    summary: "List usable personal Connections with only the caller's binding",
+    tag: "Connections",
+    auth: "user",
+    // The caller's own sign-in states, as the other reads of `/me`.
+    scope: "me:read",
+    requires: [],
+    effect: "reading",
+    response: json(personalConnectionsSchema),
+    errors: [],
+    rateClass: "read"
+  }),
+  "connections.people": defineRegisteredOperation({
+    id: "connections.people",
+    method: "GET",
+    path: "/api/v1/connections/:name/people",
+    summary: "List personal sign-ins; requires Connection write access",
+    tag: "Connections",
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "reading",
+    response: json(connectionPeopleSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "read"
+  }),
+  "connections.revoke_person": defineRegisteredOperation({
+    id: "connections.revoke_person",
+    method: "DELETE",
+    path: "/api/v1/connections/:name/people/:userId",
+    summary: "Revoke a personal sign-in locally without contacting the provider",
+    tag: "Connections",
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    response: json(z.object({ state: z.literal("revoked") })),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
   "connections.person_context": defineRegisteredOperation({
     id: "connections.person_context",
     method: "GET",
@@ -464,10 +562,12 @@ export const connectionOperations = {
     method: "POST",
     path: "/api/v1/connections/:name/oauth/start",
     summary:
-      "Start the shared OAuth sign-in of one Connection. The answer is the address to open in the person's browser",
+      "Start the OAuth sign-in of one Connection. The answer is the address to open in the person's browser",
     tag: "Connections",
     // A person: the callback must prove that the person who started signs in.
     auth: "user",
+    // A key never starts a personal sign-in (refused in the route); a shared one stays a
+    // change of the Connection's config, so a key needs `config_assets:write` for it.
     scope: "config_assets:write",
     requires: [],
     effect: "changing",
@@ -482,7 +582,7 @@ export const connectionOperations = {
     method: "GET",
     path: "/api/v1/connections/:name/oauth/sign-ins/:signInId",
     summary:
-      "Read whether a shared OAuth sign-in the caller started still waits for the browser to come back",
+      "Read whether an OAuth sign-in the caller started still waits for the browser to come back",
     tag: "Connections",
     auth: "user",
     scope: "config_assets:read",
@@ -519,9 +619,10 @@ export const connectionOperations = {
     method: "POST",
     path: "/api/v1/connections/:name/disconnect",
     summary:
-      "End the shared OAuth sign-in of one Connection. Its tokens are deleted, then the provider is asked to revoke the grant",
+      "End the OAuth sign-in of one Connection. Its tokens are deleted, then the provider is asked to revoke the grant",
     tag: "Connections",
     auth: "principal",
+    // A key never ends a personal sign-in (refused in the route).
     scope: "config_assets:write",
     requires: [],
     effect: "changing",

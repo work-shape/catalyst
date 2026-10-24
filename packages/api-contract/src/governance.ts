@@ -11,6 +11,18 @@ import { usageSafeguardsSchema } from "./configuration";
 import { auditActorSchema } from "./identity";
 import { timestampSchema } from "./shared";
 
+/**
+ * What an audit event or activity is about, as its reader may read it (UXA-1b3): the kind, and
+ * the asset's title or the person's, workspace's or role's name where the reader may read it.
+ * Without `title` the interface says the kind alone; it never shows the subject's id.
+ */
+export const auditSubjectSchema = z.object({
+  kind: z.string(),
+  title: z.string().optional(),
+  /** A built-in role (`user`, `admin`, `superadmin`), which the interface says in its words. */
+  builtInRole: z.string().optional()
+});
+
 export const auditEventSchema = z.object({
   id: z.string(),
   clientInstanceId: z.string(),
@@ -21,7 +33,9 @@ export const auditEventSchema = z.object({
   reason: z.string().optional(),
   correlationId: z.string(),
   createdAt: timestampSchema,
-  metadata: z.record(z.string(), z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Set on an activity's evidence: what the event is about, in what its reader may read. */
+  about: auditSubjectSchema.optional()
 });
 
 export const auditActivityActorSchema = z.object({
@@ -34,6 +48,7 @@ export const auditActivityActorSchema = z.object({
 export const auditActivityTargetSchema = z.object({
   kind: z.string(),
   id: z.string(),
+  /** The title or name its reader may read; absent where they may not read it. */
   label: z.string().optional()
 });
 
@@ -167,6 +182,7 @@ export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AuditActivity = z.infer<typeof auditActivitySchema>;
 export type AuditActivityActor = z.infer<typeof auditActivityActorSchema>;
 export type AuditActivityTarget = z.infer<typeof auditActivityTargetSchema>;
+export type AuditSubject = z.infer<typeof auditSubjectSchema>;
 export type ModelUsageVolumeEvent = z.infer<typeof modelUsageVolumeEventSchema>;
 export type ModelUsageBillableCost = z.infer<typeof modelUsageBillableCostSchema>;
 export type ModelUsageBillableCostSummary = z.infer<typeof modelUsageBillableCostSummarySchema>;
