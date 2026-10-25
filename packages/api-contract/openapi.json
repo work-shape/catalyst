@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.9",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.9, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.10",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.10, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -296,6 +296,139 @@
           },
           "409": {
             "$ref": "#/components/responses/IdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "412": {
+            "$ref": "#/components/responses/RevisionConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/agents/{name}/give-tools": {
+      "post": {
+        "operationId": "agents.give_tools",
+        "summary": "Give tools to an agent, live at once; a pending draft keeps its content and gains them",
+        "tags": [
+          "Agents"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:publish"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GiveAgentToolsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiveAgentToolsResponse"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
           },
           "412": {
             "$ref": "#/components/responses/RevisionConflict"
@@ -5327,7 +5460,8 @@
                           "type": "string",
                           "enum": [
                             "dcr",
-                            "preregistered"
+                            "preregistered",
+                            "managed"
                           ]
                         },
                         "redirectUri": {
@@ -5335,6 +5469,10 @@
                         },
                         "providerHost": {
                           "type": "string"
+                        },
+                        "adminConsentUrl": {
+                          "type": "string",
+                          "format": "uri"
                         }
                       },
                       "required": [
@@ -5948,6 +6086,10 @@
                     },
                     "expiresAt": {
                       "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "adminConsentUrl": {
+                      "type": "string",
+                      "format": "uri"
                     }
                   },
                   "required": [
@@ -7344,6 +7486,9 @@
                                   }
                                 },
                                 "redirectUri": {
+                                  "type": "string"
+                                },
+                                "managedClient": {
                                   "type": "string"
                                 },
                                 "operations": {
@@ -12403,6 +12548,634 @@
                     "columns",
                     "rows",
                     "truncated"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/data-stores/{store}/records/decide": {
+      "post": {
+        "operationId": "data_stores.records_decide",
+        "summary": "Confirm or correct one record field of one Data Store against its evidence, or assign a document to an object; the decision is pinned and audited without its value",
+        "tags": [
+          "Data Stores"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "data_store_rows:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "data_store_rows:write"
+            ]
+          },
+          {
+            "accessToken": [
+              "data_store_rows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "table": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "key": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "field": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "documentId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "knowledgeBaseId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "action": {
+                        "type": "string",
+                        "const": "confirm"
+                      }
+                    },
+                    "required": [
+                      "table",
+                      "key",
+                      "field",
+                      "action"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "table": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "key": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "field": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "documentId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "knowledgeBaseId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "action": {
+                        "type": "string",
+                        "const": "correct"
+                      },
+                      "value": {
+                        "$ref": "#/components/schemas/KnowledgeFieldValue"
+                      }
+                    },
+                    "required": [
+                      "table",
+                      "key",
+                      "field",
+                      "action",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "table": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "key": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "field": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "documentId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "knowledgeBaseId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "action": {
+                        "type": "string",
+                        "const": "assign"
+                      }
+                    },
+                    "required": [
+                      "table",
+                      "key",
+                      "field",
+                      "documentId",
+                      "knowledgeBaseId",
+                      "action"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "decided": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "decided"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/data-stores/{store}/records/flagged": {
+      "get": {
+        "operationId": "data_stores.records_flagged",
+        "summary": "Read one page of the record fields of one Data Store that wait for a person, each candidate with the document and page it cites, where the caller may use its Knowledge Base",
+        "tags": [
+          "Data Stores"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "data_store_rows:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "data_store_rows:read"
+            ]
+          },
+          {
+            "accessToken": [
+              "data_store_rows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "table",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 63
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "maxItems": 10000,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "value": {
+                            "$ref": "#/components/schemas/KnowledgeFieldValue"
+                          },
+                          "page": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "quote": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "correctedValue": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/KnowledgeFieldValue"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "table": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "key": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "knowledgeBaseId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "documentId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "kind": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "documentDate": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "extractedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                          },
+                          "evidence": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "status": {
+                                    "type": "string",
+                                    "const": "passed"
+                                  }
+                                },
+                                "required": [
+                                  "status"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "status": {
+                                    "type": "string",
+                                    "const": "failed"
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "enum": [
+                                      "page_not_found",
+                                      "quote_not_found",
+                                      "value_not_parsed"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "status",
+                                  "reason"
+                                ]
+                              }
+                            ]
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "extracted",
+                              "confirmed",
+                              "corrected",
+                              "conflict"
+                            ]
+                          },
+                          "decidedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decidedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": [
+                              "conflict",
+                              "not_evidenced",
+                              "confirmation_required",
+                              "key_unresolved"
+                            ]
+                          },
+                          "document": {
+                            "type": "object",
+                            "properties": {
+                              "knowledgeBase": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "fileName": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "knowledgeBase",
+                              "fileName"
+                            ]
+                          },
+                          "decidedByName": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "value",
+                          "page",
+                          "quote",
+                          "name",
+                          "correctedValue",
+                          "table",
+                          "key",
+                          "knowledgeBaseId",
+                          "documentId",
+                          "kind",
+                          "documentDate",
+                          "extractedAt",
+                          "evidence",
+                          "state",
+                          "decidedBy",
+                          "decidedAt",
+                          "reason"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
                   ]
                 }
               }
@@ -17742,7 +18515,7 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-requires": [
-          "users.manage"
+          "system.view"
         ],
         "x-catalyst-rate-class": "read"
       }
@@ -17799,7 +18572,7 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-requires": [
-          "users.manage"
+          "system.view"
         ],
         "x-catalyst-rate-class": "write"
       }
@@ -17913,7 +18686,7 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-requires": [
-          "audit.view"
+          "system.view"
         ],
         "x-catalyst-rate-class": "read"
       }
@@ -17986,7 +18759,7 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-requires": [
-          "audit.view"
+          "system.view"
         ],
         "x-catalyst-rate-class": "read"
       }
@@ -17994,7 +18767,7 @@
     "/api/v1/instance/jobs/{jobId}/retry": {
       "post": {
         "operationId": "instance.jobs.retry",
-        "summary": "Queue a failed or dead background job again; superadmins only",
+        "summary": "Queue a failed or dead background job again. Needs the right `jobs.retry`.",
         "tags": [
           "Jobs"
         ],
@@ -18108,6 +18881,9 @@
           }
         },
         "x-catalyst-effect": "changing",
+        "x-catalyst-requires": [
+          "jobs.retry"
+        ],
         "x-catalyst-rate-class": "write"
       }
     },
@@ -18179,7 +18955,7 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-requires": [
-          "audit.view"
+          "system.view"
         ],
         "x-catalyst-rate-class": "read"
       }
@@ -18956,6 +19732,396 @@
         "x-catalyst-rate-class": "read"
       }
     },
+    "/api/v1/instance/usage/breakdown": {
+      "get": {
+        "operationId": "usage.breakdown.get",
+        "summary": "Read the instance's usage of a period grouped by workspace, agent, App, Workflow, model or origin, narrowed by any of them",
+        "tags": [
+          "Governance"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "governance:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "governance:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UsageBreakdownDimension"
+            }
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "app",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "workflow",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageBreakdown"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-requires": [
+          "usage.view"
+        ],
+        "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/instance/usage/limits": {
+      "get": {
+        "operationId": "usage.limits.get",
+        "summary": "Read the spend limits of the instance, of shared workspaces and of users, with those at or near a limit",
+        "tags": [
+          "Governance"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "governance:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "governance:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimits"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-requires": [
+          "limits.manage"
+        ],
+        "x-catalyst-rate-class": "read"
+      },
+      "put": {
+        "operationId": "usage.limits.set",
+        "summary": "Set or remove the spend limit per day and month of the instance, of shared workspaces or of users. An instance limit stays at or below the release config's.",
+        "tags": [
+          "Governance"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "governance:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "governance:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUsageSpendLimitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageSpendLimitChange"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/IdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-requires": [
+          "limits.manage"
+        ],
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/instance/usage/users": {
+      "get": {
+        "operationId": "usage.users.list",
+        "summary": "Read each person's own spend of one month, by name and without ranking. Every read is an audit event.",
+        "tags": [
+          "Governance"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "governance:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "governance:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageUsers"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-requires": [
+          "usage.view_users"
+        ],
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/instance/users": {
       "get": {
         "operationId": "users.list",
@@ -19296,7 +20462,7 @@
       },
       "delete": {
         "operationId": "users.delete",
-        "summary": "Delete a user and their data. Answers `deleted`, or `deleting` while the data is still being removed. Needs the right `users.manage`. Only a superadmin deletes a user.",
+        "summary": "Delete a user and their data. Answers `deleted`, or `deleting` while the data is still being removed. Needs the rights `users.manage` and `users.delete`, and every right the user holds. Only a superadmin deletes a superadmin.",
         "tags": [
           "Users"
         ],
@@ -20134,6 +21300,85 @@
                     "processingWaiting": {
                       "type": "boolean"
                     },
+                    "embedding": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "current",
+                            "reindex_needed",
+                            "reindex_available",
+                            "reindexing",
+                            "none"
+                          ]
+                        },
+                        "active": {
+                          "type": "object",
+                          "properties": {
+                            "bindingId": {
+                              "type": "string"
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "dimensions": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "bindingId",
+                            "model",
+                            "dimensions"
+                          ]
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "bindingId": {
+                              "type": "string"
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "dimensions": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "bindingId",
+                            "model",
+                            "dimensions"
+                          ]
+                        },
+                        "progress": {
+                          "type": "object",
+                          "properties": {
+                            "embedded": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "total": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "embedded",
+                            "total"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ]
+                    },
                     "documentFormats": {
                       "type": "array",
                       "items": {
@@ -20390,6 +21635,85 @@
                     },
                     "processingWaiting": {
                       "type": "boolean"
+                    },
+                    "embedding": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "current",
+                            "reindex_needed",
+                            "reindex_available",
+                            "reindexing",
+                            "none"
+                          ]
+                        },
+                        "active": {
+                          "type": "object",
+                          "properties": {
+                            "bindingId": {
+                              "type": "string"
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "dimensions": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "bindingId",
+                            "model",
+                            "dimensions"
+                          ]
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "bindingId": {
+                              "type": "string"
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "dimensions": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "bindingId",
+                            "model",
+                            "dimensions"
+                          ]
+                        },
+                        "progress": {
+                          "type": "object",
+                          "properties": {
+                            "embedded": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "total": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "embedded",
+                            "total"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ]
                     },
                     "documentFormats": {
                       "type": "array",
@@ -21049,7 +22373,7 @@
                                 "pattern": "^workflow:.*"
                               },
                               {
-                                "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}$"
+                                "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}(?:@[1-9][0-9]{0,9})?$"
                               }
                             ]
                           }
@@ -21089,7 +22413,7 @@
                                 "pattern": "^workflow:.*"
                               },
                               {
-                                "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}$"
+                                "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}(?:@[1-9][0-9]{0,9})?$"
                               }
                             ]
                           }
@@ -21106,6 +22430,8 @@
                               "knowledge_source_limit_reached",
                               "knowledge_item_invalid",
                               "knowledge_fetch_not_allowed",
+                              "knowledge_ingest_cancelled",
+                              "knowledge_item_removed",
                               "knowledge_file_over_limit",
                               "knowledge_file_format_unsupported"
                             ]
@@ -21153,7 +22479,7 @@
                                 "pattern": "^workflow:.*"
                               },
                               {
-                                "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}$"
+                                "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}(?:@[1-9][0-9]{0,9})?$"
                               }
                             ]
                           }
@@ -21207,6 +22533,11 @@
                       }
                     },
                     "queued": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "released": {
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
@@ -21831,6 +23162,9 @@
                     },
                     "purgedAt": {
                       "type": "string"
+                    },
+                    "removedAt": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -22212,6 +23546,299 @@
         "x-catalyst-rate-class": "read"
       }
     },
+    "/api/v1/knowledge-bases/{knowledgeBase}/reindex": {
+      "post": {
+        "operationId": "knowledge_bases.reindex",
+        "summary": "Re-index a Knowledge Base with the embedding model it is set to. Without confirm it states the passages, tokens and cost and starts nothing; with the statement's confirmation it builds a new index beside the one search reads and switches when it is complete",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "knowledgeBase",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "current",
+                        "reindex_needed",
+                        "reindex_available",
+                        "reindexing",
+                        "none"
+                      ]
+                    },
+                    "active": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "dimensions": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "bindingId",
+                        "model",
+                        "dimensions"
+                      ]
+                    },
+                    "target": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "dimensions": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "bindingId",
+                        "model",
+                        "dimensions"
+                      ]
+                    },
+                    "progress": {
+                      "type": "object",
+                      "properties": {
+                        "embedded": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "total": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "embedded",
+                        "total"
+                      ]
+                    },
+                    "started": {
+                      "type": "boolean"
+                    },
+                    "statement": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "chunks": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "tokens": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cost": {
+                          "type": "object",
+                          "properties": {
+                            "amount": {
+                              "type": "number"
+                            },
+                            "currency": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "amount",
+                            "currency"
+                          ]
+                        },
+                        "room": {
+                          "type": "boolean"
+                        },
+                        "storeBytes": {
+                          "type": "number"
+                        },
+                        "addedBytes": {
+                          "type": "number"
+                        },
+                        "limitBytes": {
+                          "type": "number"
+                        },
+                        "confirmation": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "bindingId",
+                        "model",
+                        "chunks",
+                        "tokens",
+                        "room",
+                        "storeBytes",
+                        "addedBytes",
+                        "confirmation"
+                      ]
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "started"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
     "/api/v1/knowledge-bases/{knowledgeBase}/search": {
       "post": {
         "operationId": "knowledge_bases.search",
@@ -22502,6 +24129,8 @@
                                             "knowledge_source_limit_reached",
                                             "knowledge_item_invalid",
                                             "knowledge_fetch_not_allowed",
+                                            "knowledge_ingest_cancelled",
+                                            "knowledge_item_removed",
                                             "knowledge_file_over_limit",
                                             "knowledge_file_format_unsupported"
                                           ]
@@ -22548,7 +24177,8 @@
                                     "enum": [
                                       "initial",
                                       "changes",
-                                      "full"
+                                      "full",
+                                      "ingest"
                                     ]
                                   },
                                   "startedAt": {
@@ -22582,7 +24212,8 @@
                                     "enum": [
                                       "initial",
                                       "changes",
-                                      "full"
+                                      "full",
+                                      "ingest"
                                     ]
                                   },
                                   "reason": {
@@ -22662,7 +24293,9 @@
                                       "knowledge_fetch_failed",
                                       "knowledge_source_limit_reached",
                                       "knowledge_item_invalid",
-                                      "knowledge_fetch_not_allowed"
+                                      "knowledge_fetch_not_allowed",
+                                      "knowledge_ingest_cancelled",
+                                      "knowledge_item_removed"
                                     ]
                                   },
                                   "startedAt": {
@@ -22680,6 +24313,112 @@
                                   "counts",
                                   "bytesFetched",
                                   "startedAt"
+                                ]
+                              },
+                              "confirmation": {
+                                "type": "object",
+                                "properties": {
+                                  "syncRunId": {
+                                    "type": "string"
+                                  },
+                                  "items": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "bytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "stop": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "min",
+                                      "max"
+                                    ]
+                                  },
+                                  "passages": {
+                                    "type": "object",
+                                    "properties": {
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "min",
+                                      "max"
+                                    ]
+                                  },
+                                  "model": {
+                                    "type": "string"
+                                  },
+                                  "cost": {
+                                    "type": "object",
+                                    "properties": {
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "currency": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "min",
+                                      "max",
+                                      "currency"
+                                    ]
+                                  },
+                                  "room": {
+                                    "type": "boolean"
+                                  },
+                                  "storeBytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "addedBytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "limitBytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "syncRunId",
+                                  "items",
+                                  "bytes",
+                                  "stop",
+                                  "storeBytes"
                                 ]
                               },
                               "lastChangeAt": {
@@ -22764,6 +24503,8 @@
                                             "knowledge_source_limit_reached",
                                             "knowledge_item_invalid",
                                             "knowledge_fetch_not_allowed",
+                                            "knowledge_ingest_cancelled",
+                                            "knowledge_item_removed",
                                             "knowledge_file_over_limit",
                                             "knowledge_file_format_unsupported"
                                           ]
@@ -22810,7 +24551,8 @@
                                     "enum": [
                                       "initial",
                                       "changes",
-                                      "full"
+                                      "full",
+                                      "ingest"
                                     ]
                                   },
                                   "startedAt": {
@@ -22844,7 +24586,8 @@
                                     "enum": [
                                       "initial",
                                       "changes",
-                                      "full"
+                                      "full",
+                                      "ingest"
                                     ]
                                   },
                                   "reason": {
@@ -22924,7 +24667,9 @@
                                       "knowledge_fetch_failed",
                                       "knowledge_source_limit_reached",
                                       "knowledge_item_invalid",
-                                      "knowledge_fetch_not_allowed"
+                                      "knowledge_fetch_not_allowed",
+                                      "knowledge_ingest_cancelled",
+                                      "knowledge_item_removed"
                                     ]
                                   },
                                   "startedAt": {
@@ -22942,6 +24687,112 @@
                                   "counts",
                                   "bytesFetched",
                                   "startedAt"
+                                ]
+                              },
+                              "confirmation": {
+                                "type": "object",
+                                "properties": {
+                                  "syncRunId": {
+                                    "type": "string"
+                                  },
+                                  "items": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "bytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "stop": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "min",
+                                      "max"
+                                    ]
+                                  },
+                                  "passages": {
+                                    "type": "object",
+                                    "properties": {
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "min",
+                                      "max"
+                                    ]
+                                  },
+                                  "model": {
+                                    "type": "string"
+                                  },
+                                  "cost": {
+                                    "type": "object",
+                                    "properties": {
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "currency": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "min",
+                                      "max",
+                                      "currency"
+                                    ]
+                                  },
+                                  "room": {
+                                    "type": "boolean"
+                                  },
+                                  "storeBytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "addedBytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "limitBytes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "syncRunId",
+                                  "items",
+                                  "bytes",
+                                  "stop",
+                                  "storeBytes"
                                 ]
                               },
                               "lastChangeAt": {
@@ -23078,6 +24929,8 @@
                     "knowledge_source_limit_reached",
                     "knowledge_item_invalid",
                     "knowledge_fetch_not_allowed",
+                    "knowledge_ingest_cancelled",
+                    "knowledge_item_removed",
                     "knowledge_file_over_limit",
                     "knowledge_file_format_unsupported"
                   ]
@@ -23169,6 +25022,8 @@
                                   "knowledge_source_limit_reached",
                                   "knowledge_item_invalid",
                                   "knowledge_fetch_not_allowed",
+                                  "knowledge_ingest_cancelled",
+                                  "knowledge_item_removed",
                                   "knowledge_file_over_limit",
                                   "knowledge_file_format_unsupported"
                                 ]
@@ -23337,7 +25192,7 @@
                             "pattern": "^workflow:.*"
                           },
                           {
-                            "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}$"
+                            "pattern": "^workflow:[a-z][a-z0-9_-]{0,62}(?:@[1-9][0-9]{0,9})?$"
                           }
                         ]
                       }
@@ -23349,6 +25204,9 @@
                       "changes",
                       "full"
                     ]
+                  },
+                  "confirm": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -23378,7 +25236,8 @@
                       "enum": [
                         "initial",
                         "changes",
-                        "full"
+                        "full",
+                        "ingest"
                       ]
                     },
                     "reason": {
@@ -23458,7 +25317,9 @@
                         "knowledge_fetch_failed",
                         "knowledge_source_limit_reached",
                         "knowledge_item_invalid",
-                        "knowledge_fetch_not_allowed"
+                        "knowledge_fetch_not_allowed",
+                        "knowledge_ingest_cancelled",
+                        "knowledge_item_removed"
                       ]
                     },
                     "startedAt": {
@@ -24883,6 +26744,71 @@
         "x-catalyst-rate-class": "auth"
       }
     },
+    "/api/v1/me/usage": {
+      "get": {
+        "operationId": "me.usage.get",
+        "summary": "Read the signed-in user's own spend this day and month against their limit, and whether a workspace or the instance limit stops them",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "me:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "me:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnUsage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "operationId": "openapi.get",
@@ -25288,7 +27214,7 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-requires": [
-          "audit.view"
+          "system.view"
         ],
         "x-catalyst-rate-class": "read"
       }
@@ -25296,7 +27222,7 @@
     "/api/v1/operations/runs/{runId}": {
       "get": {
         "operationId": "operations.get_run",
-        "summary": "Read one Operation Run: your own, or any with the right to view the audit log",
+        "summary": "Read one Operation Run: your own, one that waits on your decision, or any with the right to view the audit log",
         "tags": [
           "Operations"
         ],
@@ -28921,6 +30847,126 @@
           },
           "403": {
             "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/workflows/{workflow}/knowledge-sources": {
+      "get": {
+        "operationId": "knowledge_bases.workflow_sources",
+        "summary": "Read what deleting a Workflow ends: the Knowledge Bases its sources feed and how many documents each holds there; ones the caller may not open are only counted",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "knowledgeBases": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "documents": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "title",
+                          "documents"
+                        ]
+                      }
+                    },
+                    "hidden": {
+                      "type": "object",
+                      "properties": {
+                        "knowledgeBases": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "documents": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "knowledgeBases",
+                        "documents"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "knowledgeBases",
+                    "hidden"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "422": {
             "$ref": "#/components/responses/ValidationFailed"
@@ -32814,6 +34860,225 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/workspaces/{collaborationWorkspaceId}/usage": {
+      "get": {
+        "operationId": "workspaces.usage.get",
+        "summary": "Read a shared workspace's usage: this month, its days and a period grouped by one dimension. Needs the role Owner or Admin.",
+        "tags": [
+          "Collaboration Workspaces"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "collaboration_workspace:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "collaboration_workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "collaborationWorkspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "app",
+                "workflow",
+                "model",
+                "origin"
+              ]
+            }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "app",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "workflow",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceUsage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/workspaces/{collaborationWorkspaceId}/usage/members": {
+      "get": {
+        "operationId": "workspaces.member_usage.list",
+        "summary": "Read what each member used in a shared workspace in one month. Needs the role Owner or Admin and the right to view usage by person; every read is an audit event.",
+        "tags": [
+          "Collaboration Workspaces"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "collaboration_workspace:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "collaboration_workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "collaborationWorkspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMembersUsage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/ready": {
       "get": {
         "operationId": "ready.get",
@@ -33669,7 +35934,8 @@
                 "enum": [
                   "instance",
                   "user",
-                  "system"
+                  "system",
+                  "workspace"
                 ]
               }
             },
@@ -36747,11 +39013,111 @@
               ]
             }
           },
+          "appCallers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "scope": {
+                  "$ref": "#/components/schemas/AssetScope"
+                }
+              },
+              "required": [
+                "name",
+                "title",
+                "scope"
+              ]
+            }
+          },
           "publishQuestion": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          },
+          "publishConfirmation": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "publishProcessing": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "cost": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "none"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "estimate"
+                      },
+                      "min": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "max": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "currency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "min",
+                      "max",
+                      "currency"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "unavailable"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "count",
+              "line",
+              "cost"
+            ]
           },
           "publishNarrative": {
             "$ref": "#/components/schemas/PublishNarrative"
@@ -37205,6 +39571,28 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AssetVerb"
+            }
+          },
+          "appCallers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "scope": {
+                  "$ref": "#/components/schemas/AssetScope"
+                }
+              },
+              "required": [
+                "name",
+                "title",
+                "scope"
+              ]
             }
           },
           "updatedAt": {
@@ -38223,6 +40611,10 @@
                       },
                       "region": {
                         "$ref": "#/components/schemas/ModelRegion"
+                      },
+                      "personalDataBlocked": {
+                        "type": "boolean",
+                        "const": true
                       },
                       "usageTier": {
                         "$ref": "#/components/schemas/ModelUsageTier"
@@ -40624,6 +43016,61 @@
           "updatedAt"
         ]
       },
+      "GiveAgentToolsRequest": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "toolNames": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          },
+          "expectedLiveRevision": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "agentId",
+          "toolNames",
+          "expectedLiveRevision"
+        ]
+      },
+      "GiveAgentToolsResponse": {
+        "type": "object",
+        "properties": {
+          "publishedRevision": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "replacedRevision": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "givenTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "publishedRevision",
+          "replacedRevision",
+          "givenTools"
+        ]
+      },
       "GrantEffect": {
         "type": "string",
         "enum": [
@@ -40800,6 +43247,13 @@
             "required": [
               "available"
             ]
+          },
+          "personalConnectionModelRegions": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelRegion"
+            }
           }
         },
         "required": [
@@ -41754,6 +44208,20 @@
           },
           "createdAt": {
             "$ref": "#/components/schemas/Timestamp"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key"
+            ]
           },
           "cost": {
             "$ref": "#/components/schemas/ModelUsageBillableCost"
@@ -42938,6 +45406,43 @@
           "state",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "OwnUsage": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "own": {
+            "$ref": "#/components/schemas/UsageSpendLevel"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "day": {
+                "$ref": "#/components/schemas/UsageSpendPeriod"
+              },
+              "month": {
+                "$ref": "#/components/schemas/UsageSpendPeriod"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "day",
+              "month",
+              "id"
+            ]
+          },
+          "instance": {
+            "$ref": "#/components/schemas/UsageSpendLevel"
+          }
+        },
+        "required": [
+          "own",
+          "instance"
         ]
       },
       "Page": {
@@ -44344,6 +46849,17 @@
               "exchangeSnapshot"
             ]
           },
+          "knowledge": {
+            "type": "object",
+            "properties": {
+              "semanticSearch": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "semanticSearch"
+            ]
+          },
           "features": {
             "type": "object",
             "properties": {
@@ -44498,6 +47014,10 @@
                       },
                       "region": {
                         "$ref": "#/components/schemas/ModelRegion"
+                      },
+                      "personalDataBlocked": {
+                        "type": "boolean",
+                        "const": true
                       },
                       "usageTier": {
                         "$ref": "#/components/schemas/ModelUsageTier"
@@ -45231,6 +47751,33 @@
         "required": [
           "operation",
           "value"
+        ]
+      },
+      "SetUsageSpendLimitRequest": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/UsageSpendLimitLevel"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageSpendAmounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "level",
+          "limits"
         ]
       },
       "StartConnectCodeRequest": {
@@ -46104,6 +48651,256 @@
           "externalUserId"
         ]
       },
+      "UsageActivity": {
+        "type": "object",
+        "properties": {
+          "activeUsers": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "conversations": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "agentRuns": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "appActionRuns": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "workflowRuns": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "activeUsers",
+          "conversations",
+          "agentRuns",
+          "appActionRuns",
+          "workflowRuns"
+        ]
+      },
+      "UsageBreakdown": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/UsageBreakdownDimension"
+          },
+          "personalWorkspacesKey": {
+            "type": "string",
+            "const": "personal"
+          },
+          "total": {
+            "$ref": "#/components/schemas/ModelUsageWindowSummary"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageBreakdownRow"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "groupBy",
+          "personalWorkspacesKey",
+          "total",
+          "rows"
+        ]
+      },
+      "UsageBreakdownDimension": {
+        "type": "string",
+        "enum": [
+          "workspace",
+          "agent",
+          "app",
+          "workflow",
+          "model",
+          "origin"
+        ]
+      },
+      "UsageBreakdownRow": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "end": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "modelCallCount": {
+            "type": "number"
+          },
+          "inputTokens": {
+            "type": "number"
+          },
+          "cachedInputTokens": {
+            "type": "number"
+          },
+          "outputTokens": {
+            "type": "number"
+          },
+          "totalTokens": {
+            "type": "number"
+          },
+          "webSearchCallCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cost": {
+            "$ref": "#/components/schemas/ModelUsageBillableCostSummary"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelCallCount",
+          "inputTokens",
+          "cachedInputTokens",
+          "outputTokens",
+          "totalTokens",
+          "webSearchCallCount",
+          "cost",
+          "key"
+        ]
+      },
+      "UsageLimitTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "UsageLimits": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "ceiling": {
+            "$ref": "#/components/schemas/UsageSpendAmounts"
+          },
+          "instance": {
+            "$ref": "#/components/schemas/UsageSpendLimit"
+          },
+          "effectiveInstance": {
+            "$ref": "#/components/schemas/UsageSpendAmounts"
+          },
+          "workspaceDefault": {
+            "$ref": "#/components/schemas/UsageSpendLimit"
+          },
+          "userDefault": {
+            "$ref": "#/components/schemas/UsageSpendLimit"
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageSpendLimitOverride"
+            }
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageSpendLimitOverride"
+            }
+          },
+          "nearLimit": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageNearLimit"
+            }
+          },
+          "workspaceOptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageLimitTarget"
+            }
+          },
+          "userOptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageLimitTarget"
+            }
+          }
+        },
+        "required": [
+          "ceiling",
+          "effectiveInstance",
+          "workspaces",
+          "users",
+          "nearLimit",
+          "workspaceOptions",
+          "userOptions"
+        ]
+      },
+      "UsageNearLimit": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "workspace",
+              "user"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "day",
+              "month"
+            ]
+          },
+          "limit": {
+            "type": "number"
+          },
+          "percent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "period",
+          "limit",
+          "percent"
+        ]
+      },
       "UsageSafeguards": {
         "type": "object",
         "properties": {
@@ -46115,6 +48912,21 @@
           },
           "tokensPerMonth": {
             "type": "number"
+          }
+        }
+      },
+      "UsageSpendAmounts": {
+        "type": "object",
+        "properties": {
+          "daily": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "monthly": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000
           }
         }
       },
@@ -46145,6 +48957,116 @@
             "maximum": 9007199254740991
           }
         }
+      },
+      "UsageSpendLevel": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "$ref": "#/components/schemas/UsageSpendPeriod"
+          },
+          "month": {
+            "$ref": "#/components/schemas/UsageSpendPeriod"
+          }
+        },
+        "required": [
+          "day",
+          "month"
+        ]
+      },
+      "UsageSpendLimit": {
+        "type": "object",
+        "properties": {
+          "daily": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "monthly": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        }
+      },
+      "UsageSpendLimitChange": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/UsageSpendLimitLevel"
+          },
+          "target": {
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/UsageSpendAmounts"
+          }
+        },
+        "required": [
+          "level"
+        ]
+      },
+      "UsageSpendLimitLevel": {
+        "type": "string",
+        "enum": [
+          "instance",
+          "workspace_default",
+          "workspace",
+          "user_default",
+          "user"
+        ]
+      },
+      "UsageSpendLimitOverride": {
+        "type": "object",
+        "properties": {
+          "daily": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "monthly": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "UsageSpendPeriod": {
+        "type": "object",
+        "properties": {
+          "spent": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "left": {
+            "type": "number"
+          },
+          "reached": {
+            "type": "boolean"
+          },
+          "resetsAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "resetsAt"
+        ]
       },
       "UsageSummary": {
         "type": "object",
@@ -46185,6 +49107,9 @@
               "$ref": "#/components/schemas/ModelUsageAttributionGroup"
             }
           },
+          "activity": {
+            "$ref": "#/components/schemas/UsageActivity"
+          },
           "recentEvents": {
             "type": "array",
             "items": {
@@ -46202,6 +49127,59 @@
           "dailyUsage",
           "monthlyUsage",
           "recentEvents"
+        ]
+      },
+      "UsageUserMonth": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "spent": {
+            "type": "number",
+            "minimum": 0
+          },
+          "modelCallCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "spent",
+          "modelCallCount",
+          "tokens"
+        ]
+      },
+      "UsageUsers": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageUserMonth"
+            }
+          }
+        },
+        "required": [
+          "month",
+          "items"
         ]
       },
       "UserDeletionState": {
@@ -46845,6 +49823,73 @@
           "hasPendingAccessRequest"
         ]
       },
+      "WorkspaceMemberUsage": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "end": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "modelCallCount": {
+            "type": "number"
+          },
+          "inputTokens": {
+            "type": "number"
+          },
+          "cachedInputTokens": {
+            "type": "number"
+          },
+          "outputTokens": {
+            "type": "number"
+          },
+          "totalTokens": {
+            "type": "number"
+          },
+          "webSearchCallCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cost": {
+            "$ref": "#/components/schemas/ModelUsageBillableCostSummary"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelCallCount",
+          "inputTokens",
+          "cachedInputTokens",
+          "outputTokens",
+          "totalTokens",
+          "webSearchCallCount",
+          "cost"
+        ]
+      },
+      "WorkspaceMembersUsage": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceMemberUsage"
+            }
+          }
+        },
+        "required": [
+          "month",
+          "items"
+        ]
+      },
       "WorkspaceMembership": {
         "type": "object",
         "properties": {
@@ -46882,6 +49927,40 @@
           "owner",
           "admin",
           "member"
+        ]
+      },
+      "WorkspaceUsage": {
+        "type": "object",
+        "properties": {
+          "workspaceName": {
+            "type": "string"
+          },
+          "month": {
+            "$ref": "#/components/schemas/ModelUsageWindowSummary"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelUsageDailyBucket"
+            }
+          },
+          "activity": {
+            "$ref": "#/components/schemas/UsageActivity"
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/UsageBreakdown"
+          },
+          "membersVisible": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "workspaceName",
+          "month",
+          "days",
+          "activity",
+          "breakdown",
+          "membersVisible"
         ]
       },
       "WorkspaceVisibility": {

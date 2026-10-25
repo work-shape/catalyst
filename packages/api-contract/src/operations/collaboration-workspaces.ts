@@ -17,6 +17,12 @@ import {
   workspaceMembershipSchema
 } from "../collaboration-workspaces";
 import { collaborationWorkspaceAgentsSchema } from "../configuration";
+import {
+  usageMonthQuerySchema,
+  workspaceMembersUsageSchema,
+  workspaceUsageQuerySchema,
+  workspaceUsageSchema
+} from "../usage-reports";
 import { listWorkspaceFilesQuerySchema, workspaceFileSchema } from "../workspace-files";
 import { defineOperation, defineRegisteredOperation, json, page } from "./define-operation";
 
@@ -189,6 +195,40 @@ export const collaborationWorkspaceOperations = {
     query: listQuerySchema,
     response: page(workspaceMemberSchema, ["displayLabel", "userId"], false),
     errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  // A shared workspace's Usage tab (LU-3): for its Owners and Admins. The figures per member
+  // also need `usage.view_users` for the workspace, and every read of them is audited.
+  "workspaces.usage.get": defineOperation({
+    id: "workspaces.usage.get",
+    method: "GET",
+    path: "/api/v1/workspaces/:collaborationWorkspaceId/usage",
+    summary:
+      "Read a shared workspace's usage: this month, its days and a period grouped by one dimension. Needs the role Owner or Admin.",
+    tag: "Collaboration Workspaces",
+    auth: "user",
+    scope: "collaboration_workspace:read",
+    requires: [],
+    effect: "reading",
+    query: workspaceUsageQuerySchema,
+    response: json(workspaceUsageSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN"],
+    rateClass: "read"
+  }),
+  "workspaces.member_usage.list": defineOperation({
+    id: "workspaces.member_usage.list",
+    method: "GET",
+    path: "/api/v1/workspaces/:collaborationWorkspaceId/usage/members",
+    summary:
+      "Read what each member used in a shared workspace in one month. Needs the role Owner or Admin and the right to view usage by person; every read is an audit event.",
+    tag: "Collaboration Workspaces",
+    auth: "user",
+    scope: "collaboration_workspace:read",
+    requires: [],
+    effect: "reading",
+    query: usageMonthQuerySchema,
+    response: json(workspaceMembersUsageSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN"],
     rateClass: "read"
   }),
   "workspaces.member_candidates.list": defineOperation({

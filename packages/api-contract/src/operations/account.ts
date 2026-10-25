@@ -16,6 +16,7 @@ import {
   operationSettingsSchema,
   setOperationSettingRequestSchema
 } from "../operation-settings";
+import { ownUsageQuerySchema, ownUsageSchema } from "../usage-limits";
 import { defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
 export const accountOperations = {
@@ -50,6 +51,22 @@ export const accountOperations = {
   }),
   // A person's own confirmation settings (OP-6). Only the person reads and sets their own, in
   // the interface: no personal key carries them, and no agent is given them as a tool.
+  "me.usage.get": defineOperation({
+    id: "me.usage.get",
+    method: "GET",
+    path: "/api/v1/me/usage",
+    summary:
+      "Read the signed-in user's own spend this day and month against their limit, and whether a workspace or the instance limit stops them",
+    tag: "Account",
+    auth: "user",
+    scope: "me:read",
+    requires: [],
+    effect: "reading",
+    query: ownUsageQuerySchema,
+    response: json(ownUsageSchema),
+    errors: [],
+    rateClass: "read"
+  }),
   "me.operation_settings.list": defineOperation({
     id: "me.operation_settings.list",
     method: "GET",

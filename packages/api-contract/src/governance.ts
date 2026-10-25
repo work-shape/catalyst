@@ -96,7 +96,12 @@ export const modelUsageVolumeEventSchema = z.object({
   billedAsFast: z.boolean(),
   source: z.enum(MODEL_USAGE_SOURCES),
   correlationId: z.string(),
-  createdAt: timestampSchema
+  createdAt: timestampSchema,
+  /**
+   * Where the call happened (LU-3): a shared workspace by its id and name, or `personal` for any
+   * Personal Workspace, never whose it is. Absent where the call has no workspace.
+   */
+  workspace: z.object({ key: z.string(), name: z.string().optional() }).optional()
 });
 
 export const modelUsageVolumeWindowSummarySchema = z.object({
@@ -164,6 +169,15 @@ export const usageSpendBudgetSchema = z.object({
   monthlyLimitMicros: z.number().int().nonnegative().optional()
 });
 
+/** What a period held, counted from existing records: no click or page view is tracked. */
+export const usageActivitySchema = z.object({
+  activeUsers: z.number().int().nonnegative(),
+  conversations: z.number().int().nonnegative(),
+  agentRuns: z.number().int().nonnegative(),
+  appActionRuns: z.number().int().nonnegative(),
+  workflowRuns: z.number().int().nonnegative()
+});
+
 export const usageSummarySchema = z.object({
   generatedAt: timestampSchema,
   spendBudget: usageSpendBudgetSchema,
@@ -175,6 +189,8 @@ export const usageSummarySchema = z.object({
   monthlyUsage: z.array(modelUsageMonthlyBucketSchema),
   /** The days of `dailyUsage`, split by model, provider, region and purpose or agent. */
   attributedUsage: z.array(modelUsageAttributionGroupSchema).optional(),
+  /** What the current month held: people active, conversations and runs (LU-3). */
+  activity: usageActivitySchema.optional(),
   recentEvents: z.array(modelUsageEventSchema)
 });
 
@@ -190,3 +206,5 @@ export type ModelUsageEvent = z.infer<typeof modelUsageEventSchema>;
 export type ModelUsageDailyBucket = z.infer<typeof modelUsageDailyBucketSchema>;
 export type ModelUsageMonthlyBucket = z.infer<typeof modelUsageMonthlyBucketSchema>;
 export type UsageSummary = z.infer<typeof usageSummarySchema>;
+export type UsageActivity = z.infer<typeof usageActivitySchema>;
+export type UsageWindowSummary = z.infer<typeof modelUsageWindowSummarySchema>;

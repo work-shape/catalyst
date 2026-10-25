@@ -114,7 +114,13 @@ const connectionOAuthSchema = z.object({
    */
   redirectUri: z.string().optional(),
   /** The host of the authorization server a registration was made at. */
-  providerHost: z.string().optional()
+  providerHost: z.string().optional(),
+  /**
+   * Where the Connection names one: the link an administrator of the person's organisation
+   * approves the app with, once for everyone there. It holds the public client id, never a
+   * secret.
+   */
+  adminConsentUrl: z.string().url().optional()
 });
 
 export const connectionDetailSchema = z.object({
@@ -162,7 +168,12 @@ export const connectionOAuthStartSchema = z.object({
   authorizationUrl: z.string().url(),
   providerHost: z.string(),
   scopes: z.array(z.string()),
-  expiresAt: timestampSchema
+  expiresAt: timestampSchema,
+  /**
+   * Where the Connection names one: the link an administrator approves the app with, shown
+   * once the provider answers that the organisation's approval is missing.
+   */
+  adminConsentUrl: z.string().url().optional()
 });
 
 /**
@@ -313,6 +324,12 @@ export const connectorTypeOffersSchema = z.object({
              * register at the provider. Missing while release config sets no public address.
              */
             redirectUri: z.string().optional(),
+            /**
+             * The operator's managed OAuth client this instance has for the part, by id
+             * (MS-APP-1): the install asks for no field, and the admin may still use their own
+             * app registration with `fields`. Never the client's secret or where it is kept.
+             */
+            managedClient: z.string().optional(),
             operations: z.array(
               z.object({
                 name: z.string(),

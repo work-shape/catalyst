@@ -8,9 +8,12 @@ export const knowledgeGroup: CommandGroup = {
     "knowledge-base source remove",
     "knowledge-base source status",
     "knowledge-base source retry",
-    "knowledge-base sync"
+    "knowledge-base sync",
+    "knowledge-base reindex"
   ],
-  matches: (argv) => argv[0] === "knowledge-base" && (argv[1] === "source" || argv[1] === "sync"),
+  matches: (argv) =>
+    argv[0] === "knowledge-base" &&
+    (argv[1] === "source" || argv[1] === "sync" || argv[1] === "reindex"),
   help: knowledgeHelpText,
   run: runKnowledgeCommand
 };

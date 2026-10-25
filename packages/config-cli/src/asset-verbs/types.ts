@@ -30,6 +30,7 @@ export interface Values {
   published: boolean;
   help: boolean;
   "available-in"?: string[];
+  tool?: string[];
 }
 export type OptionName = keyof Values;
 export interface Session {

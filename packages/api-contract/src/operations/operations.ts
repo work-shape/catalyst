@@ -41,13 +41,15 @@ export const operationRunOperations = {
     id: "operations.get_run",
     method: "GET",
     path: "/api/v1/operations/runs/:runId",
-    summary: "Read one Operation Run: your own, or any with the right to view the audit log",
+    summary:
+      "Read one Operation Run: your own, one that waits on your decision, or any with the right to view the audit log",
     tag: "Operations",
     auth: "principal",
     scope: "governance:read",
     personalKeyScope: "me:read",
-    // A caller reads its own run without a right. Another caller's run takes the right
-    // `audit.view`, which the operation checks itself.
+    // A caller reads its own run without a right, and whoever decides the request a run waits
+    // on reads that run while it waits (OPS-RUN-READ-1). Another caller's run takes the right
+    // `audit.view`. The operation checks all of it itself.
     requires: [],
     effect: "reading",
     response: json(operationRunSchema),
@@ -62,7 +64,9 @@ export const operationRunOperations = {
     tag: "Operations",
     auth: "principal",
     scope: "governance:read",
-    requires: ["audit.view"],
+    // The Operations page, in the Settings group "System" (RIGHTS-1e). One run stays readable
+    // by its caller and by `audit.view` through `operations.get_run`.
+    requires: ["system.view"],
     effect: "reading",
     query: listQuerySchema.extend({
       operation: z.string().min(1).optional(),

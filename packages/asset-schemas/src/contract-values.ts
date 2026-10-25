@@ -687,9 +687,10 @@ export type ConnectionSignInNeed = (typeof CONNECTION_SIGN_IN_NEEDS)[number];
 
 /**
  * How a Connection that signs in with OAuth has its client: registered by the platform
- * (Dynamic Client Registration) or issued by the provider and named in the settings.
+ * (Dynamic Client Registration), issued by the provider and named in the settings, or the
+ * operator's managed client of release config (`infrastructure.oauthClients`, MS-APP-1).
  */
-export const CONNECTION_OAUTH_REGISTRATIONS = ["dcr", "preregistered"] as const;
+export const CONNECTION_OAUTH_REGISTRATIONS = ["dcr", "preregistered", "managed"] as const;
 export type ConnectionOAuthRegistration = (typeof CONNECTION_OAUTH_REGISTRATIONS)[number];
 
 /**
@@ -743,6 +744,21 @@ export type DataStoreMigrationOutcome = (typeof DATA_STORE_MIGRATION_OUTCOMES)[n
  */
 export const KNOWLEDGE_BASE_STATUSES = ["unchecked", "preparing", "ok", "needs_attention"] as const;
 export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number];
+
+/**
+ * The embedding of a Knowledge Base that searches by meaning. `current`: its index embeds with
+ * the model it is set to. `reindex_needed`: the index's model is gone from the instance, so
+ * search answers by words and titles alone. `reindex_available`: it is set to another model
+ * than its index uses. `reindexing`: a new index is being built beside the one search reads.
+ * `none`: nothing is embedded yet.
+ */
+export const KNOWLEDGE_EMBEDDING_STATES = [
+  "current",
+  "reindex_needed",
+  "reindex_available",
+  "reindexing",
+  "none"
+] as const;
 
 /**
  * What the page of a Knowledge Base shows of one document. `pending` is added and not yet
@@ -820,7 +836,11 @@ export const KNOWLEDGE_SOURCE_FAILURE_CODES = [
   // The Knowledge Base holds its document limit; the listing stopped discovering there.
   "knowledge_source_limit_reached",
   "knowledge_item_invalid",
-  "knowledge_fetch_not_allowed"
+  "knowledge_fetch_not_allowed",
+  // The Workflow run that called `ingest` ended before the pass did; what it wrote stays.
+  "knowledge_ingest_cancelled",
+  // A person removed the item by hand: no pass puts it back until a publisher lifts the hold.
+  "knowledge_item_removed"
 ] as const;
 export type KnowledgeSourceFailureCode = (typeof KNOWLEDGE_SOURCE_FAILURE_CODES)[number];
 
@@ -846,9 +866,10 @@ export type KnowledgeSourceItemState = (typeof KNOWLEDGE_SOURCE_ITEM_STATES)[num
 
 /**
  * How a sync of a source walks it: `initial` and `full` list every item below its folders,
- * `changes` reads the source's change feed from the stored cursor.
+ * `changes` reads the source's change feed from the stored cursor, and `ingest` is one call
+ * of `knowledge.<id>.ingest` from a Workflow into its Workflow-fed source.
  */
-export const KNOWLEDGE_SYNC_MODES = ["initial", "changes", "full"] as const;
+export const KNOWLEDGE_SYNC_MODES = ["initial", "changes", "full", "ingest"] as const;
 export type KnowledgeSyncMode = (typeof KNOWLEDGE_SYNC_MODES)[number];
 
 export const KNOWLEDGE_SYNC_RUN_STATES = ["running", "done", "failed", "superseded"] as const;

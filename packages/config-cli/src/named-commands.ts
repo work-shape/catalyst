@@ -22,6 +22,8 @@ interface NamedCommand {
   optionalName?: boolean;
   listField?: "apps";
   from?: boolean;
+  /** What `--from` must hold, for the usage error when it does not. */
+  fromShape?: string;
 }
 
 // Each face names an existing operation. Rights, policy and execution stay in the instance.
@@ -30,7 +32,8 @@ const commands: Readonly<Record<string, NamedCommand>> = {
     operation: apiOperations["workflows.test"],
     usage: "workflow test <name> [--from <file|->]",
     param: "workflow",
-    from: true
+    from: true,
+    fromShape: 'Workflow test input must be a JSON object: {"input": {...}}.'
   },
   "workflow runs": {
     operation: apiOperations["workflows.list_runs"],
@@ -82,6 +85,14 @@ const commands: Readonly<Record<string, NamedCommand>> = {
   "instance workspaces": {
     operation: apiOperations["instance.workspaces.list"],
     usage: "instance workspaces"
+  },
+  "limits show": { operation: apiOperations["usage.limits.get"], usage: "limits show" },
+  "limits set": {
+    operation: apiOperations["usage.limits.set"],
+    usage: "limits set --from <file|->",
+    from: true,
+    fromShape:
+      'Limit input must be a JSON object: {"level": "user", "target": "<user id>", "limits": {"monthly": 50}}; "limits": null removes the value.'
   }
 };
 
@@ -152,7 +163,7 @@ export async function runNamedCommand(
         // This is the operation's request body, not the generic call envelope.
         body = command.operation.body?.parse(input);
       } catch {
-        throw new UsageError('Workflow test input must be a JSON object: {"input": {...}}.');
+        throw new UsageError(command.fromShape ?? `Usage: catalyst ${command.usage}`);
       }
     }
     const options = { ...base, instance: values.instance, dir: values.dir };

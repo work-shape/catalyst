@@ -65,6 +65,8 @@ An agent has its live revision and at most one draft, which every writer shares.
 a changed agent writes that draft and names the draft revision the last pull or push saw: it
 is refused when somebody changed the draft since, naming who. 'catalyst agent publish <name>
 --revision <n>' makes a draft live, and 'catalyst agent discard <name> --revision <n>' drops it.
+'catalyst agent give-tools <name> --tool <tool-name>' gives the live agent tools at once; a
+draft keeps its content and gains them.
 A .catalyst-state.json of a CLI from before agent drafts needs one pull before an agent push.
 Exit codes: 0 done, 1 refused or failed, 2 usage, 3 a publish waits for an approval.
 `;

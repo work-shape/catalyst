@@ -69,8 +69,44 @@ export const operationAreas: Readonly<Record<string, Readonly<Record<string, unk
   workflows: workflowOperations
 };
 
+/**
+ * The type of {@link apiOperations}, named by area: inferred, the declarations would spell out
+ * every operation's type in one node, which is more than the compiler writes out.
+ */
+export type ApiOperations = typeof scheduledStartOperations &
+  typeof approvalRequestOperations &
+  typeof accountOperations &
+  typeof instanceOperations &
+  typeof roleOperations &
+  typeof collaborationWorkspaceOperations &
+  typeof conversationOperations &
+  typeof conversationFileOperations &
+  typeof governanceOperations &
+  typeof jobOperations &
+  typeof operationRunOperations &
+  typeof pageOperations &
+  typeof appOperations &
+  typeof configAssetOperations &
+  typeof assetOperations &
+  typeof agentOperations &
+  typeof connectionOperations &
+  typeof guardrailOperations &
+  typeof workflowOperations &
+  typeof workflowPrincipalRightsOperations &
+  typeof dataStoreOperations &
+  typeof knowledgeOperations &
+  typeof userOperations &
+  typeof apiAccessOperations &
+  typeof personalApiKeyOperations &
+  typeof feedbackOperations &
+  typeof accessOperations &
+  typeof credentialOperations &
+  typeof platformOperations &
+  typeof referenceOperations &
+  typeof systemOperations;
+
 /** Every product operation of the HTTP API, one file per area. */
-export const apiOperations = {
+const allOperations = {
   ...scheduledStartOperations,
   ...approvalRequestOperations,
   ...accountOperations,
@@ -104,6 +140,19 @@ export const apiOperations = {
   ...systemOperations
 } as const;
 
+/**
+ * An area spread above and missing from {@link ApiOperations} fails here, by the name of its
+ * first operation; one named there and not spread fails the assignment below.
+ */
+const everyOperationTyped: Record<
+  Exclude<keyof typeof allOperations, keyof ApiOperations>,
+  never
+> = {};
+void everyOperationTyped;
+
+/** Every product operation of the HTTP API, one file per area. */
+export const apiOperations: ApiOperations = allOperations;
+
 export * from "./connections";
 export * from "./guardrails";
 export * from "./workflows";
@@ -111,6 +160,11 @@ export * from "./workflow-principal-rights";
 
 export type ApiOperationName = keyof typeof apiOperations;
 
-export { knowledgeWriteContracts } from "./knowledge";
+export {
+  knowledgeWriteContracts,
+  type KnowledgeEmbeddingModelState,
+  type KnowledgeEmbeddingStateResponse,
+  type KnowledgeReindexResponse
+} from "./knowledge";
 
 export * from "./mail";

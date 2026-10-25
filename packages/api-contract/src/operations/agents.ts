@@ -3,6 +3,8 @@ import {
   agentDraftResponseSchema,
   discardAgentDraftRequestSchema,
   discardAgentDraftResponseSchema,
+  giveAgentToolsRequestSchema,
+  giveAgentToolsResponseSchema,
   setAgentUseRequestSchema,
   setAgentUseResponseSchema
 } from "../agent-proposals";
@@ -39,6 +41,25 @@ export const agentOperations = {
     body: discardAgentDraftRequestSchema,
     response: json(discardAgentDraftResponseSchema),
     errors: ["NOT_FOUND", "REVISION_CONFLICT"],
+    rateClass: "write"
+  }),
+  // Gives tools to the instance's own agent as one new live revision; a pending draft keeps
+  // its content and author and takes the tools along. The caller needs `agent.write` and
+  // `agent.publish`, so a key needs the publish scope, as for `assets.publish`.
+  "agents.give_tools": defineRegisteredOperation({
+    id: "agents.give_tools",
+    method: "POST",
+    path: "/api/v1/agents/:name/give-tools",
+    summary:
+      "Give tools to an agent, live at once; a pending draft keeps its content and gains them",
+    tag: "Agents",
+    auth: "user",
+    scope: "config_assets:publish",
+    requires: [],
+    effect: "changing",
+    body: giveAgentToolsRequestSchema,
+    response: json(giveAgentToolsResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "REVISION_CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
   // Who uses the agent where it is available (AGENT-USE-1). The right is decided as for its

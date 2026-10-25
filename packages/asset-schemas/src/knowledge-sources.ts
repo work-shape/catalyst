@@ -14,7 +14,11 @@ const sourceIdSchema = z.union([
     .string()
     .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u)
     .max(63),
-  knowledgeWorkflowSourceSchema.shape.id.regex(/^workflow:[a-z][a-z0-9_-]{0,62}$/u)
+  // KBW-2c: a Workflow's source carries the revision that created the Workflow; one made
+  // before that release carries none.
+  knowledgeWorkflowSourceSchema.shape.id.regex(
+    /^workflow:[a-z][a-z0-9_-]{0,62}(?:@[1-9][0-9]{0,9})?$/u
+  )
 ]);
 const countSchema = z.number().int().min(0);
 /** What a sync run counts (`KNOWLEDGE_SYNC_COUNTS`). */
@@ -32,7 +36,13 @@ export const knowledgeSyncInputSchema = z.strictObject({
   /** The `id` of the source in the definition. */
   source: sourceIdSchema,
   /** `changes` unless `full`. The initial import is started by publish, not by this call. */
-  mode: z.enum(["changes", "full"]).optional()
+  mode: z.enum(["changes", "full"]).optional(),
+  /**
+   * Lets a first pass that waits for confirmation go on (KB-ISO-1b): a connector's first sync or
+   * a Workflow's first `ingest` above 10,000 items. Needs `knowledge_base.publish`; audited with
+   * the counts and the estimate.
+   */
+  confirm: z.boolean().optional()
 });
 
 export type KnowledgeSyncInput = z.infer<typeof knowledgeSyncInputSchema>;
@@ -75,6 +85,40 @@ const itemFailureCodeSchema = z.union([
   z.enum(KNOWLEDGE_DOCUMENT_FAILURE_CODES)
 ]);
 
+/** A low and a high estimate. */
+const rangeSchema = z.strictObject({ min: z.number().min(0), max: z.number().min(0) });
+
+/**
+ * A first pass that stopped at 10,000 items and waits for one confirmation (KB-ISO-1b): what the
+ * whole pass holds and what it would cost, estimated from the listed sizes with a factor per
+ * format. Counts and sizes only, never a name.
+ */
+export const knowledgeFirstPassConfirmationSchema = z.strictObject({
+  syncRunId: z.string(),
+  /** The items of the pass, listed or named, and their size in bytes. */
+  items: countSchema,
+  bytes: countSchema,
+  /** How many it fetches and indexes before it waits. */
+  stop: countSchema,
+  /** Estimated from the listed sizes; absent where the Knowledge Base does not search by meaning. */
+  tokens: rangeSchema.optional(),
+  passages: rangeSchema.optional(),
+  /** The embedding model it embeds with; absent where the Knowledge Base does not search by meaning. */
+  model: z.string().optional(),
+  /** From the rate card; absent where nothing is embedded or the model has no price. */
+  cost: rangeSchema.extend({ currency: z.string() }).optional(),
+  /**
+   * Whether the store's size limit holds the high estimate of passages and vectors, and that
+   * estimate; absent where nothing is embedded.
+   */
+  room: z.boolean().optional(),
+  storeBytes: countSchema,
+  addedBytes: countSchema.optional(),
+  limitBytes: countSchema.optional()
+});
+
+export type KnowledgeFirstPassConfirmation = z.infer<typeof knowledgeFirstPassConfirmationSchema>;
+
 const sourceStatusSchema = z.strictObject({
   id: z.string(),
   /** The name of the Connection it reads through. */
@@ -102,6 +146,8 @@ const sourceStatusSchema = z.strictObject({
     .optional(),
   /** The last sync that ended. */
   last: knowledgeSyncResultSchema.optional(),
+  /** "Wartet auf Bestätigung": the running first pass stopped at 10,000 items. */
+  confirmation: knowledgeFirstPassConfirmationSchema.optional(),
   /** "Letzte Änderung verarbeitet". */
   lastChangeAt: z.string().optional(),
   /** "Älteste offene Änderung". */
@@ -180,7 +226,12 @@ export const knowledgeRetryOutputSchema = z.strictObject({
     .array(z.strictObject({ id: z.string(), state: z.enum(KNOWLEDGE_DOCUMENT_STATES) }))
     .optional(),
   /** How many contents or items were queued again. */
-  queued: z.number().int()
+  queued: z.number().int(),
+  /**
+   * For a Workflow-fed source: how many items removed by hand were allowed back. Its next pass
+   * that names one takes it again (KBW-2b).
+   */
+  released: z.number().int().optional()
 });
 
 export type KnowledgeRetryOutput = z.infer<typeof knowledgeRetryOutputSchema>;
@@ -201,7 +252,23 @@ export const knowledgeLocateOutputSchema = z.strictObject({
   discoveredAt: z.string(),
   fetchedAt: z.string().optional(),
   withdrawnAt: z.string().optional(),
-  purgedAt: z.string().optional()
+  purgedAt: z.string().optional(),
+  /** A person removed it by hand; a pass leaves it out until a publisher lifts the hold. */
+  removedAt: z.string().optional()
 });
 
 export type KnowledgeLocateOutput = z.infer<typeof knowledgeLocateOutputSchema>;
+
+/**
+ * The delete question of a Workflow (KBW-2c): the Knowledge Bases its source feeds, each with
+ * how many documents it holds there, which a delete withdraws. Those the reader may not open are
+ * counted only, by number of Knowledge Bases and documents, and never named.
+ */
+export const knowledgeWorkflowSourcesOutputSchema = z.strictObject({
+  knowledgeBases: z.array(
+    z.strictObject({ name: z.string(), title: z.string(), documents: countSchema })
+  ),
+  hidden: z.strictObject({ knowledgeBases: countSchema, documents: countSchema })
+});
+
+export type KnowledgeWorkflowSourcesOutput = z.infer<typeof knowledgeWorkflowSourcesOutputSchema>;

@@ -11,7 +11,8 @@ import {
 } from "../identity";
 import { defineOperation, defineRegisteredOperation, json, page } from "./define-operation";
 
-// The seven changing operations ask for `users.manage` and for the superadmin rules.
+// The seven changing operations ask for `users.manage` and for the superadmin rules; deleting a
+// user asks for `users.delete` as well.
 // The rule is more than one right, so each operation checks it itself and requires none.
 export const userOperations = {
   "users.list": defineOperation({
@@ -66,7 +67,7 @@ export const userOperations = {
     method: "DELETE",
     path: "/api/v1/instance/users/:userId",
     summary:
-      "Delete a user and their data. Answers `deleted`, or `deleting` while the data is still being removed. Needs the right `users.manage`. Only a superadmin deletes a user.",
+      "Delete a user and their data. Answers `deleted`, or `deleting` while the data is still being removed. Needs the rights `users.manage` and `users.delete`, and every right the user holds. Only a superadmin deletes a superadmin.",
     tag: "Users",
     auth: "user",
     scope: "user_admin:write",

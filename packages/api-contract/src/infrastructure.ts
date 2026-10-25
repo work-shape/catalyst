@@ -95,6 +95,12 @@ export const infrastructureSchema = z.object({
    * `since` is from when that has been so; absent while no check of the sandbox was ever
    * reported. Absent on an instance without a command sandbox.
    */
-  codeExecution: z.object({ available: z.boolean(), since: timestampSchema.optional() }).optional()
+  codeExecution: z.object({ available: z.boolean(), since: timestampSchema.optional() }).optional(),
+  /**
+   * The regions a model route has to declare for an agent run to call a personal Connection:
+   * release config `modules.connections.personalModelRegions`, `[eu]` where it names none.
+   * Absent on an instance without the Connections module.
+   */
+  personalConnectionModelRegions: z.array(providerRegionSchema).min(1).optional()
 });
 export type Infrastructure = z.infer<typeof infrastructureSchema>;

@@ -1,5 +1,11 @@
 import { workflowDataFlowsSchema } from "@work-shape/catalyst-asset-schemas";
 import {
+  RECORDS_FLAGGED_MAX_ITEMS_PER_PAGE,
+  dataStoreRecordsDecideInputSchema,
+  dataStoreRecordsDecideOutputSchema,
+  dataStoreRecordsFlaggedOutputSchema
+} from "@work-shape/catalyst-asset-schemas";
+import {
   APP_AUDIENCES,
   DATA_STORE_CONDITIONS,
   DATA_STORE_INSERT_CONFLICT_MODES,
@@ -118,7 +124,10 @@ const dataStoreStateResponseSchema = z.object({
     /** Whether the store is at 80 percent of its limit or above. */
     nearLimit: z.boolean()
   }),
-  /** What the server leaves open around the store, each with what an operator does about it. */
+  /**
+   * What the server leaves open around the store, each with what an operator does about it.
+   * Empty for a reader without `system.view`.
+   */
   conditions: z.array(z.object({ code: z.enum(DATA_STORE_CONDITIONS), message: z.string() })),
   /** How the last attempt to bring the store to its published revision ended. */
   lastMigration: z.object({
@@ -337,6 +346,15 @@ const appDataSourcesResponseSchema = z.object({
   truncated: z.boolean()
 });
 
+/** One page of the fields of a store that wait for a person in "Prüfen". */
+const dataStoreRecordsFlaggedQuerySchema = z.object({
+  /** One table with a records rule; every such table without it. */
+  table: tableNameSchema.optional(),
+  /** `nextCursor` of the page before. */
+  cursor: z.string().min(1).max(8_192).optional(),
+  limit: z.coerce.number().int().min(1).max(RECORDS_FLAGGED_MAX_ITEMS_PER_PAGE).optional()
+});
+
 const READ = {
   tag: "Data Stores",
   auth: "principal",
@@ -487,6 +505,33 @@ export const dataStoreOperations = {
     }),
     response: json(appDataSourcesResponseSchema),
     errors: ["NOT_FOUND"]
+  }),
+  "data_stores.records_flagged": defineRegisteredOperation({
+    ...READ,
+    scope: "data_store_rows:read",
+    id: "data_stores.records_flagged",
+    method: "GET",
+    path: "/api/v1/data-stores/:store/records/flagged",
+    summary:
+      "Read one page of the record fields of one Data Store that wait for a person, each candidate with the document and page it cites, where the caller may use its Knowledge Base",
+    query: dataStoreRecordsFlaggedQuerySchema,
+    response: json(dataStoreRecordsFlaggedOutputSchema)
+  }),
+  "data_stores.records_decide": defineRegisteredOperation({
+    id: "data_stores.records_decide",
+    method: "POST",
+    path: "/api/v1/data-stores/:store/records/decide",
+    summary:
+      "Confirm or correct one record field of one Data Store against its evidence, or assign a document to an object; the decision is pinned and audited without its value",
+    tag: "Data Stores",
+    auth: "principal",
+    scope: "data_store_rows:write",
+    requires: [],
+    effect: "changing",
+    body: dataStoreRecordsDecideInputSchema,
+    response: json(dataStoreRecordsDecideOutputSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "TIMEOUT"],
+    rateClass: "write"
   }),
   "data_stores.preview_rows": defineRegisteredOperation({
     ...READ,

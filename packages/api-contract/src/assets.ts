@@ -153,6 +153,11 @@ const pointerShape = {
 /** What the instance allows the caller to do to one asset. */
 export const assetVerbSchema = z.enum(ASSET_ACCESS_VERBS);
 
+/** The Apps whose `workflow` actions start a Workflow, as far as the reader may open them. */
+const appCallersSchema = z.array(
+  z.object({ name: z.string(), title: z.string(), scope: assetScopeSchema })
+);
+
 /** One asset as a list shows it: what every kind can say about itself, without its content. */
 export const assetSummarySchema = z.object({
   /** What an asset-scoped grant names as its `scopeId`. */
@@ -177,6 +182,11 @@ export const assetSummarySchema = z.object({
   attributes: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   /** Per-asset rights from the same resolver as the asset read; absent on older instances. */
   allowed: z.array(assetVerbSchema).optional(),
+  /**
+   * Of a Workflow on a list: the Apps that start it, as its read names them. Absent where none
+   * the reader may open does, and on other asset kinds.
+   */
+  appCallers: appCallersSchema.optional(),
   updatedAt: timestampSchema
 });
 
@@ -256,8 +266,44 @@ export const assetSchema = z.object({
   workflowCallers: z
     .array(z.object({ name: z.string(), title: z.string(), scope: assetScopeSchema }))
     .optional(),
+  /**
+   * Of a Workflow: the Apps whose `workflow` actions start it, from their published revision or
+   * a draft the reader may see, sorted by title. Absent on other asset kinds. An App the reader
+   * may not open is left out.
+   */
+  appCallers: appCallersSchema.optional(),
   /** Unrecorded draft review lines naming its audience and shared source accounts. */
   publishQuestion: z.array(z.string()).optional(),
+  /**
+   * Of a Knowledge Base whose publish processes or embeds documents again: the confirmation of
+   * the count and cost the publish question states, which the publish passes as
+   * `confirmProcessing`. A stale one is refused with the new statement.
+   */
+  publishConfirmation: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/u)
+    .optional(),
+  /**
+   * Of a Knowledge Base whose publish processes contents again: the count and cost of the
+   * sentence at index `line` of `publishQuestion` as fields, so that a client words them in the
+   * reader's language in place of that sentence.
+   */
+  publishProcessing: z
+    .strictObject({
+      count: z.number().int().nonnegative(),
+      line: z.number().int().nonnegative(),
+      cost: z.discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("none") }),
+        z.strictObject({
+          kind: z.literal("estimate"),
+          min: z.number().nonnegative(),
+          max: z.number().nonnegative(),
+          currency: z.string()
+        }),
+        z.strictObject({ kind: z.literal("unavailable") })
+      ])
+    })
+    .optional(),
   /**
    * Of an App or a Workflow, for a reader of its draft: the publish question's sentence and
    * warnings for the revision this read returns.

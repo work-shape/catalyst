@@ -10,12 +10,14 @@ import {
   knowledgeExtractFieldsInputSchema,
   knowledgeExtractFieldsOutputSchema,
   knowledgeRetryInputSchema,
-  knowledgeRetryOutputSchema
+  knowledgeRetryOutputSchema,
+  knowledgeWorkflowSourcesOutputSchema
 } from "@work-shape/catalyst-asset-schemas";
 import {
   DATA_STORE_SCALAR_TYPES,
   MANAGED_FILE_STATUSES,
   KNOWLEDGE_BASE_STATUSES,
+  KNOWLEDGE_EMBEDDING_STATES,
   KNOWLEDGE_DOCUMENT_FAILURE_CODES,
   KNOWLEDGE_DOCUMENT_STATES,
   KNOWLEDGE_DOCUMENT_WAIT_CODES,
@@ -84,6 +86,98 @@ const knowledgeQueryResponseSchema = z.object({
   })
 });
 
+/** An approved embedding model as a Knowledge Base's index uses it. */
+export interface KnowledgeEmbeddingModelState {
+  /** The approved embedding binding. */
+  bindingId: string;
+  model: string;
+  dimensions: number;
+}
+
+/** The embedding of a Knowledge Base that searches by meaning in the built-in store. */
+export interface KnowledgeEmbeddingStateResponse {
+  /**
+   * `current`: search answers by meaning with the model the Knowledge Base is set to.
+   * `reindex_needed`: the model of its index is no longer approved, so search answers by words
+   * and titles alone until it is re-indexed. `reindex_available`: it is set to another model
+   * than its index uses. `reindexing`: a new index is being built beside the one search reads.
+   * `none`: nothing is embedded yet.
+   */
+  state: (typeof KNOWLEDGE_EMBEDDING_STATES)[number];
+  /** The model search answers from. */
+  active?: KnowledgeEmbeddingModelState | undefined;
+  /** The approved model the Knowledge Base is set to. */
+  target?: KnowledgeEmbeddingModelState | undefined;
+  /** While re-indexing: the passages embedded of all it embeds. */
+  progress?: { embedded: number; total: number } | undefined;
+}
+
+/** What `knowledge_bases.reindex` answers. */
+export interface KnowledgeReindexResponse extends KnowledgeEmbeddingStateResponse {
+  /** Whether this call started a re-index. */
+  started: boolean;
+  /** What a re-index embeds and costs; returned where one would start or did. */
+  statement?:
+    | {
+        bindingId: string;
+        model: string;
+        /** The passages it embeds. */
+        chunks: number;
+        /** The tokens it embeds, estimated. */
+        tokens: number;
+        /** At the rate release config sets for the binding; omitted where it sets none. */
+        cost?: { amount: number; currency: string } | undefined;
+        /** Whether the store has room for the second index beside the first. */
+        room: boolean;
+        storeBytes: number;
+        addedBytes: number;
+        limitBytes?: number | undefined;
+        /** Pass as `confirm` to start it. */
+        confirmation: string;
+      }
+    | undefined;
+  /** The statement as sentences, in the instance's language. */
+  lines?: string[] | undefined;
+}
+
+// Typed by name, so the published declarations of every operation stay within what the
+// compiler serializes.
+const knowledgeEmbeddingModelSchema = z.object({
+  bindingId: z.string(),
+  model: z.string(),
+  dimensions: z.number().int()
+});
+
+const knowledgeEmbeddingStateObject = z.object({
+  state: z.enum(KNOWLEDGE_EMBEDDING_STATES),
+  active: knowledgeEmbeddingModelSchema.optional(),
+  target: knowledgeEmbeddingModelSchema.optional(),
+  progress: z.object({ embedded: z.number().int(), total: z.number().int() }).optional()
+});
+
+const knowledgeEmbeddingStateSchema: z.ZodType<KnowledgeEmbeddingStateResponse> =
+  knowledgeEmbeddingStateObject;
+
+const knowledgeReindexResponseSchema: z.ZodType<KnowledgeReindexResponse> =
+  knowledgeEmbeddingStateObject.extend({
+    started: z.boolean(),
+    statement: z
+      .object({
+        bindingId: z.string(),
+        model: z.string(),
+        chunks: z.number().int(),
+        tokens: z.number().int(),
+        cost: z.object({ amount: z.number(), currency: z.string() }).optional(),
+        room: z.boolean(),
+        storeBytes: z.number(),
+        addedBytes: z.number(),
+        limitBytes: z.number().optional(),
+        confirmation: z.string()
+      })
+      .optional(),
+    lines: z.array(z.string()).optional()
+  });
+
 const knowledgeStateResponseSchema = z.object({
   /** Published agents using this Knowledge Base that the caller may read. */
   agents: z.array(z.object({ name: z.string(), title: z.string() })).optional(),
@@ -91,6 +185,8 @@ const knowledgeStateResponseSchema = z.object({
   dataFlows: workflowDataFlowsSchema.optional(),
   /** Due ingestion has no reporting worker. Omitted for a structured Knowledge Base. */
   processingWaiting: z.boolean().optional(),
+  /** The embedding of a Knowledge Base that searches by meaning in the built-in store. */
+  embedding: knowledgeEmbeddingStateSchema.optional(),
   /**
    * The formats this instance reads into a Knowledge Base that keeps documents: `txt` and
    * `markdown`, with document processing also `pdf` and `docx`. Omitted for a structured one.
@@ -255,6 +351,22 @@ export const knowledgeOperations = {
     errors: ["NOT_FOUND"],
     rateClass: "read"
   }),
+  "knowledge_bases.workflow_sources": defineRegisteredOperation({
+    id: "knowledge_bases.workflow_sources",
+    method: "GET",
+    path: "/api/v1/workflows/:workflow/knowledge-sources",
+    summary:
+      "Read what deleting a Workflow ends: the Knowledge Bases its sources feed and how many documents each holds there; ones the caller may not open are only counted",
+    tag: "Knowledge Bases",
+    auth: "user",
+    scope: "config_assets:read",
+    // The route checks workflow.delete on the Workflow, and knowledge_base.use per Knowledge Base.
+    requires: [],
+    effect: "reading",
+    response: json(knowledgeWorkflowSourcesOutputSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
   "knowledge_bases.sync": defineRegisteredOperation({
     ...BASE,
     id: "knowledge_bases.sync",
@@ -396,6 +508,20 @@ export const knowledgeOperations = {
     effect: "changing",
     body: z.strictObject({ documentIds: z.array(z.string().min(1).max(200)).min(1).max(100) }),
     response: json(z.object({ removed: z.number().int() })),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "knowledge_bases.reindex": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.reindex",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/reindex",
+    summary:
+      "Re-index a Knowledge Base with the embedding model it is set to. Without confirm it states the passages, tokens and cost and starts nothing; with the statement's confirmation it builds a new index beside the one search reads and switches when it is complete",
+    scope: "config_assets:write",
+    effect: "changing",
+    body: z.strictObject({ confirm: z.string().trim().min(1).max(64).optional() }),
+    response: json(knowledgeReindexResponseSchema),
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
     rateClass: "write"
   }),

@@ -10,6 +10,7 @@ import { dryRunVerb } from "./dry-run";
 import { unpublishVerb } from "./unpublish";
 import { discardVerb } from "./discard";
 import { discardDraftVerb } from "./discard-draft";
+import { giveToolsVerb } from "./give-tools";
 import { deleteVerb } from "./delete";
 import { revertVerb } from "./revert";
 import { setAvailabilityVerb } from "./set-availability";
@@ -29,6 +30,7 @@ export const VERBS: Readonly<Record<string, Verb>> = {
   unpublish: unpublishVerb,
   discard: discardVerb,
   "discard-draft": discardDraftVerb,
+  "give-tools": giveToolsVerb,
   delete: deleteVerb,
   revert: revertVerb,
   "set-availability": setAvailabilityVerb,
