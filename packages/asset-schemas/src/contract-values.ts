@@ -1066,6 +1066,14 @@ export const MESSAGE_FINISH_STATUSES = [
 ] as const satisfies readonly AgentRunStatus[];
 export type MessageFinishStatus = (typeof MESSAGE_FINISH_STATUSES)[number];
 
+/**
+ * Why a run went on with its binding's fallback, as the person reads it: the model was
+ * overloaded (`rate_limit`) or could not be reached (`unavailable`: a server error, a timeout or
+ * a lost connection).
+ */
+export const MODEL_FALLBACK_REASONS = ["rate_limit", "unavailable"] as const;
+export type ModelFallbackReason = (typeof MODEL_FALLBACK_REASONS)[number];
+
 export const ENDED_AGENT_RUN_STATUSES = [
   "completed",
   "cancelled",

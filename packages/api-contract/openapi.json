@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.10",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.10, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.11",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.11, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -6858,6 +6858,166 @@
         },
         "x-catalyst-effect": "changing",
         "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/connections/{name}/source-folders": {
+      "get": {
+        "operationId": "connections.source_folders",
+        "summary": "List the folders inside one folder of a document source, to choose a Knowledge Base's folders",
+        "tags": [
+          "Connections"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "folder": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1000
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "path"
+                      ]
+                    },
+                    "folders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1000
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ]
+                      }
+                    },
+                    "nextPageToken": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    }
+                  },
+                  "required": [
+                    "folder",
+                    "folders"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
       }
     },
     "/api/v1/connections/{name}/test": {
@@ -21063,6 +21223,126 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/instance/users/{userId}/two-factor/reset": {
+      "post": {
+        "operationId": "users.two_factor.reset",
+        "summary": "Reset a user's two-factor sign-in: delete their second factor and trusted browsers and end their sessions. Needs the right `users.manage`. Only a superadmin resets a superadmin; nobody resets their own.",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "user_admin:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "user_admin:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetAdministeredUserTwoFactorResponse"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/IdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
     "/api/v1/instance/workspaces": {
       "get": {
         "operationId": "instance.workspaces.list",
@@ -35179,7 +35459,7 @@
         }
       },
       "Forbidden": {
-        "description": "`FORBIDDEN`: The caller lacks the scope or the right this operation requires.",
+        "description": "`FORBIDDEN`: The caller lacks the scope or the right this operation requires. `details.reason` is `two_factor_setup_required` where the instance requires two-factor sign-in and the person signed in with a password, or the owner of the personal key, has not set it up: every operation but `me.get` is refused until they have.",
         "content": {
           "application/json": {
             "schema": {
@@ -35269,7 +35549,7 @@
         }
       },
       "ForbiddenOrPolicyDeniedOrGuardrailBlocked": {
-        "description": "`FORBIDDEN`: The caller lacks the scope or the right this operation requires. `POLICY_DENIED`: The instance's policy does not allow this operation from here. `details.operation` names it. `details.reason` is `approval_unavailable` where the policy asks for another person's approval and the call cannot wait for one; `details.guardrailId` then names the guardrail that asked for it, where one did. It is `workflow_deleted` where a step of a run of a published Workflow needs the confirmation its publish gave, and the Workflow was deleted since. It is `approval_stale` where a call that waited can no longer be approved because what it is about changed or a newer call replaced it. It is `confirmation_required` where a subagent made a call that needs a person's confirmation or approval: a subagent never waits for one, and the agent that started it makes the call instead. `GUARDRAIL_BLOCKED`: A guardrail refused the call. `details.guardrailId` names it. `details.reason` is `check_unavailable` where a check could not answer, by an error or a timeout; `details.guardrailId` then names the event that was checked.",
+        "description": "`FORBIDDEN`: The caller lacks the scope or the right this operation requires. `details.reason` is `two_factor_setup_required` where the instance requires two-factor sign-in and the person signed in with a password, or the owner of the personal key, has not set it up: every operation but `me.get` is refused until they have. `POLICY_DENIED`: The instance's policy does not allow this operation from here. `details.operation` names it. `details.reason` is `approval_unavailable` where the policy asks for another person's approval and the call cannot wait for one; `details.guardrailId` then names the guardrail that asked for it, where one did. It is `workflow_deleted` where a step of a run of a published Workflow needs the confirmation its publish gave, and the Workflow was deleted since. It is `approval_stale` where a call that waited can no longer be approved because what it is about changed or a newer call replaced it. It is `confirmation_required` where a subagent made a call that needs a person's confirmation or approval: a subagent never waits for one, and the agent that started it makes the call instead. `GUARDRAIL_BLOCKED`: A guardrail refused the call. `details.guardrailId` names it. `details.reason` is `check_unavailable` where a check could not answer, by an error or a timeout; `details.guardrailId` then names the event that was checked.",
         "content": {
           "application/json": {
             "schema": {
@@ -35289,7 +35569,7 @@
         }
       },
       "ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined": {
-        "description": "`FORBIDDEN`: The caller lacks the scope or the right this operation requires. `POLICY_DENIED`: The instance's policy does not allow this operation from here. `details.operation` names it. `details.reason` is `approval_unavailable` where the policy asks for another person's approval and the call cannot wait for one; `details.guardrailId` then names the guardrail that asked for it, where one did. It is `workflow_deleted` where a step of a run of a published Workflow needs the confirmation its publish gave, and the Workflow was deleted since. It is `approval_stale` where a call that waited can no longer be approved because what it is about changed or a newer call replaced it. It is `confirmation_required` where a subagent made a call that needs a person's confirmation or approval: a subagent never waits for one, and the agent that started it makes the call instead. `GUARDRAIL_BLOCKED`: A guardrail refused the call. `details.guardrailId` names it. `details.reason` is `check_unavailable` where a check could not answer, by an error or a timeout; `details.guardrailId` then names the event that was checked. `DECLINED`: The person asked to approve the call declined it. `details.by` names them, `details.comment` holds their reason where they gave one.",
+        "description": "`FORBIDDEN`: The caller lacks the scope or the right this operation requires. `details.reason` is `two_factor_setup_required` where the instance requires two-factor sign-in and the person signed in with a password, or the owner of the personal key, has not set it up: every operation but `me.get` is refused until they have. `POLICY_DENIED`: The instance's policy does not allow this operation from here. `details.operation` names it. `details.reason` is `approval_unavailable` where the policy asks for another person's approval and the call cannot wait for one; `details.guardrailId` then names the guardrail that asked for it, where one did. It is `workflow_deleted` where a step of a run of a published Workflow needs the confirmation its publish gave, and the Workflow was deleted since. It is `approval_stale` where a call that waited can no longer be approved because what it is about changed or a newer call replaced it. It is `confirmation_required` where a subagent made a call that needs a person's confirmation or approval: a subagent never waits for one, and the agent that started it makes the call instead. `GUARDRAIL_BLOCKED`: A guardrail refused the call. `details.guardrailId` names it. `details.reason` is `check_unavailable` where a check could not answer, by an error or a timeout; `details.guardrailId` then names the event that was checked. `DECLINED`: The person asked to approve the call declined it. `details.by` names them, `details.comment` holds their reason where they gave one.",
         "content": {
           "application/json": {
             "schema": {
@@ -35560,6 +35840,9 @@
             "items": {
               "$ref": "#/components/schemas/AdministeredUserIdentity"
             }
+          },
+          "twoFactorEnabled": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -37333,6 +37616,21 @@
             "items": {
               "$ref": "#/components/schemas/AuthScope"
             }
+          },
+          "twoFactor": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "enrolled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "required",
+              "enrolled"
+            ]
           }
         },
         "required": [
@@ -39945,6 +40243,9 @@
           },
           "modelContext": {
             "$ref": "#/components/schemas/StoredModelContextSnapshot"
+          },
+          "modelFallback": {
+            "$ref": "#/components/schemas/StoredModelFallback"
           }
         },
         "required": [
@@ -41037,6 +41338,9 @@
                   "type": "string"
                 },
                 "label": {
+                  "type": "string"
+                },
+                "fallback": {
                   "type": "string"
                 }
               },
@@ -46446,6 +46750,22 @@
           "ok"
         ]
       },
+      "ResetAdministeredUserTwoFactorResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "hadFactor": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "hadFactor"
+        ]
+      },
       "RevertAssetRequest": {
         "type": "object",
         "properties": {
@@ -47910,6 +48230,59 @@
           "inputTokens",
           "compactThresholdTokens",
           "compacted"
+        ]
+      },
+      "StoredModelFallback": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "object",
+            "properties": {
+              "bindingId": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bindingId",
+              "model"
+            ]
+          },
+          "to": {
+            "type": "object",
+            "properties": {
+              "bindingId": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bindingId",
+              "model"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "rate_limit",
+              "unavailable"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "reason"
         ]
       },
       "StoredReasoningSummary": {

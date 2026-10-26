@@ -5,6 +5,7 @@ import { dataStoreReviewGroup } from "./data-store-review";
 import { catalogueGroup } from "./catalogue";
 import { initGroup } from "./init";
 import { knowledgeGroup } from "./knowledge";
+import { modelsGroup } from "./models";
 import { namedGroup } from "./named";
 import { operationsGroup } from "./operations";
 
@@ -16,6 +17,7 @@ export const commandGroups = [
   dataStoreReviewGroup,
   initGroup,
   knowledgeGroup,
+  modelsGroup,
   namedGroup,
   operationsGroup
 ] as const;

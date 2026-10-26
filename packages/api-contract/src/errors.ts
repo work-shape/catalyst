@@ -7,7 +7,8 @@ export const appErrorCodeSchema = z.enum(APP_ERROR_CODES);
 export const API_ERROR_MEANINGS: Record<z.infer<typeof appErrorCodeSchema>, string> = {
   BAD_REQUEST: "The request cannot be read.",
   UNAUTHENTICATED: "No credential was presented, or the credential is not valid.",
-  FORBIDDEN: "The caller lacks the scope or the right this operation requires.",
+  FORBIDDEN:
+    "The caller lacks the scope or the right this operation requires. `details.reason` is `two_factor_setup_required` where the instance requires two-factor sign-in and the person signed in with a password, or the owner of the personal key, has not set it up: every operation but `me.get` is refused until they have.",
   NOT_FOUND:
     "The resource does not exist, is not visible to the caller, or the instance runs without this operation.",
   CONFLICT: "The request conflicts with the current state of the resource.",
@@ -72,6 +73,13 @@ const unknownOperationSchema = z.object({
  * The limit is the server's own and bounds every operation alike.
  */
 export const BODY_TOO_LARGE_REASON = "body_too_large";
+
+/**
+ * `details.reason` of the 403 an instance that requires two-factor sign-in answers a person
+ * signed in with a password who has not set it up, on every operation but `me.get`. A personal
+ * key of such an owner gets it too. The interface shows the setup screen on it.
+ */
+export const TWO_FACTOR_SETUP_REQUIRED_REASON = "two_factor_setup_required";
 
 /**
  * `details.reason` of the 400 a server answers for a JSON request body it does not read: one

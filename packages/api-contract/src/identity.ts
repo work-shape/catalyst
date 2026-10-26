@@ -80,7 +80,12 @@ export const apiUserSchema = z.object({
   principal: authPrincipalSchema.optional(),
   subjectUserId: z.string().optional(),
   delegatedActor: delegatedActorSchema.optional(),
-  scopes: z.array(authScopeSchema).optional()
+  scopes: z.array(authScopeSchema).optional(),
+  /**
+   * Two-factor sign-in of a person signed in with a password (TWO-FACTOR-1): whether the instance
+   * requires it and whether the person has set it up. Left out for every other way in.
+   */
+  twoFactor: z.object({ required: z.boolean(), enrolled: z.boolean() }).optional()
 });
 
 export const issueSessionTokenRequestSchema = z.object({
@@ -139,7 +144,9 @@ export const administeredUserSchema = z.object({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
   lastAuthenticatedAt: timestampSchema.optional(),
-  identities: z.array(administeredUserIdentitySchema)
+  identities: z.array(administeredUserIdentitySchema),
+  /** Whether the user's password sign-in has a second factor. Left out without a password sign-in. */
+  twoFactorEnabled: z.boolean().optional()
 });
 
 export const administeredUserPasswordSignInRequestSchema = z.object({
@@ -210,6 +217,12 @@ export const resetAdministeredUserPasswordRequestSchema = z.object({
 
 export const resetAdministeredUserPasswordResponseSchema = z.object({
   ok: z.literal(true)
+});
+
+/** `false` where the user had no second factor to reset. */
+export const resetAdministeredUserTwoFactorResponseSchema = z.object({
+  ok: z.literal(true),
+  hadFactor: z.boolean()
 });
 
 export const requestPasswordResetRequestSchema = z.object({

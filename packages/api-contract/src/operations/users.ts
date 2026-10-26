@@ -4,6 +4,7 @@ import {
   createAdministeredUserRequestSchema,
   resetAdministeredUserPasswordRequestSchema,
   resetAdministeredUserPasswordResponseSchema,
+  resetAdministeredUserTwoFactorResponseSchema,
   sendAdministeredUserInvitationResponseSchema,
   updateAdministeredUserRequestSchema,
   userDeletionStateSchema,
@@ -108,6 +109,21 @@ export const userOperations = {
     secret: true,
     body: resetAdministeredUserPasswordRequestSchema,
     response: json(resetAdministeredUserPasswordResponseSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  "users.two_factor.reset": defineRegisteredOperation({
+    id: "users.two_factor.reset",
+    method: "POST",
+    path: "/api/v1/instance/users/:userId/two-factor/reset",
+    summary:
+      "Reset a user's two-factor sign-in: delete their second factor and trusted browsers and end their sessions. Needs the right `users.manage`. Only a superadmin resets a superadmin; nobody resets their own.",
+    tag: "Users",
+    auth: "user",
+    scope: "user_admin:write",
+    requires: [],
+    effect: "changing",
+    response: json(resetAdministeredUserTwoFactorResponseSchema),
     errors: ["NOT_FOUND"],
     rateClass: "write"
   }),

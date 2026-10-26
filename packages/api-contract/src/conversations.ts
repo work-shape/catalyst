@@ -18,6 +18,7 @@ import {
   DECIDED_APPROVAL_REQUEST_STATUSES,
   ENDED_APPROVAL_EXECUTIONS,
   MESSAGE_FINISH_STATUSES,
+  MODEL_FALLBACK_REASONS,
   MODEL_USAGE_LIMIT_PERIODS,
   MODEL_USAGE_LIMIT_METRICS,
   MODEL_USAGE_LIMIT_SCOPES,
@@ -82,6 +83,18 @@ export const storedModelContextSnapshotSchema = z.object({
   inputTokens: z.number(),
   compactThresholdTokens: z.number(),
   compacted: z.boolean()
+});
+
+const storedModelFallbackBindingSchema = z.object({
+  bindingId: z.string(),
+  model: z.string(),
+  label: z.string().optional()
+});
+
+export const storedModelFallbackSchema = z.object({
+  from: storedModelFallbackBindingSchema,
+  to: storedModelFallbackBindingSchema,
+  reason: z.enum(MODEL_FALLBACK_REASONS)
 });
 
 export const storedToolCallSchema = z.object({
@@ -166,7 +179,9 @@ export const assistantFinalMessageMetadataSchema = z.object({
   sources: z.array(webSourceSchema).optional(),
   knowledgeSources: z.array(knowledgeCitationSourceSchema).optional(),
   citations: z.array(messageCitationSchema).optional(),
-  modelContext: storedModelContextSnapshotSchema.optional()
+  modelContext: storedModelContextSnapshotSchema.optional(),
+  /** The run switched to its binding's fallback, which wrote this answer. */
+  modelFallback: storedModelFallbackSchema.optional()
 });
 
 export const toolResultMessageMetadataSchema = z.object({

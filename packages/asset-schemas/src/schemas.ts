@@ -300,6 +300,7 @@ export const agentConfigSchema = z.object({
   modelBindingId: z.string().min(1).optional(),
   reasoningEffort: z.enum(REASONING_EFFORTS).optional(),
   fastMode: z.boolean().optional(),
+  useModelFallback: z.boolean().optional(),
   userSelectableModelBindingIds: z.array(z.string().min(1)).optional(),
   modelReasoningEfforts: z.record(z.string().min(1), z.enum(REASONING_EFFORTS)).optional(),
   maxSteps: z.number().int().positive().optional(),

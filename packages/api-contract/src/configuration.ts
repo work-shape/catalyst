@@ -359,7 +359,9 @@ export const configAssetReferencesSchema = z.object({
       id: z.string(),
       model: z.string(),
       /** The name people read, when release config gives one. */
-      label: z.string().optional()
+      label: z.string().optional(),
+      /** The binding that answers when this one is overloaded or down, where it names one. */
+      fallback: z.string().optional()
     })
   ),
   fastModeModelBindingIds: z.array(z.string()),

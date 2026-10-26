@@ -36,6 +36,11 @@ export interface AgentConfig {
   modelBindingId?: string;
   reasoningEffort?: ReasoningEffortConfig;
   fastMode?: boolean;
+  /**
+   * Whether a run of the agent goes on on its model binding's `fallback` when that binding is
+   * rate-limited or down. Unset is on.
+   */
+  useModelFallback?: boolean;
   /** Bindings users may pick for this agent in the chat, besides its own `modelBindingId`. */
   userSelectableModelBindingIds?: string[];
   /**

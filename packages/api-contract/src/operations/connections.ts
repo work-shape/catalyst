@@ -23,7 +23,8 @@ import { defineRegisteredOperation, json, redirect } from "./define-operation";
 
 // What a Connection's page and an agent's editor read beyond the asset itself, and the test
 // of a Connection. The asset, with name, settings and accepted operations, is read through
-// `assets.get`. Nothing here answers a secret, a handle of one, or data of the outside system.
+// `assets.get`. Nothing here answers a secret or a handle of one, and no data of the outside
+// system but the folder names `connections.source_folders` answers to who may use the Connection.
 
 /** The longest secret a write takes. The Secret Store counts its bytes again. */
 const SECRET_VALUE_MAX_CHARS = 16 * 1024;
@@ -212,6 +213,29 @@ export const connectionTestResultSchema = z.object({
   testedAt: timestampSchema
 });
 
+/** One folder of a document source, as a person chooses a Knowledge Base's folders. */
+const sourceFolderSchema = z.object({
+  id: z.string().min(1).max(500),
+  name: z.string().min(1).max(1_000)
+});
+
+/** Which folder's folders a person asks for: the top where `parent` is left out. */
+export const connectionSourceFoldersQuerySchema = z.object({
+  parent: z.string().min(1).max(500).optional(),
+  pageToken: z.string().min(1).max(4_000).optional()
+});
+
+/**
+ * The folders inside one folder of a Connection a Knowledge Base can sync from: the only answer
+ * here that holds data of the outside system, its folder names, for who may use the Connection.
+ */
+export const connectionSourceFoldersSchema = z.object({
+  /** The folder listed, with its path from the top; `/` for the top. */
+  folder: sourceFolderSchema.extend({ path: z.string().min(1).max(4_000) }),
+  folders: z.array(sourceFolderSchema),
+  nextPageToken: z.string().min(1).max(4_000).optional()
+});
+
 export const connectionToolSchema = z.object({
   toolName: z.string(),
   operation: z.string(),
@@ -382,6 +406,7 @@ export type ConnectionSecretState = z.infer<typeof connectionSecretStateSchema>;
 export type ConnectionDiscoveredTool = z.infer<typeof connectionDiscoveredToolSchema>;
 export type ConnectionOperationDetail = z.infer<typeof connectionOperationDetailSchema>;
 export type ConnectionTestResult = z.infer<typeof connectionTestResultSchema>;
+export type ConnectionSourceFolders = z.infer<typeof connectionSourceFoldersSchema>;
 export type ConnectionTools = z.infer<typeof connectionToolsSchema>;
 export type ConnectionOAuthStart = z.infer<typeof connectionOAuthStartSchema>;
 export type ConnectionOAuthSignIn = z.infer<typeof connectionOAuthSignInSchema>;
@@ -646,6 +671,22 @@ export const connectionOperations = {
     response: json(connectionDisconnectSchema),
     errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
+  }),
+  "connections.source_folders": defineRegisteredOperation({
+    id: "connections.source_folders",
+    method: "GET",
+    path: "/api/v1/connections/:name/source-folders",
+    summary:
+      "List the folders inside one folder of a document source, to choose a Knowledge Base's folders",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    query: connectionSourceFoldersQuerySchema,
+    response: json(connectionSourceFoldersSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "TIMEOUT"],
+    rateClass: "read"
   }),
   // A path of its own: `agent-tools` would be a valid Connection name under `/connections/`.
   "connections.connector_types": defineRegisteredOperation({
