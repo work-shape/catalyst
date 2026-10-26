@@ -10,6 +10,17 @@ export const workflowDatasetReferenceSchema = z.strictObject({
   offset: z.number().int().nonnegative().optional()
 });
 
+/**
+ * A file of a Workflow run as step data holds it: the id of the Managed File the run owns, its
+ * name, its type and its size. The bytes stay in the run's files; no step carries them inline.
+ */
+export const workflowFileReferenceSchema = z.strictObject({
+  $file: z.string().min(1),
+  name: z.string().min(1).max(200),
+  mimeType: z.string().min(1).max(200),
+  bytes: z.number().int().positive()
+});
+
 /** One row of a batch's failures dataset, preserving the input item for a retry. */
 export const operationBatchFailureSchema = z.strictObject({
   item: z.json(),
