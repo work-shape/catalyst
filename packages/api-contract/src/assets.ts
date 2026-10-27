@@ -260,7 +260,7 @@ export const assetSchema = z.object({
   liveVersion: z
     .object({
       number: z.number().int().positive(),
-      publishedAt: timestampSchema,
+      publishedAt: timestampSchema.optional(),
       /** The name of who published, as the account is now; empty for one that is gone. */
       by: z.string().optional()
     })

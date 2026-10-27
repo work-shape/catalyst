@@ -1,4 +1,6 @@
 import {
+  assetPreviewRequestSchema,
+  assetPreviewSchema,
   pageDetailSchema,
   pagePreviewRequestSchema,
   pagePreviewSchema,
@@ -68,6 +70,19 @@ export const pageOperations = {
     summary: "Get the address a frame loads one Page revision from",
     body: pagePreviewRequestSchema,
     response: json(pagePreviewSchema),
+    errors: ["NOT_FOUND"]
+  }),
+  // The draft of an asset whose kind brings a preview, such as a form page, shown in the frame
+  // of a Page to the person who may write it. POST for the reason above.
+  "assets.preview": defineOperation({
+    ...pageAccess,
+    tag: "Assets",
+    id: "assets.preview",
+    method: "POST",
+    path: "/api/v1/assets/:kind/:name/preview",
+    summary: "Get the address a frame loads the preview of an asset's draft from",
+    body: assetPreviewRequestSchema,
+    response: json(assetPreviewSchema),
     errors: ["NOT_FOUND"]
   })
 } as const;

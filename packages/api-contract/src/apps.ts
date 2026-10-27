@@ -2,6 +2,7 @@ import {
   APP_ACTION_CALL_STATUSES,
   APP_MODES,
   OPERATION_EFFECTS,
+  PREVIEW_CAPTURE_MAX_BYTES,
   previewReportSchema,
   WORKFLOW_RUN_STATUSES,
   WORKFLOW_TEST_REVISIONS
@@ -224,6 +225,36 @@ export const appPreviewReportRequestSchema = z
 
 /** Whether the report was kept. Nothing is kept for a frame that reports into no conversation. */
 export const appPreviewReportResponseSchema = z.object({ stored: z.boolean() }).strict();
+
+/**
+ * The answer of the person's browser to a capture request of a run (PREVIEW-SEE-1): the picture
+ * of the preview the frame shows, as WebP in base64, or that this browser cannot take one. Only
+ * the person the request asks, from a frame of the requested revision of that conversation.
+ */
+export const appPreviewCaptureAnswerRequestSchema = z
+  .object({
+    ...pageSessionProof,
+    conversationId: z.string().min(1).max(200).optional(),
+    image: z
+      .base64()
+      .max(Math.ceil(PREVIEW_CAPTURE_MAX_BYTES / 3) * 4)
+      .optional(),
+    unavailable: z.literal(true).optional()
+  })
+  .strict()
+  .refine((answer) => (answer.image === undefined) !== (answer.unavailable === undefined), {
+    message: "An answer holds either the picture or that none can be taken"
+  });
+
+/** Whether the answer was taken. A request that was answered, ended or is not the caller's is not. */
+export const appPreviewCaptureAnswerResponseSchema = z.object({ accepted: z.boolean() }).strict();
+
+/** The caller's own capture requests of a conversation that wait for their browser. */
+export const pendingPreviewCapturesSchema = z
+  .object({
+    captures: z.array(z.object({ id: z.string(), fileSetId: z.string() }).strict())
+  })
+  .strict();
 
 /** What each action of the shown manifest would come to for the caller now. */
 export const appSessionContextSchema = z.object({

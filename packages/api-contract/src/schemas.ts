@@ -19,6 +19,7 @@ export * from "./operation-runs";
 export * from "./pages";
 export * from "./personal-api-keys";
 export * from "./feedback";
+export * from "./platform-report";
 export * from "./platform";
 export * from "./shared";
 export { knowledgeFieldValueSchema } from "@work-shape/catalyst-asset-schemas";

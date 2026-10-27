@@ -1,5 +1,9 @@
 import {
   APP_ACTION_CALL_STATUSES,
+  PREVIEW_CAPTURE_MAX_BYTES,
+  PREVIEW_CAPTURE_MAX_HEIGHT,
+  PREVIEW_CAPTURE_MAX_WIDTH,
+  PREVIEW_CAPTURE_TOOL_NAME,
   PREVIEW_REPORT_MAX_ENTRIES,
   IDEMPOTENCY_KEY_MAX_LENGTH,
   POLICY_VALUES,
@@ -26,6 +30,14 @@ export const APP_BRIDGE_MAX_HEIGHT_PX = 100_000;
 export const APP_BRIDGE_REQUEST_ID_MAX_CHARS = 100;
 /** The longest name of an action, a Connection or an operation a Page may send. */
 export const APP_BRIDGE_NAME_MAX_CHARS = 200;
+
+// The bounds of a picture of a preview (PREVIEW-SEE-1), for the interface that asks for one.
+export {
+  PREVIEW_CAPTURE_MAX_BYTES,
+  PREVIEW_CAPTURE_MAX_HEIGHT,
+  PREVIEW_CAPTURE_MAX_WIDTH,
+  PREVIEW_CAPTURE_TOOL_NAME
+};
 
 const mark = { [APP_BRIDGE_MARK]: z.literal(APP_BRIDGE_VERSION) };
 const session = z.string().min(1).max(200);
@@ -70,6 +82,7 @@ const guardReportSchema = z.strictObject({
         message: z.string().max(APP_BRIDGE_REPORT_MAX_CHARS),
         file: z.string().max(APP_BRIDGE_REPORT_MAX_CHARS).optional(),
         line: reportCount.optional(),
+        column: reportCount.optional(),
         count: reportCount.min(1)
       })
     )
@@ -79,10 +92,32 @@ const guardReportSchema = z.strictObject({
 
 export type AppBridgeGuardReport = z.infer<typeof guardReportSchema>;
 
+const capturedPixels = (max: number) => z.number().int().min(1).max(max);
+
+/**
+ * What the platform's guard answers to `capture` (PREVIEW-SEE-1): the picture of the Page as
+ * WebP bytes, or that this browser cannot take one. Like the report it carries no session and
+ * counts only from the frame's one child window. The Page shares the guard's realm and can
+ * post one itself: it can show only itself, and the instance checks the picture again.
+ */
+const captureResultSchema = z.strictObject({
+  ...mark,
+  type: z.literal("capture_result"),
+  requestId,
+  image: z
+    .instanceof(ArrayBuffer)
+    .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= PREVIEW_CAPTURE_MAX_BYTES)
+    .optional(),
+  width: capturedPixels(PREVIEW_CAPTURE_MAX_WIDTH).optional(),
+  height: capturedPixels(PREVIEW_CAPTURE_MAX_HEIGHT).optional(),
+  unavailable: z.literal(true).optional()
+});
+
 /** What a Page posts. Unknown keys are refused, so a message is exactly one of these. */
 export const appBridgePageMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...mark, type: z.literal("ready") }),
   z.strictObject({ ...mark, type: z.literal("report"), report: guardReportSchema }),
+  captureResultSchema,
   z.strictObject({
     ...mark,
     type: z.literal("storage_write"),
@@ -255,6 +290,9 @@ export const appBridgeHostMessageSchema = z.discriminatedUnion("type", [
     ok: z.boolean()
   }),
   z.strictObject({ ...mark, type: z.literal("context"), session, context: appBridgeContextSchema }),
+  // Asks the platform's guard for a picture of the Page (PREVIEW-SEE-1). The guard answers it,
+  // not the kit, so it carries no session.
+  z.strictObject({ ...mark, type: z.literal("capture"), requestId }),
   z.strictObject({
     ...mark,
     type: z.literal("theme"),

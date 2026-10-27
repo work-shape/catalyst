@@ -53,6 +53,8 @@ export const previewReportEntrySchema = z.strictObject({
   /** The page's file the entry came from, relative to the page. */
   file: z.string().min(1).max(FILE_MAX_CHARS).optional(),
   line: z.number().int().min(0).max(10_000_000).optional(),
+  /** One-based column; the server resolves bundle coordinates to authored source. */
+  column: z.number().int().min(0).max(10_000_000).optional(),
   count: z.number().int().min(1).max(1_000_000_000)
 });
 export type PreviewReportEntry = z.infer<typeof previewReportEntrySchema>;
@@ -83,6 +85,7 @@ export interface UnboundPreviewReport {
     code?: string | undefined;
     file?: string | undefined;
     line?: number | undefined;
+    column?: number | undefined;
     count: number;
   }[];
   more?: number | undefined;
@@ -205,15 +208,27 @@ export function boundPreviewReport(input: UnboundPreviewReport): PreviewReport {
       file !== undefined && raw.line !== undefined && Number.isInteger(raw.line)
         ? Math.min(10_000_000, Math.max(0, raw.line))
         : undefined;
+    const column =
+      line !== undefined && raw.column !== undefined && Number.isInteger(raw.column)
+        ? Math.min(10_000_000, Math.max(0, raw.column))
+        : undefined;
     const entry: PreviewReportEntry = {
       kind: raw.kind,
       message: scrubPreviewText(raw.message),
       ...(code === undefined ? {} : { code }),
       ...(file === undefined ? {} : { file }),
       ...(line === undefined ? {} : { line }),
+      ...(column === undefined ? {} : { column }),
       count
     };
-    const key = JSON.stringify([entry.kind, entry.message, entry.code, entry.file, entry.line]);
+    const key = JSON.stringify([
+      entry.kind,
+      entry.message,
+      entry.code,
+      entry.file,
+      entry.line,
+      entry.column
+    ]);
     const at = index.get(key);
     if (at !== undefined) {
       const kept = merged[at];

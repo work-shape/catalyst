@@ -101,6 +101,21 @@ export const pagePreviewSchema = z.object({
   draftHosts: draftHostsSchema.optional()
 });
 
+/**
+ * Where a frame loads the preview of an asset's draft, for a kind that brings one, such as a
+ * form page: in the shape of `pages.preview`, without outside hosts, since a preview reaches
+ * none. `url` is a credential of its caller: put it in the frame and nowhere else.
+ */
+export const assetPreviewSchema = pagePreviewSchema
+  .pick({ url: true, expiresAt: true, fileSetId: true, number: true, pageSessionId: true })
+  .extend({
+    /** The number of the asset revision shown: its draft. */
+    revision: z.number().int().positive()
+  });
+
+export const assetPreviewRequestSchema = z.object({}).strict();
+
+export type AssetPreviewResponse = z.infer<typeof assetPreviewSchema>;
 export type PageResponse = z.infer<typeof pageSchema>;
 export type PageFileSetResponse = z.infer<typeof pageFileSetSchema>;
 export type PageDetailResponse = z.infer<typeof pageDetailSchema>;

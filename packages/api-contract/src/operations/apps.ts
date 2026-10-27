@@ -7,11 +7,14 @@ import {
   appActionsSchema,
   appFromPageQuerySchema,
   appFromPageSchema,
+  appPreviewCaptureAnswerRequestSchema,
+  appPreviewCaptureAnswerResponseSchema,
   appPreviewReportRequestSchema,
   appPreviewReportResponseSchema,
   appPreviewRequestSchema,
   appSessionContextRequestSchema,
   appSessionContextSchema,
+  pendingPreviewCapturesSchema,
   appStorageWriteRequestSchema,
   appStorageWriteResponseSchema,
   appPreviewSchema,
@@ -209,6 +212,41 @@ export const appOperations = {
     effect: "changing",
     body: appPreviewReportRequestSchema,
     response: json(appPreviewReportResponseSchema),
+    errors: ["NOT_FOUND", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  // The capture requests a run of the caller's turn made in a conversation (PREVIEW-SEE-1),
+  // asked when the interface sees a run call `preview.capture`. Only the caller's own.
+  "apps.preview_captures.pending": defineOperation({
+    id: "apps.preview_captures.pending",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/preview-captures",
+    summary: "List the caller's capture requests of a conversation that wait for their browser",
+    tag: "Apps",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(pendingPreviewCapturesSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  // POST because it carries the token of the frame's address, which never stands in a path. A
+  // picture for the model of one run, not a governance event: no Operation Run, audit event or
+  // log line holds it, so it is no registered operation.
+  "apps.sessions.capture": defineOperation({
+    id: "apps.sessions.capture",
+    method: "POST",
+    path: "/api/v1/app-content-sessions/:pageSessionId/captures/:captureId",
+    summary:
+      "Answer a run's capture request with a picture of the preview a frame shows, or that none can be taken",
+    tag: "Apps",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: appPreviewCaptureAnswerRequestSchema,
+    response: json(appPreviewCaptureAnswerResponseSchema),
     errors: ["NOT_FOUND", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
