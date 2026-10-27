@@ -23,6 +23,7 @@ export interface Values {
   audience?: string;
   withdraw?: string;
   json: boolean;
+  all: boolean;
   files: boolean;
   personal: boolean;
   none: boolean;

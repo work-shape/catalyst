@@ -72,6 +72,7 @@ export const instanceOperations = {
     tag: "Instance",
     auth: "user",
     scope: "user_admin:read",
+    personalKeyScope: "infrastructure:check",
     requires: ["system.view"],
     effect: "reading",
     response: json(infrastructureSchema),

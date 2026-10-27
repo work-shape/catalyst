@@ -47,6 +47,17 @@ export const platformAssetKindSchema = z.object({
   principalActions: z.array(z.string()).optional(),
   /** The file of a `files` kind that holds its manifest. */
   manifestFile: z.string().optional(),
+  /** Operator source bounds for Workflows; the names are release settings. */
+  source: z
+    .object({
+      fileBytes: z.number().int().positive(),
+      files: z.number().int().positive(),
+      treeBytes: z.number().int().positive(),
+      historyBytes: z.number().int().positive(),
+      cacheBytes: z.number().int().positive()
+    })
+    .optional(),
+  repository: z.boolean().optional(),
   /** What a write of a `files` kind is held to, by the names of the limits. */
   limits: z
     .object({

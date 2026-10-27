@@ -61,6 +61,12 @@ const revisionNumberSchema = z.number().int().positive();
 export const APP_PUBLISH_WORKFLOWS_MAX = 20;
 
 /**
+ * How many Data Stores one publish of an App publishes with it at most: as many as a manifest
+ * may bind (`dataStores`, 100 entries), since each named store must be one the App binds.
+ */
+export const APP_PUBLISH_DATA_STORES_MAX = 100;
+
+/**
  * The revision a write was made against. Every write of an asset names one: the server
  * refuses a write without it with `PRECONDITION_REQUIRED` and never takes it as leave to
  * overwrite. The field is optional here only so that this refusal names the asset.
@@ -247,8 +253,20 @@ export const workflowStepFactSchema = workflowOperationFactSchema.partial().exte
 });
 
 export const assetSchema = z.object({
-  /** The retained publish event for the live revision, for a reader of an App draft. */
-  publication: z.object({ at: z.string().datetime(), by: z.string().optional() }).optional(),
+  /**
+   * Of a live App, for a reader of its draft: its version, the number of the publish that made
+   * it live, when and by whom. Members read this number, never a revision's.
+   */
+  liveVersion: z
+    .object({
+      number: z.number().int().positive(),
+      publishedAt: timestampSchema,
+      /** The name of who published, as the account is now; empty for one that is gone. */
+      by: z.string().optional()
+    })
+    .optional(),
+  /** Of a live App, for a reader of its draft: whether the draft is another revision than the live one. */
+  draftChangedSinceLive: z.boolean().optional(),
   id: z.string(),
   kind: z.string(),
   name: z.string(),
@@ -499,6 +517,17 @@ export const publishAssetRequestSchema = z.object({
   workflows: z
     .array(z.object({ name: z.string().min(1), revision: revisionNumberSchema }).strict())
     .max(APP_PUBLISH_WORKFLOWS_MAX)
+    .optional(),
+  /**
+   * Of an App only: the Data Store drafts this publish makes live with it (GOLIVE-1), each
+   * with the revision the person reviewed, as `apps.publish_review` lists them. Each must be
+   * a store the App's revision binds under `dataStores`. Each store is published first, in
+   * its own transaction, and its migrations applied; the App and its Workflows go live only
+   * once every store reached its level, and none of them where a migration fails.
+   */
+  dataStores: z
+    .array(z.object({ name: z.string().min(1), revision: revisionNumberSchema }).strict())
+    .max(APP_PUBLISH_DATA_STORES_MAX)
     .optional()
 });
 
@@ -514,11 +543,14 @@ export const assetPointersResponseSchema = z.object({
   publishedRevision: revisionNumberSchema,
   /** The revision that was published before a publish, left out on the first one. */
   replacedRevision: revisionNumberSchema.optional(),
-  /** The Workflows a publish of an App made live with it, in the order they were published. */
+  /**
+   * The Data Stores and Workflows a publish of an App made live with it, in the order they
+   * were published: the stores first.
+   */
   publishedWith: z
     .array(
       z.object({
-        kind: z.literal("workflow"),
+        kind: z.enum(["data_store", "workflow"]),
         name: z.string(),
         publishedRevision: revisionNumberSchema,
         replacedRevision: revisionNumberSchema.optional()
@@ -592,6 +624,34 @@ export const setAssetDefaultRequestSchema = z.object({
 export const setAssetDefaultResponseSchema = z.object({
   /** The version of the instance's whole asset set after the change. */
   version: z.number().int().positive()
+});
+
+export const adoptAssetRepositoryRequestSchema = z.object({
+  /** Only the asset of this name. Left out, every asset of the kind. */
+  name: nameText(z.string().min(1)).optional(),
+  /** The `after` of the answer before, to go on where it stopped. */
+  after: z.string().min(1).optional()
+});
+
+/**
+ * What one call of the adoption did. It walks every workspace, Personal Workspaces among them
+ * (ADR-0015), so it answers counts and asset ids, never a name or content. A call stops after
+ * a while: until `done`, call again with its `after`.
+ */
+export const adoptAssetRepositoryResponseSchema = z.object({
+  /** Assets whose every revision names a commit now. */
+  adopted: z.number().int().nonnegative(),
+  /** Revisions this call gave a commit, a deletion's included. */
+  revisions: z.number().int().nonnegative(),
+  /** Commits this call made. */
+  commits: z.number().int().nonnegative(),
+  /** Assets left as they were, or part of the way, because a revision cannot be committed. */
+  refused: z.number().int().nonnegative(),
+  adoptedAssetIds: z.array(z.string()),
+  refusedAssetIds: z.array(z.string()),
+  done: z.boolean(),
+  /** Where the next call goes on. Absent while it starts at the beginning again. */
+  after: z.string().optional()
 });
 
 export const setAssetAvailabilityRequestSchema = z.object({
@@ -805,6 +865,7 @@ export const assetPreconditionRequiredDetailsSchema = z.object({
 export type AssetScope = z.infer<typeof assetScopeSchema>;
 export type AssetSummary = z.infer<typeof assetSummarySchema>;
 export type Asset = z.infer<typeof assetSchema>;
+export type AdoptAssetRepositoryResponse = z.infer<typeof adoptAssetRepositoryResponseSchema>;
 export type PublishNarrative = z.infer<typeof publishNarrativeSchema>;
 export type AssetSyncItem = z.infer<typeof assetSyncItemSchema>;
 export type AssetSyncRefusedItem = z.infer<typeof assetSyncRefusedItemSchema>;

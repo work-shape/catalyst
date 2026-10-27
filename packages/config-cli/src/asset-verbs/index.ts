@@ -15,6 +15,7 @@ import { deleteVerb } from "./delete";
 import { revertVerb } from "./revert";
 import { setAvailabilityVerb } from "./set-availability";
 import { setDefaultVerb } from "./set-default";
+import { adoptVerb } from "./adopt";
 import type { Verb } from "./types";
 
 export const VERBS: Readonly<Record<string, Verb>> = {
@@ -34,5 +35,6 @@ export const VERBS: Readonly<Record<string, Verb>> = {
   delete: deleteVerb,
   revert: revertVerb,
   "set-availability": setAvailabilityVerb,
-  "set-default": setDefaultVerb
+  "set-default": setDefaultVerb,
+  adopt: adoptVerb
 };

@@ -1,4 +1,5 @@
 import { assetHelpText, runAssetCommand } from "../asset-commands";
+import { REPOSITORY_KINDS } from "../app-folder";
 import { APP_VERBS } from "../app-commands";
 import { VERBS } from "../asset-verbs";
 import { askTerminal } from "../cli-runtime";
@@ -16,7 +17,11 @@ export const assetsGroup: CommandGroup = {
       .filter((name) => name !== "pull")
       .map((name) => `<kind> ${name}`),
     "skill pull",
-    ...Object.keys(APP_VERBS).map((name) => `app ${name}`)
+    ...Object.values(REPOSITORY_KINDS).flatMap((kind) =>
+      Object.keys(APP_VERBS)
+        .filter((name) => name !== "publish" || kind.kind === "app")
+        .map((name) => `${kind.kind} ${name}`)
+    )
   ],
   matches: () => true,
   help: assetHelpText,

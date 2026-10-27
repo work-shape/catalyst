@@ -126,7 +126,7 @@ const dataStoreStateResponseSchema = z.object({
   }),
   /**
    * What the server leaves open around the store, each with what an operator does about it.
-   * Empty for a reader without `system.view`.
+   * Empty for a reader without `system.view` and for personal API keys.
    */
   conditions: z.array(z.object({ code: z.enum(DATA_STORE_CONDITIONS), message: z.string() })),
   /** How the last attempt to bring the store to its published revision ended. */

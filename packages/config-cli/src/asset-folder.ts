@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { isRecord } from "@work-shape/catalyst-asset-schemas";
+import { sha256Hex as sha256 } from "./sha256";
 import {
   lstat,
   mkdir,
@@ -13,6 +14,8 @@ import {
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { Asset } from "@work-shape/catalyst-api-contract";
 
+export { sha256 };
+
 /** The common baseline of a pulled folder; each kind keeps its own name and state filename. */
 export interface FolderState {
   instance: string;
@@ -21,10 +24,6 @@ export interface FolderState {
   revision: number;
   /** The SHA-256 of every file when it was pulled or pushed. */
   files: Record<string, string>;
-}
-
-export function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
 }
 
 export async function readFolderState(directory: string, filename: string, kind: string) {
@@ -236,9 +235,7 @@ function safeTarget(directory: string, path: string): string {
   }
   return target;
 }
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }

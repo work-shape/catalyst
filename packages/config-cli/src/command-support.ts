@@ -6,11 +6,12 @@ import {
 import {
   CONFIG_ASSET_KINDS,
   agentConfigSchema,
+  isRecord,
   skillConfigSchema,
   type AgentConfig,
   type SkillConfig
 } from "@work-shape/catalyst-asset-schemas";
-import { createHash } from "node:crypto";
+import { sha256Hex as assetHash } from "./sha256";
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { ConfigApiError, createConfigApi, type ConfigApi } from "./api";
@@ -445,6 +446,7 @@ function skillExtraHashes(asset: AssetDefinition): Record<string, string> | unde
 }
 
 /** The value with the keys of every object in it sorted, so the order of a file is no edit. */
+// Baseline JSON.stringify orders numeric keys numerically and omits undefined fields; core canonicalJson does neither.
 function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (!isRecord(value)) return value;
@@ -645,9 +647,7 @@ export async function openInstance(
   };
 }
 
-export function assetHash(contents: string): string {
-  return createHash("sha256").update(contents).digest("hex");
-}
+export { assetHash };
 
 export interface RecordedRevision {
   id: string;
@@ -760,9 +760,7 @@ export function formatCommandError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+export { isRecord } from "@work-shape/catalyst-asset-schemas";
 
 export function writeOutput(options: ConfigCommandOptions, text: string): void {
   (options.stdout ?? ((value) => process.stdout.write(value)))(`${text}\n`);

@@ -4,6 +4,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import yaml from "js-yaml";
 import {
   agentConfigSchema,
+  isRecord,
   loadYamlData,
   parseSkillMarkdown,
   skillConfigSchema,
@@ -696,10 +697,6 @@ function toRelativePath(root: string, path: string): string {
 
 function toPosixPath(path: string): string {
   return path.split(sep).join("/");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

@@ -1,3 +1,4 @@
+import { setTimeout as defaultSleep } from "node:timers/promises";
 import type { ConnectionDetail } from "@work-shape/catalyst-api-client";
 import type { ConfigApi } from "./api";
 import { writeError, writeOutput, type ConfigCommandOptions } from "./command-support";
@@ -54,9 +55,7 @@ export async function connectConnection(
     ].join("\n")
   );
   if (options.openBrowser) (options.openUrl ?? openProviderPage)(start.authorizationUrl);
-  const sleep =
-    options.sleep ??
-    ((milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const sleep = options.sleep ?? defaultSleep;
   const until = Date.parse(start.expiresAt);
   let readsSinceEnded = 0;
   for (;;) {

@@ -53,7 +53,7 @@ Commands:
       Check the provider on a running instance, where its key is (instance.infrastructure.check)
   catalyst models list
       The model providers of the release config; with --instance, also what the instance
-      reports for each (instance.infrastructure.get)
+      reports for each (instance.infrastructure.check)
 
 Options of add:
   --id <id>                 The provider's id (azure: azure-eu, vertex: vertex-eu,
@@ -437,8 +437,7 @@ function rateCardId(config: ReleaseConfig): string {
 }
 
 async function checkProvider(id: string, json: boolean, options: Options): Promise<number> {
-  const { api } = await openInstance(options);
-  const answer: Infrastructure = await api.read((client) => client.instance.infrastructure.check());
+  const answer = await checkInfrastructure(options);
   const item = answer.items.find(
     (candidate) => candidate.class === "models" && candidate.name === id
   );
@@ -454,16 +453,50 @@ async function checkProvider(id: string, json: boolean, options: Options): Promi
     return 1;
   }
   if (json) {
-    writeOutput(options, JSON.stringify(item, null, 2));
+    writeOutput(options, JSON.stringify({ ...item, id: item.name }, null, 2));
     return item.check.status === "ok" ? 0 : 1;
   }
   for (const line of describeCheck(item)) writeOutput(options, line);
   return item.check.status === "ok" ? 0 : 1;
 }
 
+/** The one infrastructure operation a personal key can reach, for both check and list. */
+async function checkInfrastructure(options: Options): Promise<Infrastructure> {
+  const { api } = await openInstance(options);
+  try {
+    return await api.read(
+      (client) => client.instance.infrastructure.check(),
+      (seconds) =>
+        writeError(
+          options,
+          `The instance checks at most once a minute. Waiting ${seconds}s, then checking again.`
+        )
+    );
+  } catch (error) {
+    const converted = toConfigApiError(error);
+    if (
+      converted instanceof ConfigApiError &&
+      converted.status === 403 &&
+      ((isRecord(converted.details) && converted.details.action === "system.view") ||
+        converted.message === "Missing auth scope 'infrastructure:check'" ||
+        converted.message === "Service principals cannot access user-scoped routes")
+    ) {
+      throw new ConfigApiError(403, {
+        error: {
+          code: "FORBIDDEN",
+          message:
+            "The model check needs the 'system.view' right and a personal API key with the 'system.view' scope. Service keys cannot run this check.",
+          correlationId: converted.correlationId
+        }
+      });
+    }
+    throw converted;
+  }
+}
+
 /** What a check found, in the product's words. A provider's own text is never part of it. */
 function describeCheck(item: InfrastructureProvider): string[] {
-  const head = `${item.check.status === "ok" ? "ok" : item.check.status === "failed" ? "failed" : item.check.status.replace("_", " ")}  ${item.id}  ${item.type}${item.region ? `, region ${item.region}` : ""}${item.endpointHost ? `, ${item.endpointHost}` : ""}`;
+  const head = `${item.check.status === "ok" ? "ok" : item.check.status === "failed" ? "failed" : item.check.status.replace("_", " ")}  ${item.name}  ${item.type}${item.region ? `, region ${item.region}` : ""}${item.endpointHost ? `, ${item.endpointHost}` : ""}`;
   const lines = [head];
   for (const secret of item.secrets) {
     lines.push(
@@ -551,8 +584,7 @@ async function listProviders(
     }
   );
   if (options.instance !== undefined) {
-    const { api } = await openInstance(options);
-    const answer: Infrastructure = await api.read((client) => client.instance.infrastructure.get());
+    const answer = await checkInfrastructure(options);
     for (const provider of listed) {
       const item = answer.items.find(
         (candidate) => candidate.class === "models" && candidate.name === provider.id

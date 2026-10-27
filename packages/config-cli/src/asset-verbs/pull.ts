@@ -10,7 +10,7 @@ export const pullVerb: Verb = {
   options: {},
   prepare: (_values, name, cwd, noun, folder) => {
     if (noun !== "skill" && noun !== "skills")
-      throw new UsageError("'pull' is a command of skills and Apps only.");
+      throw new UsageError("'pull' is a command of skills, Apps and Workflows only.");
     if (!folder) throw new UsageError("Usage: catalyst skill pull <name> <folder>");
     const directory = resolve(cwd, folder);
     return async (session) => {

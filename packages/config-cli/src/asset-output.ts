@@ -1,3 +1,4 @@
+import { isRecord } from "@work-shape/catalyst-asset-schemas";
 import yaml from "js-yaml";
 import type {
   Asset,
@@ -215,10 +216,6 @@ function table(head: string[], rows: string[][]): string {
 
 function records(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** What a guardrail's dry run would have answered, without names, as its publish prints it first. */

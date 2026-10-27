@@ -13,14 +13,21 @@ Instance:
   requests [--withdraw <id>] List your requests, or withdraw one of them
 
 Assets, for every kind the instance registers (agent, skill, app, workflow, data-store, ...):
-  catalyst skill pull <name> <folder>
-      Write every file of one skill locally; refresh only a clean earlier pull
-${verbs.map((verb) => `  catalyst <kind> ${verb.usage}\n      ${verb.summary}`).join("\n")}
+  catalyst skill pull <name> <folder>  Write every file of one skill locally; refresh only a clean earlier pull
+${verbs.map((verb) => `  catalyst <kind> ${verb.usage}  ${verb.summary}`).join("\n")}
 
 An App as a folder (its draft is built on push; publish shows what goes live and asks):
 ${Object.values(APP_VERBS)
-  .map((verb) => `  catalyst app ${verb.usage}\n      ${verb.summary}`)
+  .map((verb) => `  catalyst app ${verb.usage}  ${verb.summary}`)
   .join("\n")}
+
+A Workflow as a folder (workflow.yaml at its root, scripts in steps/):
+  catalyst workflow pull <workflow> [dir] [--published | --revision <n>]  Write a revision into a folder (assets.get)
+  catalyst workflow push [dir]  Send a changed folder as the next draft, or create the Workflow (assets.put)
+  catalyst workflow status <workflow> [dir]  Show draft, published revision and local changes
+  catalyst workflow publish <workflow> --revision <n> [--yes]  Review and ask before publishing (assets.publish)
+  catalyst workflow history <workflow>  List revisions (assets.revisions.list)
+  catalyst workflow revert <workflow> --to <n> --if-revision <n>  Restore a revision (assets.revert)
 
 Options:
   --instance <name-or-url>  An instance of catalyst.yaml, or its URL. Left out: the

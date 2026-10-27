@@ -2,9 +2,9 @@ import { defineConfig } from "tsup";
 
 /**
  * The workspace packages this tool is built from. Their source is bundled into `dist`, so
- * the published package depends on third-party packages only. Anything else from the
- * workspace is private: `scripts/release/check-public-tarball.mjs` holds the same list and
- * fails the release when another package reaches the bundle.
+ * the published package depends on third-party packages only.
+ * `scripts/release/check-public-tarball.mjs` holds the same allowlist and fails the release
+ * when another workspace source reaches the bundle.
  */
 const BUNDLED_WORKSPACE_PACKAGES = [
   "@work-shape/catalyst-asset-schemas",

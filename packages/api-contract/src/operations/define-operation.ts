@@ -164,7 +164,7 @@ export type OperationConfig = OperationAccess & {
   readonly path: string;
   readonly summary: string;
   readonly tag: string;
-  /** An alternative scope for personal keys only; the handler must enforce ownership. */
+  /** An alternative scope for personal keys only; ownership and owner rights still apply. */
   readonly personalKeyScope?: OperationScope;
   readonly effect: OperationEffect;
   readonly query?: OperationQuerySchema;

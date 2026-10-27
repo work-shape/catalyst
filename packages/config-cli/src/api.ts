@@ -1,3 +1,5 @@
+import { isRecord } from "@work-shape/catalyst-asset-schemas";
+import { setTimeout as defaultSleep } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import {
   MAX_LIST_LIMIT,
@@ -105,8 +107,10 @@ export async function createConfigApi(options: ConfigApiOptions) {
 
   return {
     /** Any reading operation of the instance. A refusal throws as `ConfigApiError`. */
-    read: <Output>(request: (client: ApiClient) => Promise<Output>): Promise<Output> =>
-      read(sleep, () => request(client)),
+    read: <Output>(
+      request: (client: ApiClient) => Promise<Output>,
+      onRateLimitWait?: (seconds: number) => void
+    ): Promise<Output> => read(sleep, () => request(client), onRateLimitWait),
     change,
     /** The version of the instance's asset set and the name of its default agent. */
     getOverview: async (): Promise<{ version: number; defaultAgentName?: string }> => {
@@ -195,14 +199,11 @@ const READ_ATTEMPTS = 5;
 /** The longest one wait for the rate limit. A longer one is reported instead. */
 const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
 
-function defaultSleep(milliseconds: number): Promise<void> {
-  return new Promise((resolveSleep) => setTimeout(resolveSleep, milliseconds));
-}
-
 /** A reading call. Over the rate limit it waits as long as the instance says and asks again. */
 async function read<Output>(
   sleep: (milliseconds: number) => Promise<void>,
-  request: () => Promise<Output>
+  request: () => Promise<Output>,
+  onRateLimitWait?: (seconds: number) => void
 ): Promise<Output> {
   for (let attempt = 1; ; attempt += 1) {
     try {
@@ -212,6 +213,7 @@ async function read<Output>(
       if (wait === undefined || wait > MAX_RATE_LIMIT_WAIT_SECONDS || attempt >= READ_ATTEMPTS) {
         throw toConfigApiError(error);
       }
+      onRateLimitWait?.(wait);
       await sleep(wait * 1000);
     }
   }
@@ -331,10 +333,6 @@ function readApiError(payload: unknown): {
     ...(typeof payload.error.message === "string" ? { message: payload.error.message } : {}),
     ...(payload.error.details === undefined ? {} : { details: payload.error.details })
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function redactSecret(message: string, secret: string): string {

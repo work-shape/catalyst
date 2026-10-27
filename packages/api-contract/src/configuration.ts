@@ -296,7 +296,10 @@ export const configAssetRevisionSchema = z.object({
   operation: z.enum(CONFIG_ASSET_CHANGE_OPERATIONS),
   config: configAssetConfigSchema.nullable(),
   actor: auditActorSchema.nullable(),
-  /** Where the revision came from: the approval that applied it, or the Page it copies. */
+  /**
+   * Where the revision came from: the approval that applied it, the Page it copies, or the
+   * agent of a conversation that wrote it for the person in `actor`.
+   */
   origin: z
     .discriminatedUnion("kind", [
       z.object({ kind: z.literal("approval_request"), requestId: z.string(), summary: z.string() }),
@@ -305,12 +308,29 @@ export const configAssetRevisionSchema = z.object({
         conversationId: z.string(),
         pageId: z.string(),
         /** The number of the Page revision the files were copied from. */
-        fileSetNumber: z.number().int().positive()
-      })
+        fileSetNumber: z.number().int().positive(),
+        /** The conversation's agent saved the Page, not a person from its preview. */
+        byAgent: z.literal(true).optional()
+      }),
+      z.object({ kind: z.literal("agent_run"), conversationId: z.string() })
     ])
     .optional(),
   globalVersion: z.number().int().positive(),
   createdAt: timestampSchema
+});
+
+/**
+ * One publish of an asset with a draft: what members call a version, numbered from 1 per
+ * asset. A publish of an earlier revision is a version of its own.
+ */
+export const configAssetPublicationSchema = z.object({
+  number: z.number().int().positive(),
+  /** The revision the publish made live. */
+  revision: z.number().int().positive(),
+  /** Null where it is not known, as for a publish from before the versions were recorded. */
+  actor: auditActorSchema.nullable(),
+  publishedAt: timestampSchema,
+  note: z.string().optional()
 });
 
 /** Where the agent page shows a tool among the instance's tools; `instance` is its own tools. */
@@ -374,8 +394,6 @@ export const configAssetReferencesSchema = z.object({
    * still names one shows it as unavailable, so it can be removed.
    */
   unavailableTools: z.array(unavailableToolSchema).optional(),
-  /** @deprecated Use unavailableTools. Kept for existing agent editors. */
-  moduleOffTools: z.array(z.object({ name: z.string(), module: z.string() })).optional(),
   /**
    * What the platform tells every agent before its own instructions, read-only: the rules
    * every agent gets, and the orientation an agent gets whose tools name one of `toolNames`.
@@ -402,6 +420,7 @@ export type LocaleCode = z.infer<typeof localeCodeSchema>;
 export type ConfigAssetKind = z.infer<typeof configAssetKindSchema>;
 export type ConfigAssetSummary = z.infer<typeof configAssetSummarySchema>;
 export type ConfigAssetRevision = z.infer<typeof configAssetRevisionSchema>;
+export type ConfigAssetPublication = z.infer<typeof configAssetPublicationSchema>;
 export type ConfigAssetsOverview = z.infer<typeof configAssetsOverviewSchema>;
 export type ConfigAssetReferences = z.infer<typeof configAssetReferencesSchema>;
 export type AgentToolReference = z.infer<typeof agentToolReferenceSchema>;

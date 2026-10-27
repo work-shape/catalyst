@@ -1,4 +1,4 @@
-import { JSON_SCHEMA, YAMLException, load } from "js-yaml";
+import { JSON_SCHEMA, YAMLException, dump, load } from "js-yaml";
 import { yamlValueIssue, yamlValueIssueSentence } from "./yaml-bounds";
 
 // The one reader of YAML that an author or an agent wrote: every file of an asset and every
@@ -132,6 +132,21 @@ export function readYamlData(
     );
   }
   return { ok: true, value };
+}
+
+/**
+ * Writes JSON data as the YAML text a server makes of a file, such as a `workflow.yaml` it
+ * renders from a stored definition: keys in the order the value holds them, no anchors, no
+ * folded lines. The same value gives the same bytes, and `readYamlData` reads it back as it was.
+ */
+export function writeYamlData(value: unknown): string {
+  return dump(value, {
+    schema: JSON_SCHEMA,
+    lineWidth: -1,
+    noCompatMode: true,
+    noRefs: true,
+    sortKeys: false
+  });
 }
 
 /** A YAML file `loadYamlData` refused. `issue` says why. */

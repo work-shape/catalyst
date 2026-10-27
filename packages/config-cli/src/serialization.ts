@@ -68,6 +68,7 @@ export function canonicalizeSkillConfig(input: unknown): SkillConfig {
 }
 
 /** Schema parsing orders declared fields; sorting first also stabilizes free-form maps. */
+// Persisted YAML uses locale ordering (including accented keys), unlike core canonicalJson.
 function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (typeof value !== "object" || value === null) return value;

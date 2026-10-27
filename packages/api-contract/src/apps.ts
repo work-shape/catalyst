@@ -20,21 +20,7 @@ export const appModeSchema = z.enum(APP_MODES);
 
 export type AppMode = z.infer<typeof appModeSchema>;
 
-/**
- * The path of the interface route that shows one App to a signed-in person: the published
- * revision under `/apps/`, or the draft under `/app-drafts/`. Every path below the published
- * one is the App's own, so the draft stands outside it: an App may have any route, `/edit`
- * among them. The server answers it from `apps.preview` and the interface builds its routes
- * from it, so the two never disagree.
- */
-export function appInterfacePath(input: {
-  workspaceId: string;
-  app: string;
-  mode: AppMode;
-}): string {
-  const area = input.mode === "draft" ? "app-drafts" : "apps";
-  return `/w/${encodeURIComponent(input.workspaceId)}/${area}/${encodeURIComponent(input.app)}`;
-}
+export { appInterfacePath } from "@work-shape/catalyst-asset-schemas";
 
 export const createAppFromPageRequestSchema = z
   .object({
@@ -291,6 +277,8 @@ const appPublishReviewItemSchema = z.object({
   narrative: publishNarrativeSchema.optional(),
   /** Who wrote the draft revision, as people read their name. */
   lastChangedBy: z.string().optional(),
+  /** The path of the page where the person works on it. Only on an entry the reader may read. */
+  href: z.string().optional(),
   refusals: z.array(appPublishRefusalSchema)
 });
 
@@ -311,6 +299,25 @@ export const appPublishReviewSchema = z.object({
         .optional()
     })
   ),
+  /**
+   * The Data Stores the App's draft binds whose draft is not published (GOLIVE-1): one Publish
+   * of the App publishes each it names in `dataStores` first and applies its migrations. Each
+   * says the level the store is at, the level the App needs and the migrations it would apply.
+   * A store that is live and still applying migrations the App needs is listed with `pending`
+   * false: it is not named, and the Publish waits for it.
+   */
+  dataStores: z
+    .array(
+      appPublishReviewItemSchema.extend({
+        /** The number of the last migration the store has applied. Zero before the first. */
+        liveLevel: z.number().int().nonnegative(),
+        /** The level the App's manifest asks of the store, where it asks one. */
+        minSchema: z.number().int().positive().optional(),
+        /** The names of the draft's migrations above the live level, in the order they apply. */
+        pendingMigrations: z.array(z.string())
+      })
+    )
+    .default([]),
   /**
    * One Publish of the App also publishes the pending Workflow drafts it reaches, when the
    * publish names them in `workflows` (DP-3). Where false, each pending Workflow is published

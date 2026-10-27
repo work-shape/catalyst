@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.13",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.13, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.14",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.14, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -2555,7 +2555,7 @@
     "/api/v1/apps/{app}/publish-review": {
       "get": {
         "operationId": "apps.publish_review",
-        "summary": "Read what publishing an App's draft comes to: the App and the Workflows it calls, their pending drafts, publish questions and what would refuse them",
+        "summary": "Read what publishing an App's draft comes to: the App, the Workflows it calls and the Data Stores it binds, their pending drafts and migrations, publish questions and what would refuse them",
         "tags": [
           "Apps"
         ],
@@ -3112,6 +3112,144 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/assets/{kind}/adopt-repository": {
+      "post": {
+        "operationId": "assets.adopt_repository",
+        "summary": "Give every revision of the assets of one kind written before it had a repository its commit",
+        "tags": [
+          "Assets"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:release"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:release"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:release"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptAssetRepositoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdoptAssetRepositoryResponse"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-requires": [
+          "assets.release"
+        ],
+        "x-catalyst-rate-class": "write"
       }
     },
     "/api/v1/assets/{kind}/check-name": {
@@ -4154,6 +4292,133 @@
         },
         "x-catalyst-effect": "changing",
         "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/assets/{kind}/{name}/publications": {
+      "get": {
+        "operationId": "assets.publications.list",
+        "summary": "List the publications of one asset with a draft, newest first",
+        "tags": [
+          "Assets"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "workspaceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ConfigAssetPublication"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
       }
     },
     "/api/v1/assets/{kind}/{name}/publish": {
@@ -18697,6 +18962,11 @@
             "sessionToken": [
               "user_admin:read"
             ]
+          },
+          {
+            "accessToken": [
+              "infrastructure:check"
+            ]
           }
         ],
         "parameters": [],
@@ -29389,7 +29659,8 @@
                       "enum": [
                         "manual",
                         "schedule",
-                        "parent"
+                        "parent",
+                        "outside"
                       ]
                     },
                     "status": {
@@ -29806,7 +30077,8 @@
                       "enum": [
                         "manual",
                         "schedule",
-                        "parent"
+                        "parent",
+                        "outside"
                       ]
                     },
                     "status": {
@@ -31582,7 +31854,8 @@
                             "enum": [
                               "manual",
                               "schedule",
-                              "parent"
+                              "parent",
+                              "outside"
                             ]
                           },
                           "status": {
@@ -32027,7 +32300,8 @@
                       "enum": [
                         "manual",
                         "schedule",
-                        "parent"
+                        "parent",
+                        "outside"
                       ]
                     },
                     "status": {
@@ -32495,7 +32769,8 @@
                       "enum": [
                         "manual",
                         "schedule",
-                        "parent"
+                        "parent",
+                        "outside"
                       ]
                     },
                     "status": {
@@ -35922,6 +36197,71 @@
           "deleting"
         ]
       },
+      "AdoptAssetRepositoryRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "after": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "AdoptAssetRepositoryResponse": {
+        "type": "object",
+        "properties": {
+          "adopted": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "revisions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "commits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "refused": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "adoptedAssetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "refusedAssetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "adopted",
+          "revisions",
+          "commits",
+          "refused",
+          "adoptedAssetIds",
+          "refusedAssetIds",
+          "done"
+        ]
+      },
       "AgentAvailability": {
         "type": "object",
         "properties": {
@@ -38270,6 +38610,9 @@
               "lastChangedBy": {
                 "type": "string"
               },
+              "href": {
+                "type": "string"
+              },
               "refusals": {
                 "type": "array",
                 "items": {
@@ -38313,6 +38656,9 @@
                   "$ref": "#/components/schemas/PublishNarrative"
                 },
                 "lastChangedBy": {
+                  "type": "string"
+                },
+                "href": {
                   "type": "string"
                 },
                 "refusals": {
@@ -38367,6 +38713,74 @@
               ]
             }
           },
+          "dataStores": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "draftRevision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "publishedRevision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "pending": {
+                  "type": "boolean"
+                },
+                "narrative": {
+                  "$ref": "#/components/schemas/PublishNarrative"
+                },
+                "lastChangedBy": {
+                  "type": "string"
+                },
+                "href": {
+                  "type": "string"
+                },
+                "refusals": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppPublishRefusal"
+                  }
+                },
+                "liveLevel": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "minSchema": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "pendingMigrations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "title",
+                "draftRevision",
+                "pending",
+                "refusals",
+                "liveLevel",
+                "pendingMigrations"
+              ]
+            }
+          },
           "publishesTogether": {
             "type": "boolean"
           },
@@ -38377,6 +38791,7 @@
         "required": [
           "app",
           "workflows",
+          "dataStores",
           "publishesTogether",
           "ready"
         ]
@@ -39228,21 +39643,28 @@
       "Asset": {
         "type": "object",
         "properties": {
-          "publication": {
+          "liveVersion": {
             "type": "object",
             "properties": {
-              "at": {
-                "type": "string",
-                "format": "date-time",
-                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              "number": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "publishedAt": {
+                "$ref": "#/components/schemas/Timestamp"
               },
               "by": {
                 "type": "string"
               }
             },
             "required": [
-              "at"
+              "number",
+              "publishedAt"
             ]
+          },
+          "draftChangedSinceLive": {
+            "type": "boolean"
           },
           "id": {
             "type": "string"
@@ -39649,7 +40071,10 @@
               "properties": {
                 "kind": {
                   "type": "string",
-                  "const": "workflow"
+                  "enum": [
+                    "data_store",
+                    "workflow"
+                  ]
                 },
                 "name": {
                   "type": "string"
@@ -40577,6 +41002,7 @@
           "governance:write",
           "user_admin:read",
           "user_admin:write",
+          "infrastructure:check",
           "api_access:read",
           "api_access:write",
           "config_assets:read",
@@ -41311,6 +41737,43 @@
           "skill"
         ]
       },
+      "ConfigAssetPublication": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuditActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publishedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "revision",
+          "actor",
+          "publishedAt"
+        ]
+      },
       "ConfigAssetReferences": {
         "type": "object",
         "properties": {
@@ -41378,24 +41841,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/UnavailableTool"
-            }
-          },
-          "moduleOffTools": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "module": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "name",
-                "module"
-              ]
             }
           },
           "platformInstructions": {
@@ -41509,6 +41954,10 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  "byAgent": {
+                    "type": "boolean",
+                    "const": true
                   }
                 },
                 "required": [
@@ -41516,6 +41965,22 @@
                   "conversationId",
                   "pageId",
                   "fileSetNumber"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "agent_run"
+                  },
+                  "conversationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "conversationId"
                 ]
               }
             ]
@@ -43856,6 +44321,7 @@
                 "governance:write",
                 "user_admin:read",
                 "user_admin:write",
+                "infrastructure:check",
                 "api_access:read",
                 "api_access:write",
                 "config_assets:read",
@@ -46193,6 +46659,46 @@
           "manifestFile": {
             "type": "string"
           },
+          "source": {
+            "type": "object",
+            "properties": {
+              "fileBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "files": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "treeBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "historyBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "cacheBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "fileBytes",
+              "files",
+              "treeBytes",
+              "historyBytes",
+              "cacheBytes"
+            ]
+          },
+          "repository": {
+            "type": "boolean"
+          },
           "limits": {
             "type": "object",
             "properties": {
@@ -46488,6 +46994,28 @@
           },
           "workflows": {
             "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "revision": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "revision"
+              ]
+            }
+          },
+          "dataStores": {
+            "maxItems": 100,
             "type": "array",
             "items": {
               "type": "object",

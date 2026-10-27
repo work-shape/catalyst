@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import yaml from "js-yaml";
-import { loadYamlData } from "@work-shape/catalyst-asset-schemas";
+import { isRecord, loadYamlData } from "@work-shape/catalyst-asset-schemas";
 
 // A guardrail on disk: `guardrails/<name>/guardrail.yaml` with its event, filter, check and
 // outcome, and `check.md` beside it with the instruction of a `model_judge` check, which is
@@ -97,8 +97,4 @@ export async function readGuardrailFolder(directory: string): Promise<GuardrailD
     ...(hasCheck ? { checkMd: await readFile(checkPath, "utf8") } : {}),
     source: yamlPath
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -165,7 +165,7 @@ export const appOperations = {
     method: "GET",
     path: "/api/v1/apps/:app/publish-review",
     summary:
-      "Read what publishing an App's draft comes to: the App and the Workflows it calls, their pending drafts, publish questions and what would refuse them",
+      "Read what publishing an App's draft comes to: the App, the Workflows it calls and the Data Stores it binds, their pending drafts and migrations, publish questions and what would refuse them",
     tag: "Apps",
     auth: "user",
     scope: "config_assets:read",

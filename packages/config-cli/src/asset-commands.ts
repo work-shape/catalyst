@@ -3,11 +3,12 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { ConfigApiError } from "./api";
 import {
   APP_VERBS,
-  AppUsageError,
-  isAppVerb,
-  runAppCommand,
-  type AppCommandOptions
+  RepositoryUsageError,
+  isRepositoryVerb,
+  runRepositoryCommand,
+  type RepositoryCommandOptions
 } from "./app-commands";
+import { REPOSITORY_KINDS } from "./app-folder";
 import { runFollowCommand } from "./follow-commands";
 import {
   formatContext,
@@ -52,7 +53,13 @@ function parseCommandLine(args: string[]) {
   const parsed = parseArgs({ args, options: OPTIONS, allowPositionals: true, strict: true });
   return {
     ...parsed,
-    values: { files: false, personal: false, none: false, ...parsed.values } satisfies Values
+    values: {
+      files: false,
+      personal: false,
+      none: false,
+      all: false,
+      ...parsed.values
+    } satisfies Values
   };
 }
 
@@ -77,7 +84,7 @@ const INSTANCE_COMMANDS = [
 /** Runs `catalyst <argv>` for every command but `config`. */
 export async function runAssetCommand(
   argv: readonly string[],
-  base: Omit<AppCommandOptions, "dir" | "instance">
+  base: Omit<RepositoryCommandOptions, "dir" | "instance">
 ): Promise<number> {
   const [noun = "", ...rest] = argv;
   let values: Values;
@@ -91,7 +98,7 @@ export async function runAssetCommand(
     );
     return EXIT.usage;
   }
-  const options: AppCommandOptions = {
+  const options: RepositoryCommandOptions = {
     ...base,
     ...(values.dir === undefined ? {} : { dir: values.dir }),
     ...(values.instance === undefined ? {} : { instance: values.instance })
@@ -147,9 +154,22 @@ export async function runAssetCommand(
         instanceCommand === "docs" ? verbName : name
       );
     }
-    if ((noun === "app" || noun === "apps") && isAppVerb(verbName)) {
+    const repository = Object.values(REPOSITORY_KINDS).find(
+      (kind) => noun === kind.kind || noun === `${kind.kind}s`
+    );
+    if (
+      repository &&
+      isRepositoryVerb(verbName) &&
+      (verbName !== "publish" || repository.kind === "app")
+    ) {
       refuseFlags(values, [...COMMON_FLAGS, ...APP_FLAGS[verbName]], verbName);
-      return await runAppCommand(verbName, positionals.slice(1), values, options);
+      return await runRepositoryCommand(
+        verbName,
+        positionals.slice(1),
+        values,
+        options,
+        repository
+      );
     }
     const verb = VERBS[verbName];
     if (verb === undefined) throw new UsageError(`Unknown command '${noun} ${verbName}'.`);
@@ -157,7 +177,7 @@ export async function runAssetCommand(
     if (verb.named && name === "") throw new UsageError(`Usage: catalyst ${noun} ${verb.usage}`);
     if (
       extra.length > (verbName === "pull" ? 1 : 0) ||
-      (!verb.named && verbName !== "set-default" && name !== "")
+      (!verb.named && verbName !== "set-default" && verbName !== "adopt" && name !== "")
     ) {
       throw new UsageError(`Unexpected argument '${extra[0] ?? name}'.`);
     }
@@ -174,7 +194,7 @@ export async function runAssetCommand(
       options
     });
   } catch (error) {
-    if (error instanceof UsageError || error instanceof AppUsageError) {
+    if (error instanceof UsageError || error instanceof RepositoryUsageError) {
       writeError(options, error.message);
       return EXIT.usage;
     }

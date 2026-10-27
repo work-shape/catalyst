@@ -4,14 +4,16 @@ import {
   skillResourceMediaTypeForPath,
   type SkillResourceConfig
 } from "@work-shape/catalyst-asset-schemas";
+import {
+  SKILL_FILE_MAX_BYTES,
+  SKILL_MAX_BYTES,
+  SKILL_MAX_FILES
+} from "@work-shape/catalyst-api-contract";
 import { refuseLinks, sha256 } from "./asset-folder";
 
 export type SkillFolderFile =
   { path: string; text: string; base64?: never } | { path: string; base64: string; text?: never };
 const SKILL_STATE_FILES = [".catalyst-skill.json", ".catalyst-state.json"];
-const FILE_MAX_BYTES = 2 * 1024 * 1024;
-const FOLDER_MAX_BYTES = 8 * 1024 * 1024;
-const MAX_FILES = 500;
 const TEXT_EXTENSIONS = /\.(py|js|mjs|ts|sh|rb|md|txt|json|yaml|yml|xml|html|css|csv)$/iu;
 const EXECUTABLE_PREFIXES = [
   [0x7f, 0x45, 0x4c, 0x46],
@@ -93,11 +95,11 @@ export async function readSkillFolder(directory: string) {
         if (path.toLowerCase().endsWith("/skill.md"))
           refuse("skill_path_invalid", path, "SKILL.md belongs at the root");
         const { size } = await lstat(join(directory, path));
-        if (size > FILE_MAX_BYTES)
-          refuse("skill_file_too_large", path, `at most ${FILE_MAX_BYTES} bytes`);
+        if (size > SKILL_FILE_MAX_BYTES)
+          refuse("skill_file_too_large", path, `at most ${SKILL_FILE_MAX_BYTES} bytes`);
         paths.push({ path, size });
-        if (paths.length > MAX_FILES)
-          refuse("skill_too_many_files", path, `at most ${MAX_FILES} files`);
+        if (paths.length > SKILL_MAX_FILES)
+          refuse("skill_too_many_files", path, `at most ${SKILL_MAX_FILES} files`);
       }
     }
   };
@@ -111,11 +113,11 @@ export async function readSkillFolder(directory: string) {
       refuse("skill_path_duplicate", path, "paths differing only in case count as one");
     seen.add(path.toLowerCase());
     const bytes = await readFile(join(directory, path));
-    if (bytes.length > FILE_MAX_BYTES)
-      refuse("skill_file_too_large", path, `at most ${FILE_MAX_BYTES} bytes`);
+    if (bytes.length > SKILL_FILE_MAX_BYTES)
+      refuse("skill_file_too_large", path, `at most ${SKILL_FILE_MAX_BYTES} bytes`);
     total += bytes.length;
-    if (total > FOLDER_MAX_BYTES)
-      refuse("skill_too_large", path, `at most ${FOLDER_MAX_BYTES} bytes per skill`);
+    if (total > SKILL_MAX_BYTES)
+      refuse("skill_too_large", path, `at most ${SKILL_MAX_BYTES} bytes per skill`);
     const peAt = bytes.length >= 64 ? bytes.readUInt32LE(60) : bytes.length;
     const pe =
       bytes[0] === 0x4d &&

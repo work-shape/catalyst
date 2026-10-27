@@ -6,5 +6,6 @@ export * from "./operations/define-operation";
 export * from "./public-cli";
 export * from "./reference";
 export * from "./schemas";
+export * from "./skill-limits";
 
 export * from "./scheduled-starts";

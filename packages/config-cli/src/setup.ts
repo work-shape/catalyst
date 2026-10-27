@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex as sha256 } from "./sha256";
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
@@ -45,10 +45,6 @@ const SHIPPED_SKILL = new URL("../skills/catalyst/SKILL.md", import.meta.url);
 const MARK =
   /\n<!-- Written by catalyst setup \(@work-shape\/catalyst-cli [^,]+, sha256 ([0-9a-f]{64})\)\. -->\n$/u;
 
-function sha256(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
-
 /** The skill file this CLI writes: the shipped skill with a mark of who wrote it. */
 export async function renderCatalystSkill(): Promise<string> {
   const body = await readFile(SHIPPED_SKILL, "utf8");
@@ -94,7 +90,8 @@ export async function setupCommand(options: SetupOptions): Promise<number> {
         url,
         `${tool.label} on ${hostname()}`,
         options.openUrl ?? openInstanceAddress(url),
-        // The key a local agent gets publishes what its person may publish (CLI-PUBLISH-USE).
+        // The key a local agent gets publishes what its person may publish (CLI-PUBLISH-USE);
+        // connection.use, which copies Connection results to this computer, is ticked by hand.
         true
       );
       if (key === undefined) {
