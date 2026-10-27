@@ -103,7 +103,7 @@ export const workflowRunSchema = z.object({
   scheduledFor: timestampSchema.optional(),
   /**
    * The run key its start gave the run, such as `2026-09/1402`. Among the Workflow's runs that
-   * are open or `done` a key exists once. Missing on a run started without one.
+   * are open or `done` a key exists once per starter. Missing on a run started without one.
    */
   runKey: z.string().optional(),
   labels: z.record(z.string(), z.string()).optional(),
@@ -256,8 +256,10 @@ export const startWorkflowRunRequestSchema = z.object({
   input: z.record(z.string(), z.unknown()).optional(),
   /**
    * The run key, such as `2026-09/1402`. Where a run of the Workflow that is open or `done`
-   * holds it, the start starts nothing and answers that run; a run that ended `failed`,
-   * `cancelled` or `limit_reached` holds no key.
+   * holds it for the same starter (the person, their API key, or the Service Principal), the
+   * start starts nothing and answers that run. Another starter's run with the key is not met: the
+   * start is answered as for a key no run holds. A run that ended `failed`, `cancelled` or
+   * `limit_reached` holds no key.
    */
   key: runKeySchema.optional()
 });

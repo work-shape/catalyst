@@ -2,6 +2,7 @@ import {
   APP_ACTION_CALL_STATUSES,
   APP_MODES,
   OPERATION_EFFECTS,
+  previewReportSchema,
   WORKFLOW_RUN_STATUSES,
   WORKFLOW_TEST_REVISIONS
 } from "@work-shape/catalyst-asset-schemas";
@@ -21,6 +22,14 @@ export const appModeSchema = z.enum(APP_MODES);
 export type AppMode = z.infer<typeof appModeSchema>;
 
 export { appInterfacePath } from "@work-shape/catalyst-asset-schemas";
+export {
+  boundPreviewReport,
+  previewReportSchema,
+  type PreviewReport,
+  type PreviewReportBridge,
+  type PreviewReportEntry,
+  type UnboundPreviewReport
+} from "@work-shape/catalyst-asset-schemas";
 
 export const createAppFromPageRequestSchema = z
   .object({
@@ -85,12 +94,23 @@ export const appFromPageQuerySchema = z.object({
 });
 
 /**
- * The App of a Page, for the caller: among the Apps whose newest revision with a Page names
- * this one, the earliest the caller may write, and before it one the caller wrote from the
- * Page last. `app` is `null` where there is none, which is also what a caller is answered who
- * may write none of them.
+ * The preview of a Page and its writable App, for the caller. Among the Apps whose newest
+ * revision with a Page names this one, `app` selects the earliest the caller may write,
+ * preferring one the caller wrote from the Page last. `app` is `null` without those rights;
+ * `preview` may still name an App the caller may read.
  */
 export const appFromPageSchema = z.object({
+  /**
+   * The preview's identity, independent of the right to save to the App. App read access
+   * (including builders' draft access) reveals a title from the revision the caller may read.
+   * A linked App the caller cannot read leaves a neutral preview; only a Page with no linked
+   * App is described as unsaved.
+   */
+  preview: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("app"), title: z.string() }),
+    z.object({ kind: z.literal("unsaved") }),
+    z.object({ kind: z.literal("neutral") })
+  ]),
   app: z
     .object({
       /** The id of the App. */
@@ -187,6 +207,23 @@ export const appStorageWriteRequestSchema = z
   .strict();
 
 export const appSessionContextRequestSchema = z.object(pageSessionProof).strict();
+
+/**
+ * What a preview reports of itself (PREVIEW-STATUS-1), scrubbed and bounded by the interface.
+ * A Page of a conversation reports into its conversation. The draft of an App reports into the
+ * conversation the interface names, when that conversation is about the App; a published App
+ * reports nowhere.
+ */
+export const appPreviewReportRequestSchema = z
+  .object({
+    ...pageSessionProof,
+    conversationId: z.string().min(1).max(200).optional(),
+    report: previewReportSchema
+  })
+  .strict();
+
+/** Whether the report was kept. Nothing is kept for a frame that reports into no conversation. */
+export const appPreviewReportResponseSchema = z.object({ stored: z.boolean() }).strict();
 
 /** What each action of the shown manifest would come to for the caller now. */
 export const appSessionContextSchema = z.object({

@@ -1,5 +1,6 @@
 import {
   APP_ACTION_CALL_STATUSES,
+  PREVIEW_REPORT_MAX_ENTRIES,
   IDEMPOTENCY_KEY_MAX_LENGTH,
   POLICY_VALUES,
   THEME_MODES,
@@ -44,9 +45,44 @@ export const appStorageMutationSchema = z.discriminatedUnion("type", [
   })
 ]);
 
+/**
+ * The longest text the platform's guard hands over per entry of a report, before the interface
+ * scrubs it down to `PREVIEW_REPORT_MAX_MESSAGE_CHARS`.
+ */
+export const APP_BRIDGE_REPORT_MAX_CHARS = 1000;
+const reportCount = z.number().int().min(0).max(1_000_000_000);
+
+/**
+ * What the platform's guard in a Page document posts once the Page settled and on each change
+ * after (PREVIEW-STATUS-1): its errors, rejections, `console.error` calls and policy
+ * violations, and whether it drew anything. It is no call of the kit and carries no session:
+ * like the greeting, it counts only from the frame's one child window. The Page shares the
+ * guard's realm and can post one itself, so the interface scrubs and bounds it before it goes
+ * anywhere (`boundPreviewReport`).
+ */
+const guardReportSchema = z.strictObject({
+  settled: z.boolean(),
+  empty: z.boolean().optional(),
+  entries: z
+    .array(
+      z.strictObject({
+        kind: z.enum(["error", "rejection", "console", "policy"]),
+        message: z.string().max(APP_BRIDGE_REPORT_MAX_CHARS),
+        file: z.string().max(APP_BRIDGE_REPORT_MAX_CHARS).optional(),
+        line: reportCount.optional(),
+        count: reportCount.min(1)
+      })
+    )
+    .max(PREVIEW_REPORT_MAX_ENTRIES),
+  more: reportCount
+});
+
+export type AppBridgeGuardReport = z.infer<typeof guardReportSchema>;
+
 /** What a Page posts. Unknown keys are refused, so a message is exactly one of these. */
 export const appBridgePageMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...mark, type: z.literal("ready") }),
+  z.strictObject({ ...mark, type: z.literal("report"), report: guardReportSchema }),
   z.strictObject({
     ...mark,
     type: z.literal("storage_write"),

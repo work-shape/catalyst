@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.14",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.14, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.15",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.15, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -982,6 +982,82 @@
         },
         "x-catalyst-effect": "reading",
         "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/app-content-sessions/{pageSessionId}/report": {
+      "post": {
+        "operationId": "apps.sessions.report",
+        "summary": "Keep what the preview a frame shows reported of itself, scrubbed and bounded, for the conversation's agent",
+        "tags": [
+          "Apps"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pageSessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppPreviewReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppPreviewReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
       }
     },
     "/api/v1/app-content-sessions/{pageSessionId}/storage": {
@@ -10535,7 +10611,7 @@
     "/api/v1/conversations/{conversationId}/pages/{pageId}/app": {
       "get": {
         "operationId": "apps.get_from_page",
-        "summary": "Read the App a Page is updated into, where the caller may write it",
+        "summary": "Read the preview state of a Page and the App the caller may update",
         "tags": [
           "Apps"
         ],
@@ -38405,6 +38481,50 @@
       "AppFromPage": {
         "type": "object",
         "properties": {
+          "preview": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "app"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "title"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "unsaved"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "neutral"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          },
           "app": {
             "anyOf": [
               {
@@ -38485,6 +38605,7 @@
           }
         },
         "required": [
+          "preview",
           "app"
         ]
       },
@@ -38548,6 +38669,45 @@
           "heldBackHosts",
           "revision",
           "interfacePath"
+        ]
+      },
+      "AppPreviewReportRequest": {
+        "type": "object",
+        "properties": {
+          "fileSetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "conversationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "report": {
+            "$ref": "#/components/schemas/PreviewReport"
+          }
+        },
+        "required": [
+          "fileSetId",
+          "token",
+          "report"
+        ]
+      },
+      "AppPreviewReportResponse": {
+        "type": "object",
+        "properties": {
+          "stored": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stored"
         ]
       },
       "AppPreviewRequest": {
@@ -46958,6 +47118,88 @@
               "markdown"
             ]
           }
+        ]
+      },
+      "PreviewReport": {
+        "type": "object",
+        "properties": {
+          "settled": {
+            "type": "boolean"
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "bridge": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "waiting",
+              "not_connected",
+              "not_used"
+            ]
+          },
+          "empty": {
+            "type": "boolean"
+          },
+          "entries": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "error",
+                    "rejection",
+                    "console",
+                    "policy",
+                    "call"
+                  ]
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "code": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_.-]{1,64}$"
+                },
+                "file": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000000
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000000
+                }
+              },
+              "required": [
+                "kind",
+                "message",
+                "count"
+              ]
+            }
+          },
+          "more": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          }
+        },
+        "required": [
+          "settled",
+          "loaded",
+          "bridge",
+          "entries",
+          "more"
         ]
       },
       "PublishAssetRequest": {
