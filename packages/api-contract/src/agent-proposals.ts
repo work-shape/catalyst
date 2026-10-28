@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { agentUseSchema, dependencyAvailabilitySchema } from "./assets";
+import {
+  agentUseSchema,
+  assetFileSchema,
+  dependencyAvailabilitySchema,
+  queryBooleanSchema
+} from "./assets";
 import { configAssetConfigSchema } from "./configuration";
 import { conversationSchema } from "./conversations";
 import { timestampSchema } from "./shared";
@@ -69,4 +74,20 @@ export const agentTryConversationResponseSchema = z.object({
   conversation: conversationSchema,
   /** A Try conversation is a preview: its head says so. */
   preview: z.literal(true)
+});
+
+/**
+ * The one shared draft of a skill the instance or a Shared Workspace owns (SKILL-DRAFT-1), as
+ * `skills.draft.get` answers it to a holder of the skill's write right. Its folder's files come
+ * with it where the read asks for them.
+ */
+export const skillDraftSchema = agentDraftSchema
+  .omit({ agent: true, dependencyAvailability: true })
+  .extend({ skill: z.string(), files: z.array(assetFileSchema).optional() });
+export type SkillDraft = z.infer<typeof skillDraftSchema>;
+export const skillDraftResponseSchema = z.object({ draft: skillDraftSchema.nullable() });
+export const skillDraftQuerySchema = z.object({
+  workspaceId: z.string().optional(),
+  /** "true" answers the files of the draft's folder with their content. */
+  files: queryBooleanSchema.optional()
 });

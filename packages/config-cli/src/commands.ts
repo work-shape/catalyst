@@ -140,15 +140,15 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
   const present = pulled.flatMap((asset) => (asset ? [asset] : []));
   const selected = bundleOf(present);
   const listed = new Map(wanted.map(byKey));
-  // An agent is pulled at its live revision, with the draft revision the pull saw: the next
-  // push names it.
+  // An agent, and a skill with a shared draft, is pulled at its live revision, with the draft
+  // revision the pull saw: the next push names it.
   const revisions = Object.fromEntries(
     present.map((asset) => [
       asset.key,
       {
         id: asset.id,
         revision: asset.revision,
-        ...(asset.kind === "agent"
+        ...(asset.kind === "agent" || asset.kind === "skill"
           ? { draftRevision: listed.get(asset.key)?.draft?.revision ?? null }
           : {})
       }
@@ -244,7 +244,7 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
     writeOutput(
       options,
       [
-        "Pending agent drafts, not live; the working copy holds each agent's live revision:",
+        "Pending drafts, not live; the working copy holds the live revision of each agent and skill:",
         ...drafts
       ].join("\n")
     );
@@ -252,7 +252,7 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
   return 0;
 }
 
-/** One line per pending agent draft of the listing: revision, author and time. */
+/** One line per pending draft of the listing: revision, author and time. */
 function pendingDrafts(assets: Iterable<RemoteAsset>): string[] {
   return [...assets].flatMap((asset) =>
     asset.draft === undefined ? [] : [`  ${asset.key}: ${formatDraft(asset.draft)}`]

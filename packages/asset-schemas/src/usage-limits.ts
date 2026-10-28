@@ -31,6 +31,13 @@ export interface ModelUsageRefusal {
 /** The workspace key every Personal Workspace shares in the usage sums (LU-3): one row. */
 export const PERSONAL_WORKSPACES_KEY = "personal";
 
+/**
+ * The agent key every person's own agent ("Only me") shares in the usage of a shared workspace:
+ * the team's Owners and the Usage page see that someone's own agent was used there, never which.
+ * No agent the Studio names starts with a colon.
+ */
+export const PERSONAL_AGENTS_KEY = ":personal";
+
 /** What the Breakdown of the Usage page groups by (LU-3, limits spec 3.3, view 2). */
 export const USAGE_BREAKDOWN_DIMENSIONS = [
   "workspace",

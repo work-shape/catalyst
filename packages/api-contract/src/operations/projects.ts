@@ -1,17 +1,33 @@
 import {
+  addFromProjectRequestSchema,
+  conversationProjectInstructionsSchema,
   createProjectRequestSchema,
+  deleteProjectFileRequestSchema,
+  moveProjectFilesRequestSchema,
+  moveProjectFilesResponseSchema,
+  projectFileChangeSchema,
+  projectFileContentQuerySchema,
+  projectFilePathQuerySchema,
+  projectFilesSchema,
+  projectFileUploadQuerySchema,
+  projectFileVersionsSchema,
+  purgeProjectFileRequestSchema,
+  purgeProjectFileResponseSchema,
+  restoreProjectFileRequestSchema,
+  saveToProjectRequestSchema,
   projectSchema,
   projectsSchema,
   setConversationProjectRequestSchema
 } from "../projects";
-import { conversationSchema } from "../conversations";
-import { defineOperation, defineRegisteredOperation, json } from "./define-operation";
+import { conversationSchema, draftAttachmentUploadResponseSchema } from "../conversations";
+import { blob, defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
 /**
  * Projects, of the module `projects` (PRJ-1): a named folder of chat work in one workspace,
  * shared with its members or private to its creator. Only membership reaches a project; no
  * grant and no bundle opens one, and a project outside the caller's audience answers as one
- * that does not exist. Spec: projects.md, sections 3 and 8.
+ * that does not exist. `projects.list_mine` answers across the caller's memberships (PRJ-5).
+ * Spec: projects.md, sections 3, 8 and 9.
  */
 export const projectOperations = {
   "projects.list": defineOperation({
@@ -26,6 +42,21 @@ export const projectOperations = {
     effect: "reading",
     response: json(projectsSchema),
     errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "projects.list_mine": defineOperation({
+    id: "projects.list_mine",
+    method: "GET",
+    path: "/api/v1/projects",
+    summary:
+      "List the projects of every workspace the caller is a member of that the caller is in the audience of",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(projectsSchema),
+    errors: [],
     rateClass: "read"
   }),
   "projects.get": defineOperation({
@@ -70,6 +101,177 @@ export const projectOperations = {
     effect: "changing",
     body: setConversationProjectRequestSchema,
     response: json(conversationSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  // Project files (PRJ-2). Every read and write asks the project's audience: a person
+  // outside it gets a project that does not exist, also by its id.
+  "projects.files.list": defineOperation({
+    id: "projects.files.list",
+    method: "GET",
+    path: "/api/v1/project-files/:projectId",
+    summary: "List the files of a project as they are now, with what the project holds",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(projectFilesSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "projects.files.versions": defineOperation({
+    id: "projects.files.versions",
+    method: "GET",
+    path: "/api/v1/project-files/:projectId/versions",
+    summary: "List the kept versions of a project file, newest first, with who made each",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: projectFilePathQuerySchema,
+    response: json(projectFileVersionsSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "projects.files.get_content": defineOperation({
+    id: "projects.files.get_content",
+    method: "GET",
+    path: "/api/v1/project-files/:projectId/content",
+    summary: "Download or display a project file, or one of its versions",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: projectFileContentQuerySchema,
+    response: blob(),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "projects.files.upload": defineRegisteredOperation({
+    id: "projects.files.upload",
+    method: "POST",
+    path: "/api/v1/project-files/:projectId",
+    summary:
+      "Upload one file into a project's folder; over a taken path only with the version it replaces",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    multipart: true,
+    query: projectFileUploadQuerySchema,
+    response: json(projectFileChangeSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "projects.files.move": defineRegisteredOperation({
+    id: "projects.files.move",
+    method: "POST",
+    path: "/api/v1/project-files/:projectId/move",
+    summary: "Rename or move a project file, or a folder with every file below it",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: moveProjectFilesRequestSchema,
+    response: json(moveProjectFilesResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "projects.files.delete": defineRegisteredOperation({
+    id: "projects.files.delete",
+    method: "POST",
+    path: "/api/v1/project-files/:projectId/delete",
+    summary:
+      "Delete a project file as a new version; it stays restorable while its versions are kept",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: deleteProjectFileRequestSchema,
+    response: json(projectFileChangeSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "projects.files.purge": defineRegisteredOperation({
+    id: "projects.files.purge",
+    method: "POST",
+    path: "/api/v1/project-files/:projectId/purge",
+    summary: "Delete a project file for good, with all its versions",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: purgeProjectFileRequestSchema,
+    response: json(purgeProjectFileResponseSchema),
+    errors: ["NOT_FOUND", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "projects.files.restore": defineRegisteredOperation({
+    id: "projects.files.restore",
+    method: "POST",
+    path: "/api/v1/project-files/:projectId/restore",
+    summary: "Make an older version of a project file the newest one",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: restoreProjectFileRequestSchema,
+    response: json(projectFileChangeSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  // The project's instructions (PRJ-3): whether they changed since a chat's last run.
+  "conversations.project_instructions.get": defineOperation({
+    id: "conversations.project_instructions.get",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/project-instructions",
+    summary:
+      "Say whether the instructions of a chat's project changed since the chat's last run took them",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(conversationProjectInstructionsSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.project_files.save": defineRegisteredOperation({
+    id: "conversations.project_files.save",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/project-files",
+    summary: "Keep a file of a chat in a project in that project's folder",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: saveToProjectRequestSchema,
+    response: json(projectFileChangeSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "conversations.draft_attachments.add_from_project": defineRegisteredOperation({
+    id: "conversations.draft_attachments.add_from_project",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/draft-attachments/from-project",
+    summary:
+      "Attach a project file to the next message; only where everyone who reads the chat reads the project",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: addFromProjectRequestSchema,
+    response: json(draftAttachmentUploadResponseSchema),
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
   })

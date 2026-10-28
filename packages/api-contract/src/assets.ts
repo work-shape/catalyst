@@ -332,6 +332,15 @@ export const assetSchema = z.object({
    * warnings for the revision this read returns.
    */
   publishNarrative: publishNarrativeSchema.optional(),
+  /** Other visible workspace members with an unsaved checkout of this App's current draft. */
+  appEditors: z
+    .array(
+      z.strictObject({
+        displayLabel: z.string(),
+        since: z.iso.datetime()
+      })
+    )
+    .optional(),
   appAudience: z
     .object({
       selected: appAudienceSchema,
@@ -417,7 +426,8 @@ export const assetRevisionSelectorSchema = z
   .string()
   .regex(/^(?:draft|published|[1-9]\d{0,8})$/u, "draft, published, or a revision number");
 
-const queryBooleanSchema = z.enum(["true", "false"]);
+/** A yes or no in a query string. */
+export const queryBooleanSchema = z.enum(["true", "false"]);
 
 export const getAssetQuerySchema = assetScopeQuerySchema.extend({
   availabilityMode: agentAvailabilitySchema.shape.mode.optional(),

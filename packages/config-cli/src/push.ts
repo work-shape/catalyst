@@ -40,7 +40,8 @@ import {
   selectBundle,
   workingCopyKinds,
   writeError,
-  writeOutput
+  writeOutput,
+  type AssetKindName
 } from "./command-support";
 
 export async function pushConfig(options: ConfigCommandOptions): Promise<number> {
@@ -194,7 +195,8 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   const items: SyncBatch["items"] = [
     ...syncTouched.map((asset) => {
       const base = baseOf(asset.key);
-      // An agent that is there is written as its draft, against the draft revision last seen.
+      // An agent that is there, and a team's or the instance's skill, is written as its draft,
+      // against the draft revision last seen (SKILL-DRAFT-1).
       const draftRevision = baselineAssets[asset.key]?.draftRevision;
       return {
         type: "put" as const,
@@ -207,7 +209,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
             : {})
         },
         expectedRevision: base?.revision ?? null,
-        ...(asset.kind === "agent" && draftRevision !== undefined
+        ...((asset.kind === "agent" || asset.kind === "skill") && draftRevision !== undefined
           ? { expectedDraftRevision: draftRevision }
           : {}),
         ...(base?.id === undefined ? {} : { expectedAssetId: base.id })
@@ -277,7 +279,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       return 1;
     }
   }
-  /** The agents this push wrote as drafts, which `--publish` makes live. */
+  /** The agents and skills this push wrote as drafts, which `--publish` makes live. */
   const drafted: PushedDraft[] = [];
   if (items.length > 0 || changesDefault) {
     // The default agent the push is made against, as the revisions are: the one of the last pull.
@@ -300,11 +302,13 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     for (const item of result.items) {
       if (item.status !== "applied" || item.type !== "put") continue;
       const key = `${item.kind}:${item.name}`;
-      if (item.kind !== "agent") {
-        revisions[key] = { id: item.id, revision: item.revision };
-      } else if (item.draftRevision === undefined) {
-        // A new agent is live at its first revision and has no draft.
-        revisions[key] = { id: item.id, revision: item.revision, draftRevision: null };
+      if (item.draftRevision === undefined) {
+        // A new agent is live at its first revision and has no draft; so is every write of a
+        // personal skill, and a new skill.
+        revisions[key] =
+          item.kind === "agent" || item.kind === "skill"
+            ? { id: item.id, revision: item.revision, draftRevision: null }
+            : { id: item.id, revision: item.revision };
       } else {
         // The live revision stays; the content recorded is the draft's.
         const live = item.publishedRevision ?? baselineAssets[key]?.revision ?? item.revision;
@@ -317,6 +321,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
         drafted.push({
           key,
           id: item.id,
+          kind: item.kind === "skill" ? "skill" : "agent",
           name: item.name,
           draftRevision: item.draftRevision,
           live
@@ -344,7 +349,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     for (const draft of drafted) {
       writeOutput(
         options,
-        `${draft.key}: draft revision ${draft.draftRevision}; live revision ${draft.live} is unchanged until it is published.${options.publish ? "" : ` Publish it with 'catalyst agent publish ${draft.name} --revision ${draft.draftRevision}' or on the agent page.`}`
+        `${draft.key}: draft revision ${draft.draftRevision}; live revision ${draft.live} is unchanged until it is published.${options.publish ? "" : ` Publish it with 'catalyst ${draft.kind} publish ${draft.name} --revision ${draft.draftRevision}' or on the ${draft.kind} page.`}`
       );
     }
     for (const warning of result.warnings) writeOutput(options, `Warning: ${warning.message}`);
@@ -361,6 +366,8 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   let skillsWritten = false;
   for (const asset of fileSkills) {
     const base = baseOf(asset.key);
+    // A team's or the instance's skill is written as its draft (SKILL-DRAFT-1).
+    const skillDraftRevision = baselineAssets[asset.key]?.draftRevision;
     try {
       const outcome = await api.change(
         (client, idempotencyKey) =>
@@ -369,6 +376,9 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
             body: {
               files: asset.folderFiles,
               expectedRevision: base?.revision ?? null,
+              ...(skillDraftRevision === undefined
+                ? {}
+                : { expectedDraftRevision: skillDraftRevision }),
               ...batchScope(instance)
             },
             idempotencyKey
@@ -387,24 +397,53 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
         return 1;
       }
       const id = listing.get(asset.key)?.id ?? (await api.getAsset("skill", asset.name))?.id;
+      const { draftRevision } = outcome.output;
+      const live =
+        draftRevision === undefined
+          ? outcome.output.revision
+          : (outcome.output.publishedRevision ?? base?.revision ?? outcome.output.revision);
       if (id !== undefined)
         await recordBaseline(
           workingDir,
           instance.key,
           outcome.output.version ?? baseline.lastPulledVersion,
           bundleOf([asset]),
-          { [asset.key]: { id, revision: outcome.output.revision } },
+          {
+            [asset.key]:
+              draftRevision === undefined
+                ? { id, revision: live, draftRevision: null }
+                : { id, revision: live, draftRevision, draftPushed: true }
+          },
           false,
           baseline.defaultAgentName
         );
       skillsWritten = true;
-      writeOutput(options, `Wrote ${asset.key} at revision ${outcome.output.revision}.`);
+      if (draftRevision === undefined) {
+        writeOutput(options, `Wrote ${asset.key} at revision ${outcome.output.revision}.`);
+      } else {
+        if (id !== undefined)
+          drafted.push({
+            key: asset.key,
+            id,
+            kind: "skill",
+            name: asset.name,
+            draftRevision,
+            live
+          });
+        writeOutput(
+          options,
+          `${asset.key}: draft revision ${draftRevision}; live revision ${live} is unchanged until it is published.${options.publish ? "" : ` Publish it with 'catalyst skill publish ${asset.name} --revision ${draftRevision}' or on the skill page.`}`
+        );
+      }
       for (const warning of outcome.output.warnings ?? [])
         writeOutput(options, `Warning: ${warning.message}`);
     } catch (error) {
       if (!(error instanceof ConfigApiError)) throw error;
-      const conflicts =
-        error.code === "REVISION_CONFLICT" || error.code === "CONFLICT"
+      // A shared skill's draft that moved since the last pull names who moved it.
+      const draftConflict = readDraftConflict(error);
+      const conflicts = draftConflict
+        ? [{ ...draftConflict, kind: "skill", name: asset.name }]
+        : error.code === "REVISION_CONFLICT" || error.code === "CONFLICT"
           ? readConflicts(error.details)
           : [];
       if (conflicts.length)
@@ -450,10 +489,11 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   });
 }
 
-/** An agent a push wrote as its draft, and the live revision it left alone. */
+/** An agent or a skill a push wrote as its draft, and the live revision it left alone. */
 interface PushedDraft {
   key: string;
   id: string;
+  kind: Exclude<AssetKindName, "guardrail">;
   name: string;
   draftRevision: number;
   live: number;
@@ -486,7 +526,7 @@ async function publishDrafts(
       .slice(from)
       .map(
         (draft) =>
-          `  catalyst agent publish ${draft.name} --revision ${draft.draftRevision}${input.workspaceId === undefined ? "" : ` --workspace ${input.workspaceId}`}`
+          `  catalyst ${draft.kind} publish ${draft.name} --revision ${draft.draftRevision}${input.workspaceId === undefined ? "" : ` --workspace ${input.workspaceId}`}`
       );
   const unpublished = (from: number) => {
     const commands = left(from);
@@ -498,7 +538,7 @@ async function publishDrafts(
     }
   };
   for (const [index, draft] of drafts.entries()) {
-    if (input.workspaceId !== undefined) {
+    if (input.workspaceId !== undefined && draft.kind === "agent") {
       // A workspace's agent keeps the question and the approval of its publish (WS-PUB-1b).
       const answer = await askBeforePublish(options, {
         kind: "agent",
@@ -517,11 +557,11 @@ async function publishDrafts(
       outcome = await api.change(
         (client, idempotencyKey) =>
           client.assets.publish({
-            params: { kind: "agent", name: draft.name },
+            params: { kind: draft.kind, name: draft.name },
             body: { revision: draft.draftRevision, ...scope },
             idempotencyKey
           }),
-        `It may have been published: run 'catalyst agent show ${draft.name}' before sending it again.`
+        `It may have been published: run 'catalyst ${draft.kind} show ${draft.name}' before sending it again.`
       );
     } catch (error) {
       if (!(error instanceof ConfigApiError)) throw error;
@@ -554,7 +594,7 @@ async function publishDrafts(
     }
     writeOutput(
       options,
-      `Published draft revision ${draft.draftRevision} of agent '${draft.name}' as live revision ${outcome.output.publishedRevision}${outcome.output.replacedRevision === undefined ? "" : ` in place of revision ${outcome.output.replacedRevision}`}.`
+      `Published draft revision ${draft.draftRevision} of ${draft.kind} '${draft.name}' as live revision ${outcome.output.publishedRevision}${outcome.output.replacedRevision === undefined ? "" : ` in place of revision ${outcome.output.replacedRevision}`}.`
     );
   }
   return 0;

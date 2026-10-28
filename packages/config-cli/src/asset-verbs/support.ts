@@ -73,16 +73,22 @@ export function ifDraftRevision(
 }
 
 export function requireAgentForDraftFence(session: Session, fence: object): void {
-  if ("expectedDraftRevision" in fence && session.kind.kind !== AGENT_KIND) {
-    throw new UsageError("--if-draft-revision names the draft of an agent.");
+  if (
+    "expectedDraftRevision" in fence &&
+    session.kind.kind !== AGENT_KIND &&
+    session.kind.kind !== "skill"
+  ) {
+    throw new UsageError("--if-draft-revision names the draft of an agent or a shared skill.");
   }
 }
 
-/** A write over an agent draft that moved: the refusal, and who moved it. */
+/** A write over an agent's or a shared skill's draft that moved: the refusal, and who moved it. */
 export function explainDraftChanged(
   name: string,
-  verb: "put" | "revert"
+  verb: "put" | "revert",
+  kind = "agent"
 ): (error: unknown) => never {
+  const noun = `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
   return (error) => {
     const conflict = error instanceof ConfigApiError ? readDraftConflict(error) : undefined;
     if (conflict?.draft === undefined) throw error;
@@ -90,8 +96,8 @@ export function explainDraftChanged(
     throw new ExplainedRefusal(
       error,
       revision === null
-        ? `Agent '${name}' has no draft any more. Repeat the ${verb} with --if-draft-revision none.`
-        : `Agent '${name}' has draft revision ${revision}${conflict.changedBy === undefined ? "" : ` by ${conflict.changedBy}`}${conflict.changedAt === undefined ? "" : ` at ${conflict.changedAt}`}. Read it with 'catalyst agent show ${name}'; the ${verb} writes over it with --if-draft-revision ${revision}.`
+        ? `${noun} '${name}' has no draft any more. Repeat the ${verb} with --if-draft-revision none.`
+        : `${noun} '${name}' has draft revision ${revision}${conflict.changedBy === undefined ? "" : ` by ${conflict.changedBy}`}${conflict.changedAt === undefined ? "" : ` at ${conflict.changedAt}`}. Read it with 'catalyst ${kind} show ${name}'; the ${verb} writes over it with --if-draft-revision ${revision}.`
     );
   };
 }

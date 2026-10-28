@@ -16,6 +16,27 @@ export const PROJECT_ASSET_KIND = "project";
 export const PROJECT_AUDIENCES = ["workspace", "private"] as const;
 export type ProjectAudience = (typeof PROJECT_AUDIENCES)[number];
 
+/** Who made a version of a project file: a person on the page, an agent in a chat, an upload. */
+export const PROJECT_FILE_ORIGINS = ["person", "agent", "upload"] as const;
+
+/** What a change did to a project's folder (PRJ-2). */
+export const PROJECT_FILE_CHANGES = [
+  "created",
+  "updated",
+  "deleted",
+  "restored",
+  "unchanged",
+  "conflict_copy"
+] as const;
+
+/** What a write of an agent in the folder did: it neither deletes nor restores. */
+export const PROJECT_FOLDER_WRITE_CHANGES = [
+  "created",
+  "updated",
+  "unchanged",
+  "conflict_copy"
+] as const satisfies readonly (typeof PROJECT_FILE_CHANGES)[number][];
+
 /** The longest title of a project, in characters. */
 export const PROJECT_TITLE_MAX_LENGTH = 120;
 /** The longest description of a project, in characters. */

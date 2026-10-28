@@ -257,6 +257,12 @@ export const collaborationWorkspaceAgentsSchema = z.object({
    */
   visibleSections: z.array(z.enum(WORKSPACE_SECTIONS)),
   items: safeConfigSchema.shape.agents,
+  /**
+   * The caller's own agents ("Nur ich"), offered in no workspace: the caller chooses one only in
+   * a chat they created that nobody else reads, which it then marks as personal. Never listed
+   * for a key, an embedding host or a service principal.
+   */
+  ownChatAgents: safeConfigSchema.shape.agents.optional(),
   nextCursor: z.string().optional()
 });
 

@@ -111,8 +111,8 @@ export const publishVerb: Verb = {
         outcome,
         (output) => [
           // An agent's first version without a draft replaces nothing: it is offered as made.
-          output.replacedRevision !== undefined && agent
-            ? `Published draft revision ${output.draftRevision} of agent '${name}' as live revision ${output.publishedRevision}${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
+          output.replacedRevision !== undefined && (agent || session.kind.kind === "skill")
+            ? `Published draft revision ${output.draftRevision} of ${session.kind.kind} '${name}' as live revision ${output.publishedRevision}${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
             : `Published revision ${output.publishedRevision} of ${session.kind.kind} '${name}'${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
         ],
         asks ? "If you are an instance approver, you can approve it in the Inbox." : undefined

@@ -28,6 +28,7 @@ import {
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { reasoningEffortSchema } from "./configuration";
+import { projectFileChangeSchema } from "./projects";
 import { localeCodeSchema, timestampSchema } from "./shared";
 
 export const conversationVisibilitySchema = z.enum(CONVERSATION_VISIBILITIES);
@@ -268,7 +269,12 @@ export const draftAttachmentSchema = z.object({
 export const draftAttachmentUploadResponseSchema = z.object({
   attachment: draftAttachmentSchema,
   attachments: z.array(draftAttachmentSchema),
-  outcome: z.enum(ATTACHMENT_CREATE_OUTCOMES).optional()
+  outcome: z.enum(ATTACHMENT_CREATE_OUTCOMES).optional(),
+  /**
+   * In a chat of a project, where the upload landed in the project's folder (PRJ-2). Absent
+   * where it did not: the chat is in no project, or the folder had no room left.
+   */
+  projectFile: projectFileChangeSchema.optional()
 });
 
 export type DraftAttachment = z.infer<typeof draftAttachmentSchema>;

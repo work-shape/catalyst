@@ -37,10 +37,11 @@ export const revertVerb: Verb = {
             }),
           "It may have been applied: run 'history' before sending it again."
         )
-        .catch(explainDraftChanged(name, "revert"));
+        .catch(explainDraftChanged(name, "revert", session.kind.kind));
       return settle(session, outcome, (output) => [
-        output.draftRevision !== undefined && session.kind.kind === AGENT_KIND
-          ? `Wrote the content of revision ${revision} of agent '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published.`
+        output.draftRevision !== undefined &&
+        (session.kind.kind === AGENT_KIND || session.kind.kind === "skill")
+          ? `Wrote the content of revision ${revision} of ${session.kind.kind} '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published.`
           : `Reverted ${session.kind.kind} '${name}' to the content of revision ${revision}; it is revision ${output.revision} now.`,
         ...formatWarnings(output.warnings)
       ]);

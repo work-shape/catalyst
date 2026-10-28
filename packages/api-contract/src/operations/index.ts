@@ -27,6 +27,7 @@ import { platformReportOperations } from "./platform-report";
 import { projectOperations } from "./projects";
 import { referenceOperations } from "./reference";
 import { roleOperations } from "./roles";
+import { skillOperations } from "./skills";
 import { systemOperations } from "./system";
 import { userOperations } from "./users";
 import { workflowOperations } from "./workflows";
@@ -67,6 +68,7 @@ export const operationAreas: Readonly<Record<string, Readonly<Record<string, unk
   reference: referenceOperations,
   roles: roleOperations,
   "scheduled-starts": scheduledStartOperations,
+  skills: skillOperations,
   system: systemOperations,
   users: userOperations,
   "workflow-principal-rights": workflowPrincipalRightsOperations,
@@ -93,6 +95,7 @@ export type ApiOperations = typeof scheduledStartOperations &
   typeof configAssetOperations &
   typeof assetOperations &
   typeof agentOperations &
+  typeof skillOperations &
   typeof connectionOperations &
   typeof guardrailOperations &
   typeof workflowOperations &
@@ -129,6 +132,7 @@ const allOperations = {
   ...configAssetOperations,
   ...assetOperations,
   ...agentOperations,
+  ...skillOperations,
   ...connectionOperations,
   ...guardrailOperations,
   ...workflowOperations,

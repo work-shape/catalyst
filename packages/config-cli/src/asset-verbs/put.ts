@@ -15,7 +15,7 @@ import type { Verb } from "./types";
 export const putVerb: Verb = {
   usage: "put <name> --from <file-or-folder> --if-revision <n|new> [--if-draft-revision <n|none>]",
   summary:
-    "Create an asset (--if-revision new) or replace it at the revision you read (assets.put). An agent that exists is written as its draft",
+    "Create an asset (--if-revision new) or replace it at the revision you read (assets.put). An agent that exists, and a shared skill, is written as its draft",
   named: true,
   options: {
     from: { type: "string" },
@@ -53,10 +53,11 @@ export const putVerb: Verb = {
             }),
           `It may have been written: run 'catalyst ${kindNoun(session.kind)} show ${name}' before sending it again.`
         )
-        .catch(explainDraftChanged(name, "put"));
+        .catch(explainDraftChanged(name, "put", session.kind.kind));
       return settle(session, outcome, (output) => [
-        output.draftRevision !== undefined && session.kind.kind === AGENT_KIND
-          ? `Wrote agent '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published with 'catalyst agent publish ${name} --revision ${output.draftRevision}'.`
+        output.draftRevision !== undefined &&
+        (session.kind.kind === AGENT_KIND || session.kind.kind === "skill")
+          ? `Wrote ${session.kind.kind} '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published with 'catalyst ${session.kind.kind} publish ${name} --revision ${output.draftRevision}'.`
           : `Wrote ${session.kind.kind} '${name}' at revision ${output.revision}.${session.kind.lifecycle === "draft_published" ? " It is a draft until it is published." : ""}`,
         ...formatWarnings(output.warnings)
       ]);
