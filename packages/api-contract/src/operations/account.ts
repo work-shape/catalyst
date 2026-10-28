@@ -16,6 +16,11 @@ import {
   operationSettingsSchema,
   setOperationSettingRequestSchema
 } from "../operation-settings";
+import {
+  personalChatSkillSchema,
+  personalChatSkillsSchema,
+  setPersonalChatSkillRequestSchema
+} from "../personal-chat-skills";
 import { ownUsageQuerySchema, ownUsageSchema } from "../usage-limits";
 import { defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
@@ -96,6 +101,40 @@ export const accountOperations = {
     body: setOperationSettingRequestSchema,
     response: json(operationSettingSchema),
     errors: [],
+    rateClass: "write"
+  }),
+  // The skills of the person's Personal Workspace that every agent may use in their own chats
+  // (SCOPE-MYCHATS). Only the person reads and sets their own, in the interface: a key, a
+  // service principal and an agent are refused the switch.
+  "me.chat_skills.list": defineOperation({
+    id: "me.chat_skills.list",
+    method: "GET",
+    path: "/api/v1/me/chat-skills",
+    summary:
+      "List the skills of the signed-in user's Personal Workspace and whether their own chats use each one",
+    tag: "Account",
+    auth: "user",
+    scope: "me:read",
+    requires: [],
+    effect: "reading",
+    response: json(personalChatSkillsSchema),
+    errors: [],
+    rateClass: "read"
+  }),
+  "me.chat_skills.set": defineRegisteredOperation({
+    id: "me.chat_skills.set",
+    method: "PUT",
+    path: "/api/v1/me/chat-skills/:name",
+    summary:
+      "Switch one skill of the signed-in user's Personal Workspace on or off for their own chats with every agent",
+    tag: "Account",
+    auth: "user",
+    scope: "me:write",
+    requires: [],
+    effect: "changing",
+    body: setPersonalChatSkillRequestSchema,
+    response: json(personalChatSkillSchema),
+    errors: ["NOT_FOUND"],
     rateClass: "write"
   }),
   "me.model_preference.get": defineOperation({

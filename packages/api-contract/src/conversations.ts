@@ -64,7 +64,9 @@ export const conversationSchema = z.object({
   /** The asset the conversation is about. Missing on a conversation about none. */
   subject: conversationSubjectSchema.optional(),
   /** `instance`: its first saves create agents, skills and guardrails for the instance. */
-  creationTarget: conversationCreationTargetSchema.optional()
+  creationTarget: conversationCreationTargetSchema.optional(),
+  /** The project of its workspace it is in; its readers are the project's audience. */
+  projectId: z.string().optional()
 });
 
 export const moveConversationRequestSchema = z.object({
@@ -441,11 +443,23 @@ export const createConversationRequestSchema = z.object({
    */
   subject: conversationSubjectSchema.optional(),
   /**
+   * "Edit in chat" on an App's page: with an App of the workspace as `subject`, the new
+   * conversation, of the caller's own, holds the App's current draft with all its files in
+   * `apps/<name>`, as the agent's `app.edit` loads it. Needs `app.write` on the App; without it
+   * nothing is created.
+   */
+  checkout: z.literal(true).optional(),
+  /**
    * `instance` for a conversation started under Studio's scope "Instance": its first saves
    * create agents, skills and guardrails for the instance, where the person may create them
    * there, and are refused where not. Set only here; nothing changes it later.
    */
-  creationTarget: conversationCreationTargetSchema.optional()
+  creationTarget: conversationCreationTargetSchema.optional(),
+  /**
+   * A project of the target workspace the caller is in the audience of. The conversation takes
+   * the project's audience: shared in a shared project, private in a private one.
+   */
+  projectId: z.string().min(1).optional()
 });
 
 /**
@@ -455,6 +469,23 @@ export const createConversationRequestSchema = z.object({
  */
 export const openConversationSubjectRequestSchema = conversationSubjectSchema.extend({
   toolCallId: z.string().min(1).max(200).optional()
+});
+
+/**
+ * The person's click on the card of an agent's `data_store.use` (STORE-USE-1): it names the
+ * store and the agent's call it confirms.
+ */
+export const addConversationDataStoreRequestSchema = z.object({
+  store: z.string().min(1).max(120),
+  toolCallId: z.string().min(1).max(200)
+});
+
+/** A Data Store added to a conversation for reading: its read tools reach the next run. */
+export const conversationDataStoreAddedSchema = z.object({
+  name: z.string(),
+  title: z.string(),
+  added: z.boolean(),
+  readTools: z.array(z.string())
 });
 
 export const renameConversationRequestSchema = z.object({
@@ -861,7 +892,11 @@ export const startConversationRunRequestSchema = z.object({
   reasoningEffort: reasoningEffortSchema.optional(),
   locale: localeCodeSchema.optional(),
   message: z.object({
-    text: z.string().min(1)
+    text: z
+      .string()
+      .describe(
+        "The message. It may be empty when the conversation's ready draft attachments go with it; a message with neither text nor attachments is refused."
+      )
   })
 });
 
@@ -921,6 +956,13 @@ export const conversationThreadSnapshotSchema = z.object({
       projection: agentRunProjectionSchema
     })
     .optional(),
+  /** The agent of the conversation's latest run: the agent it is held with. Absent before the first run. */
+  agentName: z.string().optional(),
+  /**
+   * The agent of each run the conversation held, oldest first, by the message that started the
+   * run: where another agent answers from that message on, the history says so (T30).
+   */
+  runAgents: z.array(z.object({ inputMessageId: z.string(), agentName: z.string() })).optional(),
   /**
    * What the conversation's latest run was asked to use. Absent before the first run; a run that
    * followed the configured defaults leaves both fields out.
@@ -951,6 +993,8 @@ export type ConversationVisibility = z.infer<typeof conversationVisibilitySchema
 export type ConversationListItem = z.infer<typeof conversationListItemSchema>;
 export type RenameConversationRequest = z.infer<typeof renameConversationRequestSchema>;
 export type OpenConversationSubjectRequest = z.infer<typeof openConversationSubjectRequestSchema>;
+export type AddConversationDataStoreRequest = z.infer<typeof addConversationDataStoreRequestSchema>;
+export type ConversationDataStoreAdded = z.infer<typeof conversationDataStoreAddedSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type MessageMetadata = z.infer<typeof messageMetadataSchema>;
 export type ConversationResourceBase = z.infer<typeof conversationResourceBaseSchema>;

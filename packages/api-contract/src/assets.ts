@@ -4,6 +4,11 @@ import {
   OPERATION_EFFECTS,
   WORKSPACE_USE_ASSET_KINDS,
   ASSET_ACCESS_VERBS,
+  ASSET_MOVE_EDITORS,
+  ASSET_MOVE_PATHS,
+  ASSET_MOVE_STATUSES,
+  ASSET_MOVE_USERS,
+  ASSET_OWNER_RUNGS,
   ASSET_NAME_REFUSAL_REASONS,
   ASSET_SYNC_CHANGE_TYPES,
   WORKFLOW_STEP_SOURCE_KINDS,
@@ -803,6 +808,89 @@ export const syncAssetsResponseSchema = z.object({
   /** Agents the batch wrote that are available in no workspace afterwards. */
   hiddenAgentNames: z.array(z.string()).optional(),
   warnings: z.array(assetWarningSchema)
+});
+
+/**
+ * Where "Teilen mit…" moves an asset (SHARE-1): a Shared Workspace or the instance. The ladder
+ * goes up only, Nur ich → Team → Alle; down and sideways are refused.
+ */
+export const assetMoveTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("instance") }),
+  z.object({ kind: z.literal("workspace"), workspaceId: z.string().min(1) })
+]);
+
+export const moveAssetRequestSchema = z.object({
+  /** The workspace that owns the asset now; left out for an asset of the instance. */
+  workspaceId: workspaceIdSchema,
+  to: assetMoveTargetSchema,
+  /** The id of the asset as the caller read it. Another asset of the name is a conflict. */
+  expectedAssetId: z.string().min(1).optional(),
+  /**
+   * The caller read what the move breaks (`breaks` of the check) and moves it all the same.
+   * A move that breaks something is refused with `move_breaks` without it.
+   */
+  acceptBreaks: z.boolean().optional()
+});
+
+/** The owner a moved asset has afterwards, with its rung and, for a workspace, its name. */
+const movedOwnerFields = {
+  workspaceName: z.string().optional(),
+  rung: z.enum(ASSET_OWNER_RUNGS)
+};
+
+/**
+ * What a move would do, as the dialog shows it before the click: what moves (the asset, then
+ * what it uses that would otherwise stay below it), what stays and can no longer use it, and
+ * who reads and edits it afterwards. `path` is `direct` where the caller holds the right at
+ * the target for everything that moves, and `request` where an admin with it decides.
+ */
+export const checkAssetMoveResponseSchema = z.object({
+  asset: z.object({ kind: z.string(), name: z.string(), id: z.string() }),
+  from: assetScopeSchema,
+  to: assetScopeSchema,
+  path: z.enum(ASSET_MOVE_PATHS),
+  moves: z.array(
+    z.object({ kind: z.string(), name: z.string(), id: z.string(), title: z.string() })
+  ),
+  breaks: z.array(
+    z.object({
+      kind: z.string(),
+      name: z.string(),
+      title: z.string(),
+      uses: z.object({ kind: z.string(), name: z.string() })
+    })
+  ),
+  afterwards: z.object({
+    owner: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("instance"), ...movedOwnerFields }),
+      z.object({ kind: z.literal("workspace"), workspaceId: z.string(), ...movedOwnerFields })
+    ]),
+    /** The Builders of the team, or the instance's admins and Builders. */
+    editors: z.enum(ASSET_MOVE_EDITORS),
+    /** The team's members, or everyone where the asset is offered. */
+    users: z.enum(ASSET_MOVE_USERS),
+    /** Whether the caller still edits it there. */
+    callerEdits: z.boolean(),
+    /**
+     * The grants the move takes away, since editing follows the new place: on the moved
+     * assets, every grant to change them and every grant to read or use them that reaches
+     * beyond the new place's readers; and what a moved Workflow's run account holds at the old.
+     */
+    grantsDropped: z.object({
+      onAssets: z.number().int().nonnegative(),
+      runAccounts: z.number().int().nonnegative()
+    })
+  }),
+  /** The rows that go with each moved Data Store, with a sentence that says who reads them. */
+  data: z.array(
+    z.object({ kind: z.string(), name: z.string(), title: z.string(), sentence: z.string() })
+  )
+});
+
+/** A move made (`moved`), or filed as a request an admin decides in the Inbox (`requested`). */
+export const moveAssetResponseSchema = checkAssetMoveResponseSchema.extend({
+  status: z.enum(ASSET_MOVE_STATUSES),
+  requestId: z.string().optional()
 });
 
 /** The answer for a batch a sync would apply. One it would refuse answers the sync's error. */

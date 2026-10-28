@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.17",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.17, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.18",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.18, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -83,6 +83,9 @@
     },
     {
       "name": "Platform"
+    },
+    {
+      "name": "Projects"
     },
     {
       "name": "Reference"
@@ -2373,6 +2376,54 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/apps/captures/call": {
+      "post": {
+        "operationId": "apps.captures.call",
+        "summary": "Refuse capture calls until capture grants are available",
+        "tags": [
+          "Apps"
+        ],
+        "security": [],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "not": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/apps/draft-hosts": {
       "post": {
         "operationId": "apps.allow_draft_host",
@@ -4452,6 +4503,246 @@
         },
         "x-catalyst-effect": "changing",
         "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/assets/{kind}/{name}/move": {
+      "post": {
+        "operationId": "assets.move",
+        "summary": "Share one asset up to a team or to everyone, with what it uses",
+        "tags": [
+          "Assets"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveAssetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveAssetResponse"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/assets/{kind}/{name}/move/check": {
+      "post": {
+        "operationId": "assets.move_check",
+        "summary": "Check a move as it would be made, without making it",
+        "tags": [
+          "Assets"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveAssetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckAssetMoveResponse"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
       }
     },
     "/api/v1/assets/{kind}/{name}/preview": {
@@ -8536,6 +8827,15 @@
               "minLength": 1,
               "maxLength": 200
             }
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "responses": {
@@ -8639,6 +8939,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           },
           "422": {
             "$ref": "#/components/responses/ValidationFailed"
@@ -9251,6 +9554,136 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/conversations/{conversationId}/data-stores": {
+      "post": {
+        "operationId": "conversations.data_stores.add",
+        "summary": "Add a Data Store to the person's conversation for reading, as its card asked",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddConversationDataStoreRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDataStoreAdded"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
     "/api/v1/conversations/{conversationId}/draft-attachments": {
       "get": {
         "operationId": "conversations.draft_attachments.list",
@@ -9375,6 +9808,15 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "agentName",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
             }
           }
         ],
@@ -11183,6 +11625,136 @@
         "x-catalyst-rate-class": "read"
       }
     },
+    "/api/v1/conversations/{conversationId}/project": {
+      "put": {
+        "operationId": "conversations.set_project",
+        "summary": "Put a conversation into a project of its workspace, or take it out; it takes the project's audience",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetConversationProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
     "/api/v1/conversations/{conversationId}/resources": {
       "get": {
         "operationId": "conversations.resources.list",
@@ -12832,6 +13404,289 @@
                   "required": [
                     "schemaLevel",
                     "tables"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/data-stores/{store}/description": {
+      "get": {
+        "operationId": "data_stores.description",
+        "summary": "Describe a Data Store, its fields, uses and rights without reading rows",
+        "tags": [
+          "Data Stores"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:read"
+            ]
+          },
+          {
+            "accessToken": [
+              "config_assets:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "owner": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "instance"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "workspace"
+                            },
+                            "workspaceId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "workspaceId"
+                          ]
+                        }
+                      ]
+                    },
+                    "published": {
+                      "type": "boolean"
+                    },
+                    "tables": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "rowEstimate": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "type": "string"
+                                },
+                                "description": {
+                                  "type": "string"
+                                },
+                                "nullable": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "type",
+                                "description",
+                                "nullable"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "rowEstimate",
+                          "fields"
+                        ]
+                      }
+                    },
+                    "schemaAvailable": {
+                      "type": "boolean"
+                    },
+                    "filledBy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "name",
+                          "title"
+                        ]
+                      }
+                    },
+                    "readBy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "name",
+                          "title"
+                        ]
+                      }
+                    },
+                    "usesTruncated": {
+                      "type": "boolean"
+                    },
+                    "rights": {
+                      "type": "object",
+                      "properties": {
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "add": {
+                          "type": "boolean"
+                        },
+                        "change": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "read",
+                        "add",
+                        "change"
+                      ]
+                    },
+                    "chat": {
+                      "type": "object",
+                      "properties": {
+                        "canReadRows": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "nextStep": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "canReadRows",
+                        "reason"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "title",
+                    "owner",
+                    "published",
+                    "tables",
+                    "schemaAvailable",
+                    "filledBy",
+                    "readBy",
+                    "usesTruncated",
+                    "rights",
+                    "chat"
                   ]
                 }
               }
@@ -27054,6 +27909,190 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/me/chat-skills": {
+      "get": {
+        "operationId": "me.chat_skills.list",
+        "summary": "List the skills of the signed-in user's Personal Workspace and whether their own chats use each one",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "me:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "me:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalChatSkills"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
+    "/api/v1/me/chat-skills/{name}": {
+      "put": {
+        "operationId": "me.chat_skills.set",
+        "summary": "Switch one skill of the signed-in user's Personal Workspace on or off for their own chats with every agent",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "me:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "me:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPersonalChatSkillRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalChatSkill"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/IdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
     "/api/v1/me/connect-codes/{userCode}": {
       "get": {
         "operationId": "me.connect_codes.get",
@@ -28578,6 +29617,194 @@
         },
         "x-catalyst-effect": "changing",
         "x-catalyst-rate-class": "auth"
+      }
+    },
+    "/api/v1/projects": {
+      "post": {
+        "operationId": "projects.create",
+        "summary": "Create a project in a workspace the caller is a member of",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Catalyst-Unattended",
+            "in": "header",
+            "description": "`1` on a call of an API credential when nobody watches its terminal, such as `catalyst <kind> publish --yes`. The call is then not its caller's own confirmation: a call that needs one waits in the caller's Inbox and answers `202` with its run, status `pending_confirmation`. It only ever makes a call stricter; a browser session's call ignores it.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "202": {
+            "description": "The call waits for somebody else to approve it. This is its Operation Run; read it again at `Location`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRun"
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlockedOrDeclined"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/IdempotencyKeyReusedOrOperationInProgressOrOperationExpiredOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/projects/{projectName}": {
+      "get": {
+        "operationId": "projects.get",
+        "summary": "Read one project the caller is in the audience of",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
       }
     },
     "/api/v1/scheduled-starts": {
@@ -35863,6 +37090,72 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/workspaces/{collaborationWorkspaceId}/projects": {
+      "get": {
+        "operationId": "projects.list",
+        "summary": "List the projects of a workspace the caller is in the audience of",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "collaborationWorkspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Projects"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/workspaces/{collaborationWorkspaceId}/usage": {
       "get": {
         "operationId": "workspaces.usage.get",
@@ -36479,6 +37772,25 @@
           "startedAt",
           "updatedAt",
           "lastSequence"
+        ]
+      },
+      "AddConversationDataStoreRequest": {
+        "type": "object",
+        "properties": {
+          "store": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "toolCallId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "store",
+          "toolCallId"
         ]
       },
       "AddWorkspaceMemberRequest": {
@@ -40623,6 +41935,39 @@
           }
         ]
       },
+      "AssetMoveTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "instance"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "workspace"
+              },
+              "workspaceId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "workspaceId"
+            ]
+          }
+        ]
+      },
       "AssetPointersResponse": {
         "type": "object",
         "properties": {
@@ -41677,6 +43022,247 @@
         },
         "required": [
           "ok"
+        ]
+      },
+      "CheckAssetMoveResponse": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "id"
+            ]
+          },
+          "from": {
+            "$ref": "#/components/schemas/AssetScope"
+          },
+          "to": {
+            "$ref": "#/components/schemas/AssetScope"
+          },
+          "path": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "request"
+            ]
+          },
+          "moves": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "id",
+                "title"
+              ]
+            }
+          },
+          "breaks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "uses": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "title",
+                "uses"
+              ]
+            }
+          },
+          "afterwards": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "instance"
+                      },
+                      "workspaceName": {
+                        "type": "string"
+                      },
+                      "rung": {
+                        "type": "string",
+                        "enum": [
+                          "personal",
+                          "team",
+                          "everyone"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "rung"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "workspace"
+                      },
+                      "workspaceId": {
+                        "type": "string"
+                      },
+                      "workspaceName": {
+                        "type": "string"
+                      },
+                      "rung": {
+                        "type": "string",
+                        "enum": [
+                          "personal",
+                          "team",
+                          "everyone"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "workspaceId",
+                      "rung"
+                    ]
+                  }
+                ]
+              },
+              "editors": {
+                "type": "string",
+                "enum": [
+                  "workspace_builders",
+                  "instance_builders"
+                ]
+              },
+              "users": {
+                "type": "string",
+                "enum": [
+                  "workspace_members",
+                  "everyone_where_offered"
+                ]
+              },
+              "callerEdits": {
+                "type": "boolean"
+              },
+              "grantsDropped": {
+                "type": "object",
+                "properties": {
+                  "onAssets": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "runAccounts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "onAssets",
+                  "runAccounts"
+                ]
+              }
+            },
+            "required": [
+              "owner",
+              "editors",
+              "users",
+              "callerEdits",
+              "grantsDropped"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "sentence": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "title",
+                "sentence"
+              ]
+            }
+          }
+        },
+        "required": [
+          "asset",
+          "from",
+          "to",
+          "path",
+          "moves",
+          "breaks",
+          "afterwards",
+          "data"
         ]
       },
       "CheckAssetNameRequest": {
@@ -42771,6 +44357,9 @@
           },
           "creationTarget": {
             "$ref": "#/components/schemas/ConversationCreationTarget"
+          },
+          "projectId": {
+            "type": "string"
           }
         },
         "required": [
@@ -42790,6 +44379,32 @@
       "ConversationCreationTarget": {
         "type": "string",
         "const": "instance"
+      },
+      "ConversationDataStoreAdded": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "added": {
+            "type": "boolean"
+          },
+          "readTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "added",
+          "readTools"
+        ]
       },
       "ConversationFollowUp": {
         "type": "object",
@@ -42913,6 +44528,9 @@
           },
           "creationTarget": {
             "$ref": "#/components/schemas/ConversationCreationTarget"
+          },
+          "projectId": {
+            "type": "string"
           },
           "latestMessageAt": {
             "$ref": "#/components/schemas/Timestamp"
@@ -43349,6 +44967,27 @@
               "projection"
             ]
           },
+          "agentName": {
+            "type": "string"
+          },
+          "runAgents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "inputMessageId": {
+                  "type": "string"
+                },
+                "agentName": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "inputMessageId",
+                "agentName"
+              ]
+            }
+          },
           "modelSelection": {
             "type": "object",
             "properties": {
@@ -43635,8 +45274,16 @@
           "subject": {
             "$ref": "#/components/schemas/ConversationSubject"
           },
+          "checkout": {
+            "type": "boolean",
+            "const": true
+          },
           "creationTarget": {
             "$ref": "#/components/schemas/ConversationCreationTarget"
+          },
+          "projectId": {
+            "type": "string",
+            "minLength": 1
           }
         }
       },
@@ -43674,7 +45321,7 @@
             "properties": {
               "text": {
                 "type": "string",
-                "minLength": 1
+                "description": "The message. It may be empty when the conversation's ready draft attachments go with it; a message with neither text nor attachments is refused."
               }
             },
             "required": [
@@ -43736,6 +45383,31 @@
         "required": [
           "key",
           "secret"
+        ]
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "properties": {
+          "collaborationWorkspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "audience": {
+            "$ref": "#/components/schemas/ProjectAudience"
+          }
+        },
+        "required": [
+          "collaborationWorkspaceId",
+          "title"
         ]
       },
       "CreateRoleRequestInput": {
@@ -45737,6 +47409,280 @@
           "cost"
         ]
       },
+      "MoveAssetRequest": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "$ref": "#/components/schemas/AssetMoveTarget"
+          },
+          "expectedAssetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "acceptBreaks": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "to"
+        ]
+      },
+      "MoveAssetResponse": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "id"
+            ]
+          },
+          "from": {
+            "$ref": "#/components/schemas/AssetScope"
+          },
+          "to": {
+            "$ref": "#/components/schemas/AssetScope"
+          },
+          "path": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "request"
+            ]
+          },
+          "moves": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "id",
+                "title"
+              ]
+            }
+          },
+          "breaks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "uses": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "title",
+                "uses"
+              ]
+            }
+          },
+          "afterwards": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "instance"
+                      },
+                      "workspaceName": {
+                        "type": "string"
+                      },
+                      "rung": {
+                        "type": "string",
+                        "enum": [
+                          "personal",
+                          "team",
+                          "everyone"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "rung"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "workspace"
+                      },
+                      "workspaceId": {
+                        "type": "string"
+                      },
+                      "workspaceName": {
+                        "type": "string"
+                      },
+                      "rung": {
+                        "type": "string",
+                        "enum": [
+                          "personal",
+                          "team",
+                          "everyone"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "workspaceId",
+                      "rung"
+                    ]
+                  }
+                ]
+              },
+              "editors": {
+                "type": "string",
+                "enum": [
+                  "workspace_builders",
+                  "instance_builders"
+                ]
+              },
+              "users": {
+                "type": "string",
+                "enum": [
+                  "workspace_members",
+                  "everyone_where_offered"
+                ]
+              },
+              "callerEdits": {
+                "type": "boolean"
+              },
+              "grantsDropped": {
+                "type": "object",
+                "properties": {
+                  "onAssets": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "runAccounts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "onAssets",
+                  "runAccounts"
+                ]
+              }
+            },
+            "required": [
+              "owner",
+              "editors",
+              "users",
+              "callerEdits",
+              "grantsDropped"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "sentence": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "title",
+                "sentence"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "moved",
+              "requested"
+            ]
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset",
+          "from",
+          "to",
+          "path",
+          "moves",
+          "breaks",
+          "afterwards",
+          "data",
+          "status"
+        ]
+      },
       "MoveConversationRequest": {
         "type": "object",
         "properties": {
@@ -47236,6 +49182,35 @@
         "minLength": 1,
         "maxLength": 200
       },
+      "PersonalChatSkill": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "inMyChats": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "inMyChats"
+        ]
+      },
+      "PersonalChatSkills": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalChatSkill"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "PlatformAssetKind": {
         "type": "object",
         "properties": {
@@ -47707,6 +49682,69 @@
           "bridge",
           "entries",
           "more"
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "collaborationWorkspaceId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "audience": {
+            "$ref": "#/components/schemas/ProjectAudience"
+          },
+          "createdByUserId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "collaborationWorkspaceId",
+          "title",
+          "audience",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ProjectAudience": {
+        "type": "string",
+        "enum": [
+          "workspace",
+          "private"
+        ]
+      },
+      "Projects": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "PublishAssetRequest": {
@@ -49351,6 +51389,25 @@
           "version"
         ]
       },
+      "SetConversationProjectRequest": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
       "SetOperationSettingRequest": {
         "type": "object",
         "properties": {
@@ -49373,6 +51430,17 @@
         "required": [
           "operation",
           "value"
+        ]
+      },
+      "SetPersonalChatSkillRequest": {
+        "type": "object",
+        "properties": {
+          "inMyChats": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inMyChats"
         ]
       },
       "SetUsageSpendLimitRequest": {
@@ -49475,7 +51543,7 @@
             "properties": {
               "text": {
                 "type": "string",
-                "minLength": 1
+                "description": "The message. It may be empty when the conversation's ready draft attachments go with it; a message with neither text nor attachments is refused."
               }
             },
             "required": [

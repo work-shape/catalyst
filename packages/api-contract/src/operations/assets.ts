@@ -10,6 +10,7 @@ import {
   checkAssetNameRequestSchema,
   checkAssetNameResponseSchema,
   checkAssetSyncResponseSchema,
+  checkAssetMoveResponseSchema,
   deleteAssetRequestSchema,
   discardAssetDraftRequestSchema,
   listAssetsQuerySchema,
@@ -19,6 +20,8 @@ import {
   runLiveOnceRequestSchema,
   runLiveOnceResponseSchema,
   listLiveOnceQuerySchema,
+  moveAssetRequestSchema,
+  moveAssetResponseSchema,
   liveOnceListSchema,
   setAssetAvailabilityRequestSchema,
   setAssetDefaultRequestSchema,
@@ -287,6 +290,39 @@ export const assetOperations = {
     response: json(agentAvailabilitySchema),
     errors: ["NOT_FOUND", "CONFLICT", "PRECONDITION_REQUIRED"],
     rateClass: "write"
+  }),
+  // "Teilen mit…" (SHARE-1): moves an asset up, Nur ich → Team → Alle, with what it uses. The
+  // right on the asset is the kind's write right where it is now; without the right at the
+  // target the call files a request that an admin with it decides in the Inbox.
+  "assets.move": defineRegisteredOperation({
+    id: "assets.move",
+    method: "POST",
+    path: "/api/v1/assets/:kind/:name/move",
+    summary: "Share one asset up to a team or to everyone, with what it uses",
+    tag: "Assets",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: moveAssetRequestSchema,
+    response: json(moveAssetResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "RATE_LIMITED"],
+    rateClass: "write"
+  }),
+  "assets.move_check": defineRegisteredOperation({
+    id: "assets.move_check",
+    method: "POST",
+    path: "/api/v1/assets/:kind/:name/move/check",
+    summary: "Check a move as it would be made, without making it",
+    tag: "Assets",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "reading",
+    body: moveAssetRequestSchema,
+    response: json(checkAssetMoveResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "read"
   }),
   "assets.revisions.list": defineRegisteredOperation({
     id: "assets.revisions.list",

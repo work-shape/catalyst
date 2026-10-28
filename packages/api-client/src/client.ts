@@ -6,7 +6,13 @@ import {
   type OperationRequestHeader
 } from "@work-shape/catalyst-api-contract";
 import type { z } from "zod";
-import { ApiError, ApiResponseShapeError, transportError, unreadableResponseError } from "./errors";
+import {
+  ApiError,
+  ApiResponseShapeError,
+  describeResponse,
+  transportError,
+  unreadableResponseError
+} from "./errors";
 import { readServerSentEvents } from "./server-sent-events";
 import {
   createApiTransport,
@@ -315,25 +321,29 @@ function callOperation(
       return undefined;
     }
     const text = await readBody(() => answer.text(), request);
-    if (!accepted) {
-      return parseJson(transport, text, response.schema, answer.status);
+    try {
+      if (!accepted) {
+        return parseJson(transport, text, response.schema, answer.status);
+      }
+      const outcome = {
+        operationRunId: answer.headers.get("operation-run-id") ?? undefined,
+        replayed: answer.headers.get("idempotent-replayed") === "true"
+      };
+      return answer.status === 202
+        ? {
+            ...outcome,
+            status: "pending_approval",
+            run: parseJson(transport, text, accepted, answer.status),
+            location: answer.headers.get("location") ?? undefined
+          }
+        : {
+            ...outcome,
+            status: "done",
+            output: parseJson(transport, text, response.schema, answer.status)
+          };
+    } catch (error) {
+      throw describeResponse(error, answer, transport.urlFor(operation, request), text);
     }
-    const outcome = {
-      operationRunId: answer.headers.get("operation-run-id") ?? undefined,
-      replayed: answer.headers.get("idempotent-replayed") === "true"
-    };
-    return answer.status === 202
-      ? {
-          ...outcome,
-          status: "pending_approval",
-          run: parseJson(transport, text, accepted, answer.status),
-          location: answer.headers.get("location") ?? undefined
-        }
-      : {
-          ...outcome,
-          status: "done",
-          output: parseJson(transport, text, response.schema, answer.status)
-        };
   });
 }
 

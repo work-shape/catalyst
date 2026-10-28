@@ -12,6 +12,8 @@ import { z } from "zod";
  */
 export class ApiError extends Error {
   readonly status: number;
+  /** Response location and category only; never response contents or URL credentials. */
+  responseInfo?: { url: string; contentType: string; body: string };
   readonly code?: ApiErrorCode;
   readonly payload: unknown;
   readonly correlationId?: string;
@@ -105,4 +107,37 @@ function readRetryAfterSeconds(payload: unknown): number | undefined {
     .object({ error: z.object({ details: rateLimitedDetailsSchema }) })
     .safeParse(payload);
   return parsed.success ? parsed.data.error.details.retryAfterSeconds : undefined;
+}
+
+/** Add diagnostics without retaining the response text, query parameters or credentials. */
+export function describeResponse(
+  error: unknown,
+  response: Response,
+  url: string,
+  text: string
+): unknown {
+  if (!(error instanceof ApiError)) return error;
+  const address = new URL(response.url || url);
+  address.username = "";
+  address.password = "";
+  address.search = "";
+  address.hash = "";
+  const mediaType = response.headers.get("content-type")?.split(";")[0]?.trim();
+  const contentType =
+    mediaType && /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/iu.test(mediaType)
+      ? mediaType
+      : "unknown content type";
+  let body = "non-JSON text";
+  if (contentType === "text/html" || /^\s*(?:<!doctype html|<html)(?:\s|>)/iu.test(text)) {
+    body = "an HTML page instead of API JSON";
+  } else {
+    try {
+      JSON.parse(text);
+      body = "other JSON that does not match the API contract";
+    } catch {
+      // Only the category is retained.
+    }
+  }
+  error.responseInfo = { url: address.toString(), contentType, body };
+  return error;
 }

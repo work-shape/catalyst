@@ -52,6 +52,17 @@ export function assetPagePath(asset: {
     : undefined;
 }
 
+/**
+ * The path of one conversation of a workspace: a link to it opens the conversation, so a person
+ * goes on there with the work it holds, such as the files of an App built in it.
+ */
+export function conversationInterfacePath(input: {
+  workspaceId: string;
+  conversationId: string;
+}): string {
+  return `/w/${encodeURIComponent(input.workspaceId)}/c/${encodeURIComponent(input.conversationId)}`;
+}
+
 /** The path of one item of the Inbox, such as an approval request, by its id. */
 export function inboxItemPath(itemId: string): string {
   return `/inbox/${encodeURIComponent(itemId)}`;

@@ -32,6 +32,8 @@ export interface AgentConfig {
   welcomeMessage?: LocalizedStringConfig;
   welcomeSubtitle?: LocalizedStringConfig;
   instructions: string;
+  /** What the instance adds after the instructions of an agent that ships with the platform. */
+  additionalInstructions?: string;
   modelProviderId?: string;
   modelBindingId?: string;
   reasoningEffort?: ReasoningEffortConfig;
@@ -68,6 +70,8 @@ export interface AgentConfig {
    * the release seed writes it; every other write keeps it as stored.
    */
   shipped?: Record<string, unknown>;
+  /** The shipped fields the instance changed and a release then shipped anew. */
+  shippedNewer?: string[];
 }
 
 export interface SkillConfig {

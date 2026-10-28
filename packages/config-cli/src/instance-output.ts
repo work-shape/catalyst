@@ -61,3 +61,30 @@ export function formatDocs(docs: PlatformDocs): string {
   }
   return [...sections].map(([section, pages]) => `${section}\n${pages.join("\n")}`).join("\n\n");
 }
+
+/** CLI and server ship one contract per release; build metadata does not change it. */
+export function cliCompatibilityError(
+  cliVersion: string,
+  serverVersion: string
+): Error | undefined {
+  if (!versionParts(cliVersion) || !versionParts(serverVersion)) {
+    return new Error(
+      "The instance did not report a valid release version; check its address with 'catalyst doctor'."
+    );
+  }
+  return cliVersion.split("+")[0] === serverVersion.split("+")[0]
+    ? undefined
+    : new CliVersionError(cliVersion, serverVersion);
+}
+
+export class CliVersionError extends Error {
+  constructor(
+    readonly cliVersion: string,
+    readonly serverVersion: string
+  ) {
+    super(
+      `Catalyst CLI ${cliVersion} does not match server ${serverVersion}; run: npm install --global @work-shape/catalyst-cli@${serverVersion.split("+")[0]}`
+    );
+    this.name = "CliVersionError";
+  }
+}

@@ -1,3 +1,4 @@
+import { dataStoreDescriptionSchema } from "@work-shape/catalyst-asset-schemas";
 import { workflowDataFlowsSchema } from "@work-shape/catalyst-asset-schemas";
 import {
   RECORDS_FLAGGED_MAX_ITEMS_PER_PAGE,
@@ -369,6 +370,15 @@ const READ = {
 // ones the contract names per verb (`DATA_STORE_OPERATION_SCOPES`); `describe` reads the
 // definition of a store and stays under `config_assets:read`.
 export const dataStoreOperations = {
+  "data_stores.description": defineRegisteredOperation({
+    ...READ,
+    scope: "config_assets:read",
+    id: "data_stores.description",
+    method: "GET",
+    path: "/api/v1/data-stores/:store/description",
+    summary: "Describe a Data Store, its fields, uses and rights without reading rows",
+    response: json(dataStoreDescriptionSchema)
+  }),
   "data_stores.query": defineRegisteredOperation({
     ...READ,
     id: "data_stores.query",

@@ -24,6 +24,7 @@ import { pageOperations } from "./pages";
 import { personalApiKeyOperations } from "./personal-api-keys";
 import { platformOperations } from "./platform";
 import { platformReportOperations } from "./platform-report";
+import { projectOperations } from "./projects";
 import { referenceOperations } from "./reference";
 import { roleOperations } from "./roles";
 import { systemOperations } from "./system";
@@ -53,6 +54,7 @@ export const operationAreas: Readonly<Record<string, Readonly<Record<string, unk
   "data-stores": dataStoreOperations,
   feedback: feedbackOperations,
   "platform-report": platformReportOperations,
+  projects: projectOperations,
   governance: governanceOperations,
   guardrails: guardrailOperations,
   instance: instanceOperations,
@@ -102,6 +104,7 @@ export type ApiOperations = typeof scheduledStartOperations &
   typeof personalApiKeyOperations &
   typeof feedbackOperations &
   typeof platformReportOperations &
+  typeof projectOperations &
   typeof accessOperations &
   typeof credentialOperations &
   typeof platformOperations &
@@ -137,6 +140,7 @@ const allOperations = {
   ...personalApiKeyOperations,
   ...feedbackOperations,
   ...platformReportOperations,
+  ...projectOperations,
   ...accessOperations,
   ...credentialOperations,
   ...platformOperations,

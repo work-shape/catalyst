@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   allowDraftHostRequestSchema,
   allowDraftHostResponseSchema,
@@ -67,6 +68,20 @@ const FRAME_CALL = {
 // its draft is written from that Page again, and its revisions are opened by people. The rights
 // are the kind's own, decided on the App's workspace, so no operation names one in `requires`.
 export const appOperations = {
+  // SRV-1: no capture grant exists; the API refuses every call before any action executes.
+  "apps.captures.call": defineOperation({
+    id: "apps.captures.call",
+    method: "POST",
+    path: "/api/v1/apps/captures/call",
+    summary: "Refuse capture calls until capture grants are available",
+    tag: "Apps",
+    auth: "public",
+    effect: "reading",
+    body: z.unknown(),
+    response: json(z.never()),
+    errors: ["FORBIDDEN"],
+    rateClass: "read"
+  }),
   "apps.create_from_page": defineRegisteredOperation({
     id: "apps.create_from_page",
     method: "POST",

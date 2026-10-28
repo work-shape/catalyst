@@ -1,3 +1,4 @@
+import { doctorGroup } from "../doctor";
 import { assetsGroup } from "./assets";
 import { authGroup } from "./auth";
 import { configGroup } from "./config";
@@ -12,6 +13,7 @@ import { operationsGroup } from "./operations";
 export const commandGroups = [
   assetsGroup,
   authGroup,
+  doctorGroup,
   configGroup,
   catalogueGroup,
   dataStoreReviewGroup,

@@ -6,6 +6,7 @@ import { assetsGroup } from "./command-groups/assets";
 import type { CliRuntimeOptions } from "./cli-runtime";
 
 export * from "./api";
+export { cliCompatibilityError } from "./instance-output";
 export { publishReview, type PublishReview } from "./app-commands";
 export * from "./commands";
 export * from "./diff";

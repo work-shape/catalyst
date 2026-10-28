@@ -15,6 +15,10 @@ description: Work with a Workshape Catalyst instance through the catalyst comman
 
 Trust these answers over this skill. In a working copy, a command without `--instance` works on the instance its `catalyst.yaml` names as default, and is refused where it names none. Outside a working copy, it works on the one instance saved. When more than one is saved, or the working copy names no default, pass `--instance <name-or-url>` on every command.
 
+## When a call fails
+
+Run `catalyst doctor` (with the same `--instance` if one was selected). Its four lines check the address, sign-in, versions and effective key rights and are safe to paste into a chat. Never inspect the credentials file to diagnose a call. If versions differ, give the person the exact npm update command it prints. An HTML response usually means the instance address points to a web page or sign-in path: use the HTTPS origin of the instance, without `/api`. Keep install and setup commands on separate lines so they also work in Windows PowerShell 5.1.
+
 ## When the CLI is not logged in
 
 A command that answers "Not logged in" or refuses the key needs the person. Stop and ask them to run `catalyst setup <tool> --instance <url>` in their own terminal and confirm the code in their browser. Never ask for a key, never print, paste or pass one, never read the credentials file, and never set `CATALYST_API_KEY` yourself. You cannot issue a key or confirm a code.

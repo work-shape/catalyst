@@ -63,6 +63,7 @@ export const conversationFileOperations = {
     requires: [],
     effect: "changing",
     multipart: true,
+    query: z.object({ agentName: z.string().min(1).optional() }),
     response: json(draftAttachmentUploadResponseSchema),
     errors: ["NOT_FOUND"],
     rateClass: "write"

@@ -3,6 +3,7 @@ import { setTimeout as defaultSleep } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import {
   MAX_LIST_LIMIT,
+  RELEASE_VERSION,
   isUnknownOperationResponse,
   type Asset,
   type AssetSummary
@@ -13,6 +14,8 @@ import {
   type ApiClient,
   type OperationInput
 } from "@work-shape/catalyst-api-client";
+
+import { CliVersionError, cliCompatibilityError } from "./instance-output";
 
 export class ConfigApiError extends Error {
   readonly status: number;
@@ -220,7 +223,9 @@ async function read<Output>(
 }
 
 function isDroppedConnection(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 0;
+  return (
+    error instanceof ApiError && error.status === 0 && !(error.payload instanceof CliVersionError)
+  );
 }
 
 function isMissingAsset(error: unknown): boolean {
@@ -263,8 +268,38 @@ function withoutRedirects(fetchImpl: FetchImpl): FetchImpl {
 }
 
 /** The fetch of every request to an instance: the one given, or the global one, never redirected. */
-export function instanceFetch(fetchImpl?: FetchImpl): FetchImpl {
-  return withoutRedirects(fetchImpl ?? fetch);
+export function instanceFetch(
+  fetchImpl?: FetchImpl,
+  diagnostics: {
+    checkVersion?: boolean;
+    onServerVersion?: (version: string) => void;
+    timeoutMs?: number;
+  } = {}
+): FetchImpl {
+  const send = withoutRedirects(fetchImpl ?? fetch);
+  return async (input, init) => {
+    const headers = new Headers(input instanceof Request ? input.headers : undefined);
+    new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
+    headers.set("catalyst-cli-version", RELEASE_VERSION);
+    const timeout =
+      diagnostics.timeoutMs === undefined ? undefined : AbortSignal.timeout(diagnostics.timeoutMs);
+    const requestedSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    const signal =
+      timeout && requestedSignal
+        ? AbortSignal.any([timeout, requestedSignal])
+        : (timeout ?? requestedSignal);
+    const response = await send(input, { ...init, headers, signal });
+    const serverVersion = response.headers.get("catalyst-server-version");
+    if (serverVersion !== null) {
+      diagnostics.onServerVersion?.(serverVersion);
+      const mismatch = cliCompatibilityError(RELEASE_VERSION, serverVersion);
+      if (diagnostics.checkVersion !== false && mismatch) {
+        await response.body?.cancel();
+        throw mismatch;
+      }
+    }
+    return response;
+  };
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -303,6 +338,12 @@ export function toConfigApiError(error: unknown): unknown {
   if (error.status >= 300 && error.status < 400) {
     return new Error(
       `The instance answered with a redirect (HTTP ${error.status}). This tool follows none, so that the key reaches only the address it was given. Use the address the instance is served at.`
+    );
+  }
+  if (error.responseInfo !== undefined) {
+    const { url, contentType, body } = error.responseInfo;
+    return new Error(
+      `Catalyst API at ${url} returned ${body} (HTTP ${error.status}, ${contentType}); check the instance address with 'catalyst doctor'.`
     );
   }
   if (error.payload instanceof SyntaxError || typeof error.payload === "string") {

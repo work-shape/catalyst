@@ -18,6 +18,7 @@ import { OPERATIONS_ACTIONS } from "./contract-values/operations";
 import { FEEDBACK_ACTIONS } from "./contract-values/feedback";
 import { ADMINISTRATION_ACTIONS } from "./contract-values/administration";
 import { WORKSPACE_ACTIONS } from "./contract-values/workspace";
+import { PROJECT_ACTIONS } from "./contract-values/project";
 
 export const AUTH_SCOPE_WILDCARD = "*" as const;
 
@@ -81,7 +82,8 @@ export const ACTIONS = [
   ...OPERATIONS_ACTIONS,
   ...FEEDBACK_ACTIONS,
   ...ADMINISTRATION_ACTIONS,
-  ...WORKSPACE_ACTIONS
+  ...WORKSPACE_ACTIONS,
+  ...PROJECT_ACTIONS
 ] as const;
 
 export type PlatformAction = (typeof ACTIONS)[number];
@@ -176,6 +178,22 @@ export const CONNECTION_HEALTH_STATES = [
   "secret_unreadable"
 ] as const;
 export type ConnectionHealth = (typeof CONNECTION_HEALTH_STATES)[number];
+
+/**
+ * Sharing an asset up the ladder (SHARE-1): its rungs, Nur ich (a Personal Workspace), Team (a
+ * Shared Workspace) and Alle (the instance); whether a move is made at once or as a request; how
+ * it ended; and who edits and uses the asset at its new owner.
+ */
+export const ASSET_OWNER_RUNGS = ["personal", "team", "everyone"] as const;
+export type AssetOwnerRung = (typeof ASSET_OWNER_RUNGS)[number];
+export const ASSET_MOVE_PATHS = ["direct", "request"] as const;
+export type AssetMovePath = (typeof ASSET_MOVE_PATHS)[number];
+export const ASSET_MOVE_STATUSES = ["moved", "requested"] as const;
+export type AssetMoveStatus = (typeof ASSET_MOVE_STATUSES)[number];
+export const ASSET_MOVE_EDITORS = ["workspace_builders", "instance_builders"] as const;
+export type AssetMoveEditors = (typeof ASSET_MOVE_EDITORS)[number];
+export const ASSET_MOVE_USERS = ["workspace_members", "everyone_where_offered"] as const;
+export type AssetMoveUsers = (typeof ASSET_MOVE_USERS)[number];
 
 export const GRANT_HOLDER_KINDS = ["user", "service_principal", "role", "group"] as const;
 export type GrantHolderKind = (typeof GRANT_HOLDER_KINDS)[number];
@@ -925,7 +943,9 @@ export const WORKFLOW_STEP_TYPES = [
   "agent",
   "notify",
   /** Starts another Workflow as a child run and waits for it. */
-  "workflow"
+  "workflow",
+  "condition",
+  "parallel"
 ] as const;
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
 
@@ -936,11 +956,7 @@ export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
  */
 export const WORKFLOW_EXECUTED_STEP_TYPES = [...WORKFLOW_STEP_TYPES] as const;
 
-export const WORKFLOW_RESERVED_STEP_TYPES = [
-  /** Reserved in the contract: drawn, and run by no engine yet. */
-  "condition",
-  "parallel"
-] as const;
+export const WORKFLOW_RESERVED_STEP_TYPES = [] as const;
 export type WorkflowReservedStepType = (typeof WORKFLOW_RESERVED_STEP_TYPES)[number];
 
 export const WORKFLOW_TRIGGER_KINDS = ["manual", "schedule", "parent", "outside"] as const;
@@ -1166,3 +1182,11 @@ export const SCHEDULED_START_STATES = ["active", "paused"] as const;
 
 /** Which revision answered an agent preview turn. */
 export const AGENT_PREVIEW_SOURCES = ["draft", "live"] as const;
+
+/** Server capture admission and the shared request lifecycle (browser transport retained). */
+export const PREVIEW_CAPTURE_SIZES = ["phone", "tablet", "desktop"] as const;
+export const PREVIEW_CAPTURE_STATUSES = ["pending", "answering", "captured", "refused"] as const;
+export const SERVER_PREVIEW_CAPTURE_REFUSALS = ["capture_busy", "capture_failed"] as const;
+
+/** A project: its rights, kind, audiences and limits (PRJ-1). */
+export * from "./contract-values/project";

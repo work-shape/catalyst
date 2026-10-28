@@ -296,6 +296,11 @@ export const agentConfigSchema = z.object({
   welcomeMessage: localizedStringSchema.optional(),
   welcomeSubtitle: welcomeSubtitleSchema.optional(),
   instructions: z.string().min(1),
+  /**
+   * What the instance adds after the instructions of an agent that ships with the platform. A
+   * release never ships or changes it, so the instructions keep taking each release's text.
+   */
+  additionalInstructions: z.string().optional(),
   modelProviderId: z.string().min(1).optional(),
   modelBindingId: z.string().min(1).optional(),
   reasoningEffort: z.enum(REASONING_EFFORTS).optional(),
@@ -336,7 +341,12 @@ export const agentConfigSchema = z.object({
    * stored. A field the instance left as shipped takes what the next release ships; one it
    * changed stays the instance's.
    */
-  shipped: z.record(z.string(), z.unknown()).optional()
+  shipped: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * The fields of `shipped` the instance changed and a release then shipped anew. The release
+   * seed adds a field; a save may only take one out.
+   */
+  shippedNewer: z.array(z.string()).optional()
 });
 
 /** The id of a Workflow, which is the name of its asset: part of `workflow.<id>.start`. */
