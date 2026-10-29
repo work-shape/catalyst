@@ -88,6 +88,24 @@ export const updateAppFromPageRequestSchema = z
   })
   .strict();
 
+/**
+ * The name people read of an App, as a person gives it: it stands over the title of every
+ * revision, draft and published alike, and no write of a revision changes it, an agent's
+ * included. The id stays.
+ */
+export const renameAppRequestSchema = z
+  .object({
+    /** The workspace the App belongs to. */
+    workspaceId: z.string().min(1),
+    title: z.string().trim().min(1).max(120)
+  })
+  .strict();
+
+export const renameAppResponseSchema = z.object({
+  name: z.string(),
+  title: z.string()
+});
+
 /** What `apps.get_from_page` is asked beside the Page. */
 export const appFromPageQuerySchema = z.object({
   /** The id of an App the caller thinks of putting the Page into. Answered as `candidate`. */

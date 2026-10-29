@@ -24,6 +24,8 @@ import {
   appTryActionResultSchema,
   createAppFromPageRequestSchema,
   createAppFromPageResponseSchema,
+  renameAppRequestSchema,
+  renameAppResponseSchema,
   updateAppFromPageRequestSchema
 } from "../apps";
 import { appWorkflowRunSchema } from "../app-bridge";
@@ -111,6 +113,22 @@ export const appOperations = {
     body: updateAppFromPageRequestSchema,
     response: json(createAppFromPageResponseSchema),
     errors: ["NOT_FOUND", "CONFLICT", "REVISION_CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "apps.rename": defineRegisteredOperation({
+    id: "apps.rename",
+    method: "POST",
+    path: "/api/v1/apps/:app/rename",
+    summary:
+      "Give an App the name people read, over the title of every revision; no later write changes it",
+    tag: "Apps",
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: renameAppRequestSchema,
+    response: json(renameAppResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
   }),
   // Only where release config sets `apps.draftHosts.enabled`; elsewhere it answers 404.
