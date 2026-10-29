@@ -878,7 +878,18 @@ export const conversationFollowUpSchema = z.object({
   idempotencyKey: z.string().optional(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
-  dispatchedRunId: z.string().optional()
+  dispatchedRunId: z.string().optional(),
+  /** The files the pending message carries; they go with it when it starts. */
+  attachments: z
+    .array(
+      z.object({
+        fileId: z.string(),
+        filename: z.string(),
+        mimeType: z.string().optional(),
+        byteSize: z.number().int().nonnegative()
+      })
+    )
+    .optional()
 });
 
 export const queuedConversationRunResponseSchema = z.object({

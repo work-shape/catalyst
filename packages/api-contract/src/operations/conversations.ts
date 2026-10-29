@@ -228,7 +228,9 @@ export const conversationOperations = {
     scope: "conversation:write",
     requires: [],
     effect: "changing",
-    body: z.object({}),
+    // Edit takes the message back with its files, which return to the composer; Remove
+    // deletes them.
+    body: z.object({ keepAttachments: z.boolean().optional() }),
     response: json(z.object({ followUp: conversationFollowUpSchema })),
     errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT"],
     rateClass: "write"
