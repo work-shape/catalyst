@@ -80,6 +80,14 @@ export const apiUserSchema = z.object({
   principal: authPrincipalSchema.optional(),
   subjectUserId: z.string().optional(),
   delegatedActor: delegatedActorSchema.optional(),
+  /**
+   * Set on the read of a caller whose request names a delegated actor: an embedding host's
+   * session token, which is never the person in their own session. What is the person's alone
+   * (their "Nur ich" agents, "Always allow", adding a Data Store by their click, their account,
+   * personal skills and Connections, the report to the operator) is refused to such a caller,
+   * so the interface leaves it out. Left out for the person's own session.
+   */
+  embedded: z.literal(true).optional(),
   scopes: z.array(authScopeSchema).optional(),
   /**
    * Two-factor sign-in of a person signed in with a password (TWO-FACTOR-1): whether the instance

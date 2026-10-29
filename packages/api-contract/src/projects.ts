@@ -1,9 +1,13 @@
 import { z } from "zod";
 import {
   PROJECT_AUDIENCES,
+  PROJECT_DELETION_CONVERSATIONS,
   PROJECT_FILE_CHANGES,
   PROJECT_FILE_ORIGINS,
   PROJECT_DESCRIPTION_MAX_LENGTH,
+  PROJECT_CHOICE_REFUSALS,
+  PROJECT_KNOWLEDGE_BASES_MAX,
+  PROJECT_SKILLS_MAX,
   PROJECT_TITLE_MAX_LENGTH
 } from "@work-shape/catalyst-asset-schemas";
 import { timestampSchema } from "./shared";
@@ -25,7 +29,13 @@ export const projectSchema = z.object({
   audience: projectAudienceSchema,
   createdByUserId: z.string(),
   createdAt: timestampSchema,
-  updatedAt: timestampSchema
+  updatedAt: timestampSchema,
+  /** The agent a new chat in the project starts with (PRJ-7); not a lock. */
+  defaultAgent: z.string().optional(),
+  /** The skills every run in the project is offered beside its agent's own (PRJ-7). */
+  skills: z.array(z.string()).optional(),
+  /** The Knowledge Bases every run in the project may search beside its agent's own (PRJ-8). */
+  knowledgeBases: z.array(z.string()).optional()
 });
 
 /** A project in a list: with its sent chats counted and when it was last used (PRJ-5). */
@@ -49,12 +59,166 @@ export const createProjectRequestSchema = z.object({
 
 /** A project of the conversation's own workspace, or `null` to take it out of its project. */
 export const setConversationProjectRequestSchema = z.object({
-  projectId: z.string().min(1).nullable()
+  projectId: z.string().min(1).nullable(),
+  /**
+   * Into a private project, a chat others read now is read by its author alone from then on:
+   * `true` says the person saw that (PRJ-6). Without it such a move is refused
+   * (`VALIDATION_FAILED`, `project_hides_conversation`).
+   */
+  hideFromOthers: z.boolean().optional()
+});
+
+// Moving, sharing and deleting a whole project (PRJ-6).
+
+/** What a change to the whole project reaches, counted for its dialog. */
+export const projectImpactSchema = z.object({
+  /** The chats in the project. */
+  conversations: z.number().int().nonnegative(),
+  /** Of those, the chats someone other than its creator started. */
+  conversationsOfOthers: z.number().int().nonnegative(),
+  /** Chats that must stay private and keep the project from being shared. */
+  conversationsKeptPrivate: z.number().int().nonnegative(),
+  /** The project's files as they are now. */
+  files: z.number().int().nonnegative(),
+  /** Of those, the files someone other than its creator changed last. */
+  filesOfOthers: z.number().int().nonnegative(),
+  /** Files a chat that must stay private wrote, or one that is gone; they keep it unshared. */
+  filesKeptPrivate: z.number().int().nonnegative()
+});
+
+/** Only the creator changes who reads a project, and only in a Shared Workspace. */
+export const setProjectAudienceRequestSchema = z.object({
+  audience: projectAudienceSchema,
+  /** The audience the person saw; a project changed since is refused with `CONFLICT`. */
+  expectedAudience: projectAudienceSchema
+});
+
+export const projectAudienceChangeSchema = z.object({
+  project: projectSchema,
+  /** Chats every member of the workspace reads from now on. */
+  conversationsShared: z.number().int().nonnegative(),
+  /** Other members' chats that left the project and stay shared in the workspace. */
+  conversationsLeft: z.number().int().nonnegative(),
+  /** The creator's own chats that only the creator reads from now on. */
+  conversationsMadePrivate: z.number().int().nonnegative()
+});
+
+export const moveProjectRequestSchema = z.object({
+  /** A workspace the caller is a member of, as of the project's own. */
+  collaborationWorkspaceId: z.string().min(1),
+  /**
+   * Out of a Personal Workspace only: who reads the project in the Shared Workspace. Missing:
+   * only its creator. Elsewhere a project keeps its audience; into a Personal Workspace it is
+   * that person's.
+   */
+  audience: projectAudienceSchema.optional()
+});
+
+export const projectMoveSchema = z.object({
+  project: projectSchema,
+  /** The chats that moved with the project. */
+  conversationsMoved: z.number().int().nonnegative()
+});
+
+/** The one choice of a deletion: the project's chats stay in the workspace, or go too. */
+export const deleteProjectRequestSchema = z.object({
+  conversations: z.enum(PROJECT_DELETION_CONVERSATIONS)
+});
+
+export const projectDeletionSchema = z.object({
+  /** Chats deleted with the project. */
+  conversationsDeleted: z.number().int().nonnegative(),
+  /** Chats that stayed in the workspace, each read as it was before. */
+  conversationsKept: z.number().int().nonnegative()
+});
+
+/**
+ * Why a choice is greyed for this project. `own_in_shared_project` (PRJ-7): it is the person's
+ * own ("Nur ich") and the project is read by others, who could not use it; sharing it with the
+ * workspace opens it. `not_everyone_may_use` (PRJ-8): a Knowledge Base the person may search
+ * and not everyone in the project's audience may, as it is not available in the workspace.
+ */
+export const projectChoiceRefusalSchema = z.enum(PROJECT_CHOICE_REFUSALS);
+
+/** Where an own agent or skill sits, for the share that opens it to the project's audience. */
+const projectChoiceAssetSchema = z.object({ id: z.string(), workspaceId: z.string() });
+
+export const projectAgentChoiceSchema = z.object({
+  name: z.string(),
+  displayName: z.string(),
+  description: z.string().optional(),
+  /** The person's own agent, of their Personal Workspace: a chat that uses it is theirs alone. */
+  own: z.boolean(),
+  refusal: projectChoiceRefusalSchema.optional(),
+  asset: projectChoiceAssetSchema.optional()
+});
+
+export const projectSkillChoiceSchema = z.object({
+  name: z.string(),
+  title: z.string(),
+  summary: z.string().optional(),
+  /** The icon of a skill the platform ships. */
+  icon: z.string().optional(),
+  /** The person's own skill, of their Personal Workspace: a chat that reads it is theirs alone. */
+  own: z.boolean(),
+  refusal: projectChoiceRefusalSchema.optional(),
+  asset: projectChoiceAssetSchema.optional()
+});
+
+/** A Knowledge Base a project may attach (PRJ-8): one the person may search. */
+export const projectKnowledgeBaseChoiceSchema = z.object({
+  name: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  /** Not published yet: attached, it answers once it is. */
+  unpublished: z.boolean().optional(),
+  /** The person's own, of their Personal Workspace: only a chat they alone read searches it. */
+  own: z.boolean(),
+  refusal: projectChoiceRefusalSchema.optional(),
+  asset: projectChoiceAssetSchema.optional()
+});
+
+/**
+ * A project's default agent and skills (PRJ-7), with what the person may choose: the agents
+ * offered to them in the workspace and the skills the workspace owns or its agents use; their
+ * own where only they read the project, and greyed with the reason where others do. A stored
+ * name that is none of these is not available to the person now.
+ */
+export const projectSetupSchema = z.object({
+  defaultAgent: z.string().optional(),
+  skills: z.array(z.string()),
+  /** The agent a new chat starts with where the project names none, or one not offered now. */
+  workspaceDefaultAgent: z.string().optional(),
+  agents: z.array(projectAgentChoiceSchema),
+  skillChoices: z.array(projectSkillChoiceSchema),
+  /** The Knowledge Bases the project attaches (PRJ-8), kept where they no longer apply. */
+  knowledgeBases: z.array(z.string()),
+  /**
+   * The Knowledge Bases the person may attach, those not everyone in the project's audience may
+   * use greyed with the reason. Missing where the module `knowledge` is off.
+   */
+  knowledgeBaseChoices: z.array(projectKnowledgeBaseChoiceSchema).optional()
+});
+
+/** What is left out stays as it is. */
+export const setProjectSetupRequestSchema = z.object({
+  /** `null`: new chats start with the workspace's default. */
+  defaultAgent: z.string().min(1).max(128).nullable().optional(),
+  skills: z.array(z.string().min(1).max(128)).max(PROJECT_SKILLS_MAX).optional(),
+  knowledgeBases: z.array(z.string().min(1).max(128)).max(PROJECT_KNOWLEDGE_BASES_MAX).optional()
 });
 
 export type ProjectView = z.infer<typeof projectSchema>;
+export type ProjectSetupView = z.infer<typeof projectSetupSchema>;
+export type ProjectAgentChoiceView = z.infer<typeof projectAgentChoiceSchema>;
+export type ProjectSkillChoiceView = z.infer<typeof projectSkillChoiceSchema>;
+export type ProjectKnowledgeBaseChoiceView = z.infer<typeof projectKnowledgeBaseChoiceSchema>;
+export type ProjectImpactView = z.infer<typeof projectImpactSchema>;
 export type ProjectListItemView = z.infer<typeof projectListItemSchema>;
 export type ProjectAudienceView = z.infer<typeof projectAudienceSchema>;
+export type ProjectDeletionConversationsView = z.infer<
+  typeof deleteProjectRequestSchema
+>["conversations"];
 
 // Project files (PRJ-2): one folder per project that people and agents write in place. Every
 // change is a version; a change to a file that changed since its writer read it is kept beside

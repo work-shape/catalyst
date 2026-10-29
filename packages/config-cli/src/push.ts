@@ -108,6 +108,40 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   // Read to its last page or not at all: a listing that fails stops the push, so a prune
   // never takes an asset it could not list for one that is gone.
   const listing = await listRemoteAssets(api, workingCopyKinds(manifest));
+  // The server fences a shared skill's draft separately from its live revision. Refuse
+  // locally before sending any writes, including a folder upload in a mixed push.
+  for (const asset of touched.filter((asset) => asset.kind === "skill")) {
+    const remote = listing.get(asset.key);
+    if (
+      remote &&
+      (remote.draft?.revision ?? null) !== (baselineAssets[asset.key]?.draftRevision ?? null)
+    ) {
+      writeError(
+        options,
+        [
+          "The skill draft changed. Read it again before saving",
+          formatPushConflict(
+            [
+              {
+                kind: "skill",
+                name: asset.name,
+                draft: { revision: remote.draft?.revision ?? null },
+                ...(remote.draft
+                  ? {
+                      changedBy: formatDraftAuthor(remote.draft.author),
+                      changedAt: remote.draft.updatedAt
+                    }
+                  : {})
+              }
+            ],
+            false,
+            options
+          )
+        ].join("\n")
+      );
+      return 1;
+    }
+  }
   const touchedKeys = new Set(touched.map((asset) => asset.key));
   const localKeys = new Set(assetEntries(local).map((asset) => asset.key));
   const deleteAssets = options.prune

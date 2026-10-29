@@ -16,8 +16,17 @@ import {
   restoreProjectFileRequestSchema,
   saveToProjectRequestSchema,
   projectSchema,
+  projectSetupSchema,
   projectsSchema,
-  setConversationProjectRequestSchema
+  setConversationProjectRequestSchema,
+  setProjectSetupRequestSchema,
+  deleteProjectRequestSchema,
+  moveProjectRequestSchema,
+  projectAudienceChangeSchema,
+  projectDeletionSchema,
+  projectImpactSchema,
+  projectMoveSchema,
+  setProjectAudienceRequestSchema
 } from "../projects";
 import { conversationSchema, draftAttachmentUploadResponseSchema } from "../conversations";
 import { blob, defineOperation, defineRegisteredOperation, json } from "./define-operation";
@@ -86,6 +95,102 @@ export const projectOperations = {
     body: createProjectRequestSchema,
     response: json(projectSchema),
     errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  // A project's default agent and skills (PRJ-7) and Knowledge Bases (PRJ-8), with what the
+  // caller may choose of them.
+  "projects.setup.get": defineOperation({
+    id: "projects.setup.get",
+    method: "GET",
+    path: "/api/v1/project-settings/:projectId/setup",
+    summary:
+      "Read a project's default agent, skills and Knowledge Bases, with those the caller may choose for it",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(projectSetupSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "projects.setup.set": defineRegisteredOperation({
+    id: "projects.setup.set",
+    method: "PUT",
+    path: "/api/v1/project-settings/:projectId/setup",
+    summary:
+      "Set the agent a new chat in a project starts with and the skills and Knowledge Bases every run in it is offered",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: setProjectSetupRequestSchema,
+    response: json(projectSetupSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  // A whole project (PRJ-6): who reads it, its workspace, its deletion.
+  "projects.impact": defineOperation({
+    id: "projects.impact",
+    method: "GET",
+    path: "/api/v1/project-settings/:projectId/impact",
+    summary:
+      "Count what a change to the whole project reaches: its chats and files, and whose they are",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(projectImpactSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "projects.set_audience": defineRegisteredOperation({
+    id: "projects.set_audience",
+    method: "PUT",
+    path: "/api/v1/project-settings/:projectId/audience",
+    summary:
+      "Share a project with its workspace or make it private to its creator, with every chat in it",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: setProjectAudienceRequestSchema,
+    response: json(projectAudienceChangeSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "projects.move": defineRegisteredOperation({
+    id: "projects.move",
+    method: "POST",
+    path: "/api/v1/project-settings/:projectId/move",
+    summary:
+      "Move a project with its chats and files to another workspace the caller is a member of",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: moveProjectRequestSchema,
+    response: json(projectMoveSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "projects.delete": defineRegisteredOperation({
+    id: "projects.delete",
+    method: "POST",
+    path: "/api/v1/project-settings/:projectId/delete",
+    summary: "Delete a project with its files; its chats stay in the workspace or are deleted too",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: deleteProjectRequestSchema,
+    response: json(projectDeletionSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "FORBIDDEN"],
     rateClass: "write"
   }),
   "conversations.set_project": defineRegisteredOperation({
