@@ -11,7 +11,9 @@ import {
   knowledgeExtractFieldsOutputSchema,
   knowledgeRetryInputSchema,
   knowledgeRetryOutputSchema,
-  knowledgeWorkflowSourcesOutputSchema
+  knowledgeWorkflowSourcesOutputSchema,
+  KNOWLEDGE_ORIGIN_LINK_CHANGES,
+  knowledgeOriginLinkSchema
 } from "@work-shape/catalyst-asset-schemas";
 import {
   DATA_STORE_SCALAR_TYPES,
@@ -276,6 +278,11 @@ const knowledgeListDocumentsResponseSchema = z.object({
        * remove is refused with `knowledge_synced_document_remove_refused`.
        */
       sourceId: z.string().optional(),
+      /**
+       * Where the original lives: filled by its source for a synced document, entered by the
+       * builder for one added by hand. An http or https address.
+       */
+      originLink: z.string().optional(),
       addedAt: z.string(),
       /** When its state last changed. */
       updatedAt: z.string()
@@ -297,7 +304,27 @@ const knowledgeSearchRequestSchema = z.strictObject({
   /** Words or a question. Quoted words are a phrase, and a word after `-` is left out. */
   query: z.string().trim().min(1).max(1_000),
   /** Passages to answer at most: 20 by default, at most 50. */
-  limit: z.number().int().min(1).max(50).optional()
+  limit: z.number().int().min(1).max(50).optional(),
+  /**
+   * Values of the filters the Knowledge Base declares, by name: a date as `YYYY-MM-DD`, else a
+   * text. A filter it does not declare is refused.
+   */
+  filters: z.record(z.string().min(1).max(63), z.string().max(1_000)).optional()
+});
+
+const knowledgeSetOriginLinkRequestSchema = z.strictObject({
+  /** A document added by hand; a synced one keeps the link its source gives. */
+  documentId: z.string().min(1).max(200),
+  /**
+   * Where the original lives: an http or https address without a user, a password or a token
+   * parameter. `null` clears it.
+   */
+  originLink: knowledgeOriginLinkSchema.nullable()
+});
+
+const knowledgeSetOriginLinkResponseSchema = z.object({
+  documentId: z.string(),
+  change: z.enum(KNOWLEDGE_ORIGIN_LINK_CHANGES)
 });
 
 const knowledgeSearchResponseSchema = z.object({
@@ -339,7 +366,7 @@ export const knowledgeOperations = {
     method: "GET",
     path: "/api/v1/knowledge-bases/:knowledgeBase/documents/:documentId/content",
     summary:
-      "Open an original source document with knowledge_base.use; a cited document is opened in the context of its conversation's workspace; removed documents are unavailable",
+      "Open an original source document with knowledge_base.use; a cited document is opened in the context of its conversation's workspace; removed documents are unavailable; a synced document's original is fetched through its source into a 7-day page cache, and a source that cannot be reached answers CONFLICT with reason knowledge_source_unreachable",
     tag: "Knowledge Bases",
     auth: "user",
     scope: "data_store_rows:read",
@@ -348,7 +375,7 @@ export const knowledgeOperations = {
     effect: "reading",
     query: knowledgeOpenDocumentQuerySchema,
     response: blob(),
-    errors: ["NOT_FOUND"],
+    errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "read"
   }),
   "knowledge_bases.workflow_sources": defineRegisteredOperation({
@@ -445,6 +472,7 @@ export const knowledgeOperations = {
   "knowledge_bases.query": defineRegisteredOperation({
     ...BASE,
     id: "knowledge_bases.query",
+    personalKeyScope: "data_store_rows:use",
     method: "POST",
     path: "/api/v1/knowledge-bases/:knowledgeBase/query",
     summary:
@@ -508,6 +536,20 @@ export const knowledgeOperations = {
     effect: "changing",
     body: z.strictObject({ documentIds: z.array(z.string().min(1).max(200)).min(1).max(100) }),
     response: json(z.object({ removed: z.number().int() })),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "knowledge_bases.set_origin_link": defineRegisteredOperation({
+    ...BASE,
+    id: "knowledge_bases.set_origin_link",
+    method: "POST",
+    path: "/api/v1/knowledge-bases/:knowledgeBase/documents/origin-link",
+    summary:
+      "Set, change or clear where the original of a document added by hand lives, so a citation offers it beside the stored copy. Only an http or https address without a credential; a synced document keeps its source's link",
+    scope: "data_store_rows:write",
+    effect: "changing",
+    body: knowledgeSetOriginLinkRequestSchema,
+    response: json(knowledgeSetOriginLinkResponseSchema),
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
     rateClass: "write"
   }),

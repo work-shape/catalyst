@@ -17,7 +17,7 @@ export const USAGE_SPEND_LIMIT_LEVELS = [
 ] as const;
 
 /** The limit that refused a call: its period, what it counts, and whose counter it is. */
-export interface ModelUsageRefusal {
+export type ModelUsageRefusal = {
   period: (typeof MODEL_USAGE_LIMIT_PERIODS)[number];
   metric: (typeof MODEL_USAGE_LIMIT_METRICS)[number];
   /**
@@ -26,7 +26,7 @@ export interface ModelUsageRefusal {
    * spend budget everyone shares.
    */
   scope: (typeof MODEL_USAGE_LIMIT_SCOPES)[number];
-}
+};
 
 /** The workspace key every Personal Workspace shares in the usage sums (LU-3): one row. */
 export const PERSONAL_WORKSPACES_KEY = "personal";

@@ -1,4 +1,9 @@
 import { GUARDRAIL_HIT_OUTCOMES, GUARDRAIL_OUTCOMES } from "@work-shape/catalyst-asset-schemas";
+import {
+  askGuardrailRequestSchema,
+  askGuardrailResponseSchema,
+  rulesInForceSchema
+} from "../guardrail-answers";
 import { z } from "zod";
 import { timestampSchema } from "../shared";
 import { defineRegisteredOperation, json } from "./define-operation";
@@ -158,6 +163,11 @@ export const shippedGuardrailSchema = z.object({
   on: z.array(z.string()),
   outcome: guardrailOutcomeSchema,
   enabled: z.boolean(),
+  /**
+   * On a guardrail that asks only when a publish widens reach (GR-PUB-2): whether an instance
+   * admin set it to ask on every publish. Absent on a guardrail without that setting.
+   */
+  alwaysAsk: z.boolean().optional(),
   /** Who switched it last and when. Absent while nobody has: it is on as the release ships it. */
   switchedBy: z.object({ id: z.string(), label: z.string() }).optional(),
   switchedAt: timestampSchema.optional(),
@@ -167,7 +177,17 @@ export const shippedGuardrailSchema = z.object({
 
 export const shippedGuardrailsSchema = z.object({ items: z.array(shippedGuardrailSchema) });
 
-export const switchShippedGuardrailRequestSchema = z.object({ enabled: z.boolean() }).strict();
+export const switchShippedGuardrailRequestSchema = z
+  .object({
+    /** Left out, it stays as it was. One of `enabled` and `alwaysAsk` is required. */
+    enabled: z.boolean().optional(),
+    /**
+     * Only on a guardrail that asks only when a publish widens reach: true asks on every
+     * publish. Left out, it stays as it was.
+     */
+    alwaysAsk: z.boolean().optional()
+  })
+  .strict();
 
 export type ShippedGuardrailView = z.infer<typeof shippedGuardrailSchema>;
 
@@ -247,7 +267,7 @@ export const guardrailOperations = {
     method: "POST",
     path: "/api/v1/guardrails/shipped/:name/switch",
     summary:
-      "Switch a guardrail the release ships off or on again, for the whole instance. A release never switches it back on",
+      "Switch a guardrail the release ships off or on again, or set the publish guardrail to ask on every publish, for the whole instance. A release never switches it back on",
     tag: "Guardrails",
     auth: "user",
     scope: "config_assets:publish",
@@ -255,7 +275,41 @@ export const guardrailOperations = {
     effect: "changing",
     body: switchShippedGuardrailRequestSchema,
     response: json(shippedGuardrailSchema),
-    errors: ["NOT_FOUND"],
+    errors: ["NOT_FOUND", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  // Rules in force is read by every signed-in person (GR-3): no right is asked, and the list
+  // holds only what applies to the caller's own workspaces. Asking who can change a rule sends
+  // the caller's question to their Inbox.
+  "guardrails.in_force": defineRegisteredOperation({
+    id: "guardrails.in_force",
+    method: "GET",
+    path: "/api/v1/guardrails/in-force",
+    summary:
+      "List the rules in force for the caller: the operator's floor, the release's switches and the published guardrails of the instance and of the caller's workspaces, with who changed each and when, who can change it and its 30-day count",
+    tag: "Guardrails",
+    auth: "user",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(rulesInForceSchema),
+    errors: [],
+    rateClass: "read"
+  }),
+  "guardrails.ask": defineRegisteredOperation({
+    id: "guardrails.ask",
+    method: "POST",
+    path: "/api/v1/guardrails/:name/ask",
+    summary:
+      "Send a question about one rule in force to the Inbox of who can change it: who published its revision and the holders of guardrail.publish at its scope",
+    tag: "Guardrails",
+    auth: "user",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "changing",
+    body: askGuardrailRequestSchema,
+    response: json(askGuardrailResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
   "guardrails.unpublish": defineRegisteredOperation({

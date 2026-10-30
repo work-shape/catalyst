@@ -3,6 +3,7 @@ import { assetsGroup } from "./assets";
 import { authGroup } from "./auth";
 import { configGroup } from "./config";
 import { dataStoreReviewGroup } from "./data-store-review";
+import { dataStoreTestCopyGroup } from "./data-store-test-copy";
 import { catalogueGroup } from "./catalogue";
 import { initGroup } from "./init";
 import { knowledgeGroup } from "./knowledge";
@@ -17,6 +18,7 @@ export const commandGroups = [
   configGroup,
   catalogueGroup,
   dataStoreReviewGroup,
+  dataStoreTestCopyGroup,
   initGroup,
   knowledgeGroup,
   modelsGroup,

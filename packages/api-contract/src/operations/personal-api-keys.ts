@@ -63,6 +63,7 @@ export const personalApiKeyOperations = {
     tag: "Personal API Keys",
     auth: "user",
     scope: "me:write",
+    personalKeyScope: "account:manage",
     requires: [],
     effect: "changing",
     response: json(personalApiKeySchema),

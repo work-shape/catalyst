@@ -1,6 +1,9 @@
 import { WORKFLOW_KINDS } from "@work-shape/catalyst-asset-schemas";
 import {
   AGENT_RUN_STATUSES,
+  MODEL_USAGE_LIMIT_METRICS,
+  MODEL_USAGE_LIMIT_PERIODS,
+  MODEL_USAGE_LIMIT_SCOPES,
   OPERATION_EFFECTS,
   OPERATION_TARGETS,
   PRINCIPAL_HOLDER_KINDS,
@@ -12,12 +15,14 @@ import {
   WORKFLOW_TEST_REVISIONS,
   WORKFLOW_STEP_TYPES,
   WORKFLOW_DATASET_DOWNLOAD_FORMATS,
-  WORKFLOW_TRIGGER_KINDS
+  WORKFLOW_TRIGGER_KINDS,
+  WORKFLOW_WEBHOOK_HEADERS,
+  CONNECTION_SECRET_STATES
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { assetWarningSchema } from "../assets";
 import { listQuerySchema, timestampSchema } from "../shared";
-import { defineRegisteredOperation, blob, json, page } from "./define-operation";
+import { defineOperation, defineRegisteredOperation, blob, json, page } from "./define-operation";
 
 // The Workflows of an instance and their runs: the list, the start by hand, the test run of a
 // draft, the reads and the cancel. A read answers states,
@@ -59,7 +64,20 @@ const workflowRunErrorSchema = z.object({
   /** On `confirmation_unattended`: the operation an agent step called that needed one. */
   operation: z.string().optional(),
   /** On a run: the step run it ended at. */
-  stepRunId: z.string().optional()
+  stepRunId: z.string().optional(),
+  /**
+   * On `MODEL_USAGE_LIMIT_REACHED`: the usage limit that refused a model call of the run, by its
+   * window, what it counts and whose counter it is. A value this contract does not know is left
+   * out, so the reader says that a limit was reached without naming it.
+   */
+  usageLimit: z
+    .object({
+      period: z.enum(MODEL_USAGE_LIMIT_PERIODS),
+      metric: z.enum(MODEL_USAGE_LIMIT_METRICS),
+      scope: z.enum(MODEL_USAGE_LIMIT_SCOPES)
+    })
+    .optional()
+    .catch(undefined)
 });
 
 const workflowOutputPreviewSchema = z.object({
@@ -74,6 +92,38 @@ const datasetMetadataSchema = z.object({
   rowCount: z.number().int().min(0),
   bytes: z.number().int().min(0),
   state: z.enum(WORKFLOW_DATASET_STATES)
+});
+
+/**
+ * A pinned step output of the caller's on a Workflow's draft (EW-10): the step and the run
+ * whose output of it their test runs use. It names the run and carries no value of it.
+ */
+/** What a publisher reads of a Workflow's webhook (EW-4). Never the secret. */
+export const workflowWebhookSchema = z.object({
+  /** The published definition has a webhook trigger: requests start runs. */
+  enabled: z.boolean(),
+  /** The requests a minute the trigger accepts. */
+  perMinute: z.number().int().min(1),
+  secret: z.enum(CONNECTION_SECRET_STATES),
+  version: z.number().int().min(1).optional()
+});
+
+export const workflowStepPinSchema = z.object({
+  step: z.string(),
+  runId: z.string(),
+  pinnedAt: timestampSchema
+});
+
+/**
+ * One step outside every block of a Workflow's revision, as a re-run of a run would treat it
+ * (EW-11): whether it changed since the run, and why the run cannot be re-run from it.
+ */
+export const workflowRerunStepSchema = z.object({
+  step: z.string(),
+  /** The step is not the one the run ran, or the run had no such step. */
+  changed: z.boolean(),
+  /** Missing where the run can be re-run from this step. */
+  refusal: z.object({ code: z.string(), step: z.string().optional() }).optional()
 });
 
 export const workflowRunSchema = z.object({
@@ -130,6 +180,18 @@ export const workflowRunSchema = z.object({
       action: z.string(),
       workflowRevision: z.enum(WORKFLOW_TEST_REVISIONS)
     })
+    .optional(),
+  /**
+   * The steps of this test run that ended with a pinned output instead of running (EW-10),
+   * each with the run whose output it used. Missing on every other run.
+   */
+  pinnedSteps: z.array(z.object({ step: z.string(), sourceRunId: z.string() })).optional(),
+  /**
+   * The run this one re-runs from a chosen step (EW-11): that run, the step, and the steps
+   * before it that took the original's output instead of running. Missing on every other run.
+   */
+  rerunOf: z
+    .object({ runId: z.string(), fromStep: z.string(), reusedSteps: z.array(z.string()) })
     .optional(),
   parentRunId: z.string().optional(),
   parentStepRunId: z.string().optional(),
@@ -423,6 +485,7 @@ export const workflowOperations = {
     tag: "Workflows",
     auth: "principal",
     scope: "config_assets:write",
+    personalKeyScope: "workflow_runs:use",
     requires: [],
     effect: "changing",
     body: startWorkflowRunRequestSchema,
@@ -442,6 +505,86 @@ export const workflowOperations = {
     requires: [],
     effect: "changing",
     body: startWorkflowRunRequestSchema,
+    response: json(workflowRunSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  // EW-10. The caller's own pinned step outputs on a Workflow's draft: their test runs end a
+  // pinned step with the output it had in an earlier run instead of running it.
+  "workflows.list_pins": defineRegisteredOperation({
+    id: "workflows.list_pins",
+    method: "GET",
+    path: "/api/v1/workflows/:workflow/pins",
+    summary:
+      "List your own pinned step outputs on a Workflow's draft; a pin whose step changed or whose run lost its data is cleared",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(z.object({ items: z.array(workflowStepPinSchema) })),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "workflows.pin_step": defineRegisteredOperation({
+    id: "workflows.pin_step",
+    method: "PUT",
+    path: "/api/v1/workflows/:workflow/pins/:step",
+    summary:
+      "Pin the output a step had in a run of the Workflow: your test runs of the draft then use it instead of running the step",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: z.object({ runId: z.string().min(1) }),
+    response: json(workflowStepPinSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "workflows.unpin_step": defineRegisteredOperation({
+    id: "workflows.unpin_step",
+    method: "DELETE",
+    path: "/api/v1/workflows/:workflow/pins/:step",
+    summary: "Remove your pin of a step: your next test run of the draft runs the step again",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    response: json(z.object({ removed: z.boolean() })),
+    errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  // EW-11. Re-running an ended run from a chosen step: the steps before it keep the original's
+  // outputs, the chosen step and those after it run again on the Workflow's revision now.
+  "workflows.rerun_steps": defineRegisteredOperation({
+    id: "workflows.rerun_steps",
+    method: "GET",
+    path: "/api/v1/workflow-runs/:runId/rerun-steps",
+    summary:
+      "For each step outside every block, whether the run can be re-run from it on the Workflow's revision now, and why not",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(z.object({ items: z.array(workflowRerunStepSchema) })),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "workflows.rerun": defineRegisteredOperation({
+    id: "workflows.rerun",
+    method: "POST",
+    path: "/api/v1/workflow-runs/:runId/rerun",
+    summary:
+      "Start a new run from a chosen step of an ended run: the steps before it reuse the run's outputs, the rest runs again",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: z.object({ fromStep: z.string().min(1) }),
     response: json(workflowRunSchema),
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
@@ -519,6 +662,53 @@ export const workflowOperations = {
     effect: "changing",
     response: json(workflowRunSchema),
     errors: ["NOT_FOUND"],
+    rateClass: "write"
+  }),
+  // EW-4. A Workflow's `webhook` trigger: its address takes signed requests from outside, and a
+  // publisher reads its state and makes its secret, which is shown once.
+  "workflows.webhook": defineRegisteredOperation({
+    id: "workflows.webhook",
+    method: "GET",
+    path: "/api/v1/workflows/:workflow/webhook",
+    summary:
+      "Read whether a Workflow's webhook takes requests, its rate and whether it has a secret; never the secret",
+    tag: "Workflows",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(workflowWebhookSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "workflows.rotate_webhook_secret": defineRegisteredOperation({
+    id: "workflows.rotate_webhook_secret",
+    method: "POST",
+    path: "/api/v1/workflows/:workflow/webhook/secret",
+    summary:
+      "Make a new secret for a Workflow's webhook and show it once; requests signed with the old one are refused from now on",
+    tag: "Workflows",
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    // The answer is the secret, shown once.
+    secret: true,
+    response: json(z.object({ secret: z.string().min(1), version: z.number().int().min(1) })),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "workflows.webhook_receive": defineOperation({
+    id: "workflows.webhook_receive",
+    method: "POST",
+    path: "/api/v1/workflows/:workflow/webhook",
+    summary: `Start a run of a Workflow with a webhook trigger: the JSON body is the run's input. Sign it with the Workflow's secret: ${WORKFLOW_WEBHOOK_HEADERS.timestamp} (seconds since the epoch), ${WORKFLOW_WEBHOOK_HEADERS.nonce} (once per request) and ${WORKFLOW_WEBHOOK_HEADERS.signature} = "v1=" + hex HMAC-SHA256 of "<timestamp>.<nonce>.<body>"`,
+    tag: "Workflows",
+    auth: "public",
+    effect: "changing",
+    body: z.record(z.string(), z.unknown()),
+    response: json(z.object({ runId: z.string() })),
+    errors: ["NOT_FOUND", "UNAUTHENTICATED", "RATE_LIMITED", "VALIDATION_FAILED", "CONFLICT"],
     rateClass: "write"
   })
 } as const;

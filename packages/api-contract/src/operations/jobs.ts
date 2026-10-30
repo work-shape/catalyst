@@ -15,6 +15,7 @@ export const jobOperations = {
     tag: "Jobs",
     auth: "principal",
     scope: "governance:read",
+    personalKeyScope: "instance:inspect",
     requires: ["system.view"],
     effect: "reading",
     response: json(z.object({ items: z.array(jobKindSummarySchema) })),
@@ -29,6 +30,7 @@ export const jobOperations = {
     tag: "Jobs",
     auth: "principal",
     scope: "governance:read",
+    personalKeyScope: "instance:inspect",
     requires: ["system.view"],
     effect: "reading",
     query: listQuerySchema.extend({

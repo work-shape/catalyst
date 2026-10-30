@@ -131,7 +131,7 @@ export const appOperations = {
     errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
   }),
-  // Only where release config sets `apps.draftHosts.enabled`; elsewhere it answers 404.
+  // Off until an instance admin sets the policy of this operation on Instance > Policies (OP-2).
   "apps.allow_draft_host": defineRegisteredOperation({
     id: "apps.allow_draft_host",
     method: "POST",

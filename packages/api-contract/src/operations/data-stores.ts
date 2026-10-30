@@ -106,6 +106,21 @@ const dataStorePreviewQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(DATA_STORE_PREVIEW_MAX_ROWS).optional()
 });
 
+/**
+ * The test copy of a store: a scratch database its drafts reach, built from the draft's
+ * migrations and seed files, never from a live row (ADR-0031, DT-2).
+ */
+const dataStoreTestCopyStateSchema = z.object({
+  /** The last migration the copy has applied, draft migrations included. */
+  level: z.number().int(),
+  seedFiles: z.number().int(),
+  /** When it was last built from nothing: by a draft's first changing call, a reset or a rebuild. */
+  builtAt: z.string(),
+  /** What it held when it was last built or brought to its draft. */
+  bytes: z.number().int().optional(),
+  limitBytes: z.number().int()
+});
+
 const dataStoreStateResponseSchema = z.object({
   /** The id of the store's asset. */
   id: z.string(),
@@ -135,7 +150,14 @@ const dataStoreStateResponseSchema = z.object({
     outcome: z.enum(DATA_STORE_MIGRATION_OUTCOMES),
     migration: z.object({ number: z.number().int(), name: z.string() }).optional(),
     failure: z.object({ code: z.string(), message: z.string() }).optional()
-  })
+  }),
+  /** The store's test copy, where it has one (ADR-0031). */
+  testCopy: dataStoreTestCopyStateSchema.optional()
+});
+
+const dataStoreTestCopyResponseSchema = z.object({
+  /** The copy as it stands after the call; `null` once it is dropped. */
+  testCopy: dataStoreTestCopyStateSchema.nullable()
 });
 
 /** The most rows one page of a table answers. */
@@ -382,6 +404,7 @@ export const dataStoreOperations = {
   "data_stores.query": defineRegisteredOperation({
     ...READ,
     id: "data_stores.query",
+    personalKeyScope: "data_store_rows:use",
     method: "POST",
     path: "/api/v1/data-stores/:store/query",
     summary: "Read rows of one Data Store with one read-only statement and bound parameters",
@@ -390,6 +413,7 @@ export const dataStoreOperations = {
   }),
   "data_stores.insert": defineRegisteredOperation({
     id: "data_stores.insert",
+    personalKeyScope: "data_store_rows:use",
     method: "POST",
     path: "/api/v1/data-stores/:store/insert",
     summary: "Add rows to one table of one Data Store",
@@ -473,6 +497,7 @@ export const dataStoreOperations = {
   "data_stores.rows": defineRegisteredOperation({
     ...READ,
     id: "data_stores.rows",
+    personalKeyScope: "data_store_rows:use",
     method: "GET",
     path: "/api/v1/data-stores/:store/rows",
     summary:
@@ -540,6 +565,36 @@ export const dataStoreOperations = {
     effect: "changing",
     body: dataStoreRecordsDecideInputSchema,
     response: json(dataStoreRecordsDecideOutputSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "data_stores.test_copy_reset": defineRegisteredOperation({
+    id: "data_stores.test_copy_reset",
+    method: "POST",
+    path: "/api/v1/data-stores/:store/test-copy/reset",
+    summary:
+      "Drop the test copy of one Data Store and build it again from the migrations and seed files of its draft; it never holds a live row",
+    tag: "Data Stores",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    response: json(dataStoreTestCopyResponseSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
+    rateClass: "write"
+  }),
+  "data_stores.test_copy_delete": defineRegisteredOperation({
+    id: "data_stores.test_copy_delete",
+    method: "DELETE",
+    path: "/api/v1/data-stores/:store/test-copy",
+    summary:
+      "Drop the test copy of one Data Store until a draft's next changing call to the store makes it again",
+    tag: "Data Stores",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    response: json(dataStoreTestCopyResponseSchema),
     errors: ["NOT_FOUND", "CONFLICT", "TIMEOUT"],
     rateClass: "write"
   }),

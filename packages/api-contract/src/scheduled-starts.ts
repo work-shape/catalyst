@@ -1,4 +1,7 @@
-import { SCHEDULED_START_STATES } from "@work-shape/catalyst-asset-schemas";
+import {
+  COLLABORATION_WORKSPACE_KINDS,
+  SCHEDULED_START_STATES
+} from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { timestampSchema } from "./shared";
 
@@ -26,6 +29,20 @@ export const scheduledStartSchema = z.object({
   createdAt: timestampSchema,
   updatedAt: timestampSchema
 });
+/**
+ * A start as somebody other than its owner reads it: an instance admin handing over or deleting
+ * a deactivated person's starts. It never carries the prompt, which only its owner reads
+ * (ADR-0015 for a Personal Workspace; a Shared Workspace the admin may not open). The workspace's
+ * kind says whether a handover is possible: a start in a Personal Workspace is only deleted.
+ */
+export const withheldScheduledStartSchema = scheduledStartSchema.omit({ prompt: true }).extend({
+  workspaceKind: z.enum(COLLABORATION_WORKSPACE_KINDS)
+});
+/** One row of a list: the owner's own start, or a withheld one for an instance admin. */
+export const listedScheduledStartSchema = z.union([
+  scheduledStartSchema,
+  withheldScheduledStartSchema
+]);
 export const scheduledStartRunSchema = z.object({
   id: z.string(),
   scheduledStartId: z.string().nullable(),

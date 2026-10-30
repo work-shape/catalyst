@@ -4,8 +4,10 @@ import { listQuerySchema } from "../shared";
 import {
   createScheduledStartSchema,
   scheduledStartFieldsSchema,
+  listedScheduledStartSchema,
   scheduledStartSchema,
-  scheduledStartRunSchema
+  scheduledStartRunSchema,
+  withheldScheduledStartSchema
 } from "../scheduled-starts";
 import { defineRegisteredOperation, json, page } from "./define-operation";
 
@@ -24,7 +26,8 @@ export const scheduledStartOperations = {
     id: "scheduled_starts.list",
     method: "GET",
     path: "/api/v1/scheduled-starts",
-    summary: "List your own scheduled prompts, or as an instance admin a deactivated person's",
+    summary:
+      "List your own scheduled prompts, or as an instance admin a deactivated person's without their prompts",
     effect: "reading",
     scope: "conversation:read",
     rateClass: "read",
@@ -32,7 +35,7 @@ export const scheduledStartOperations = {
       collaborationWorkspaceId: z.string().optional(),
       ownerUserId: z.string().min(1).optional()
     }),
-    response: page(scheduledStartSchema, ["createdAt", "id"], true)
+    response: page(listedScheduledStartSchema, ["createdAt", "id"], true)
   }),
   "scheduled_starts.create": defineRegisteredOperation({
     ...own,
@@ -96,6 +99,6 @@ export const scheduledStartOperations = {
     path: "/api/v1/scheduled-starts/:scheduledStartId/handover",
     summary: "Hand a deactivated owner's scheduled prompt to another person, paused",
     body: z.strictObject({ ownerUserId: z.string().min(1) }),
-    response: json(scheduledStartSchema)
+    response: json(withheldScheduledStartSchema)
   })
 };

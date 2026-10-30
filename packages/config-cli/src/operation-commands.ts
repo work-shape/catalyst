@@ -48,6 +48,9 @@ export async function runOperationCommand(argv: readonly string[], base: Options
           from: { type: "string" },
           json: { type: "boolean" },
           "no-browser": { type: "boolean" },
+          test: { type: "boolean" },
+          endpoint: { type: "string" },
+          account: { type: "string" },
           help: { type: "boolean", short: "h" }
         },
         allowPositionals: true,
@@ -65,6 +68,15 @@ export async function runOperationCommand(argv: readonly string[], base: Options
     const options: Options = { ...base, dir: values.dir, instance: values.instance };
     if (values["no-browser"] && !(argv[0] === "connection" && argv[1] === "connect"))
       throw new UsageError("--no-browser belongs to 'catalyst connection connect'.");
+    if (
+      (values.test || values.endpoint !== undefined || values.account !== undefined) &&
+      !secretCommand
+    )
+      throw new UsageError(
+        "--test, --endpoint and --account belong to 'catalyst connection secret'."
+      );
+    if ((values.endpoint !== undefined || values.account !== undefined) && !values.test)
+      throw new UsageError("--endpoint and --account belong to the test credential: add --test.");
     const stdin = base.stdin ?? process.stdin;
     if (argv[0] === "call") {
       if (positionals.length !== 1)
@@ -87,7 +99,8 @@ export async function runOperationCommand(argv: readonly string[], base: Options
         );
       }
       if (
-        operation.id === "connections.set_secret" &&
+        (operation.id === "connections.set_secret" ||
+          operation.id === "connections.set_test_credential") &&
         isRecord(input.body) &&
         typeof input.body.value === "string"
       )
@@ -111,13 +124,30 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       throw new UsageError("Connection commands read secrets only from stdin or a hidden prompt.");
     const [verb, name] = positionals;
     if (secretCommand) {
-      if (positionals.length !== 3 || positionals[1] !== "set" || !positionals[2]) {
+      const removing = positionals[1] === "remove";
+      if (
+        positionals.length !== 3 ||
+        !(positionals[1] === "set" || (removing && values.test)) ||
+        !positionals[2]
+      ) {
         throw new UsageError(
-          "Usage: catalyst connection secret set <name> (value from stdin or hidden prompt only)"
+          "Usage: catalyst connection secret set <name> [--test [--endpoint <url>] [--account <name>]] (value from stdin or hidden prompt only), or catalyst connection secret remove <name> --test"
         );
       }
       const connectionName = positionals[2];
       const { api } = await openInstance(options);
+      if (removing) {
+        const removed = await api.change(
+          (client, idempotencyKey) =>
+            client.connections.remove_test_credential({
+              params: { name: connectionName },
+              idempotencyKey
+            }),
+          "Read the connection's test credential before trying again."
+        );
+        writeOutput(options, JSON.stringify(removed, null, 2));
+        return 0;
+      }
       const detail = await api.read((client) =>
         client.connections.get({ params: { name: connectionName } })
       );
@@ -131,6 +161,39 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       );
       secret = value;
       if (value.length === 0) throw new UsageError("The secret must not be empty.");
+      if (values.test) {
+        // A draft's calls use the test credential; the live secret is never touched.
+        const state = await api
+          .change(
+            (client, idempotencyKey) =>
+              client.connections.set_test_credential({
+                params: { name: connectionName },
+                body: {
+                  value,
+                  expectedVersion: detail.testCredential?.version ?? null,
+                  expectedRevision: revision,
+                  ...(values.endpoint === undefined ? {} : { endpoint: values.endpoint }),
+                  ...(values.account === undefined ? {} : { account: values.account })
+                },
+                idempotencyKey
+              }),
+            "Read the connection's test credential before trying again."
+          )
+          .catch(async (error: unknown) => {
+            if (
+              !(error instanceof ConfigApiError) ||
+              error.status !== 409 ||
+              error.code !== "OUTPUT_NOT_RETAINED"
+            )
+              throw error;
+            const { testCredential } = await api.read((client) =>
+              client.connections.get({ params: { name: connectionName } })
+            );
+            return testCredential;
+          });
+        writeOutput(options, JSON.stringify(state, null, 2));
+        return 0;
+      }
       const state = await api
         .change(
           (client, idempotencyKey) =>
@@ -278,6 +341,13 @@ export const operationHelpText = `Operations (JSON output; the instance decides 
   call <operation> [--from <file|->]  API client input as JSON: params, query, body, file
                                     Default: stdin (or {} at a terminal)
   connection secret set <name>      Secret from stdin or a hidden terminal prompt only
+                                    --test sets the test credential a draft's calls use
+                                    instead (connections.set_test_credential); with
+                                    --endpoint <url> they go to that address, which must be on
+                                    the egress list; --account <name> names the test account
+  connection secret remove <name> --test
+                                    Remove the test credential: a draft's changing calls are
+                                    simulated again (connections.remove_test_credential)
   connection test <name>            Check the Connection (connections.test)
   connection discover <name>        Queue discovery (connections.discover)
   connection tools                 List available tools (connections.list_tools)

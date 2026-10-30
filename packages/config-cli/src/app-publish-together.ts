@@ -17,6 +17,29 @@ export interface PublishTogether {
 
 const NONE: PublishTogether = { workflows: [], dataStores: [], lines: [] };
 
+/**
+ * One Data Store a publish makes live first, with the revision it names, the level it is at and
+ * the migrations it would apply: the same line for an App's publish and a Workflow's.
+ */
+export function dataStoreLine(store: {
+  name: string;
+  title: string;
+  revision: number;
+  publishedRevision?: number;
+  liveLevel: number;
+  pendingMigrations: readonly string[];
+}): string {
+  return `  Data Store '${store.title}' (${store.name}): ${
+    store.publishedRevision === undefined
+      ? `new, revision ${store.revision}`
+      : `revision ${store.revision} in place of ${store.publishedRevision}`
+  }, at level ${store.liveLevel}${
+    store.pendingMigrations.length > 0
+      ? `, applies ${migrationCount(store.pendingMigrations.length)}: ${store.pendingMigrations.join(", ")}`
+      : ""
+  }`;
+}
+
 const migrationCount = (count: number) => `${count} migration${count === 1 ? "" : "s"}`;
 
 /**
@@ -36,19 +59,23 @@ export async function appPublishTogether(api: ConfigApi, app: string): Promise<P
   const stores = review.dataStores;
   if (pending.length === 0 && stores.length === 0) return NONE;
   // A store that is live and still applying migrations is waited for, not published again.
-  const storeLines = stores.map(
-    (store) =>
-      `  Data Store '${store.title}' (${store.name}): ${
-        !store.pending
-          ? `live at revision ${store.draftRevision}, still applying migrations: the publish waits for it`
-          : store.publishedRevision === undefined
-            ? `new, revision ${store.draftRevision}`
-            : `revision ${store.draftRevision} in place of ${store.publishedRevision}`
-      }, at level ${store.liveLevel}${
-        store.pendingMigrations.length > 0
-          ? `, applies ${migrationCount(store.pendingMigrations.length)}: ${store.pendingMigrations.join(", ")}`
-          : ""
-      }`
+  const storeLines = stores.map((store) =>
+    !store.pending
+      ? `  Data Store '${store.title}' (${store.name}): live at revision ${store.draftRevision}, still applying migrations: the publish waits for it, at level ${store.liveLevel}${
+          store.pendingMigrations.length > 0
+            ? `, applies ${migrationCount(store.pendingMigrations.length)}: ${store.pendingMigrations.join(", ")}`
+            : ""
+        }`
+      : dataStoreLine({
+          name: store.name,
+          title: store.title,
+          revision: store.draftRevision,
+          ...(store.publishedRevision === undefined
+            ? {}
+            : { publishedRevision: store.publishedRevision }),
+          liveLevel: store.liveLevel,
+          pendingMigrations: store.pendingMigrations
+        })
   );
   const named = pending.map(
     (workflow) =>

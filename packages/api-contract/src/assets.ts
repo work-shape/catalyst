@@ -1,5 +1,7 @@
 import {
   AGENT_USE_SETTINGS,
+  DRAFT_TEST_TARGETS,
+  PUBLISH_CHANGE_KINDS,
   APP_AUDIENCES,
   OPERATION_EFFECTS,
   WORKSPACE_USE_ASSET_KINDS,
@@ -259,8 +261,34 @@ export const workflowStepFactSchema = workflowOperationFactSchema.partial().exte
 
 export const assetSchema = z.object({
   /**
-   * Of a live App, for a reader of its draft: its version, the number of the publish that made
-   * it live, when and by whom. Members read this number, never a revision's.
+   * What a publish of the revision read changes against the live one (DT-1b), for a reader who
+   * may publish an App or a Workflow: the changing actions or steps it makes live, each new or
+   * changed, and the outside hosts it adds. Absent for the live revision itself. The review of
+   * a held publish shows the same list.
+   */
+  publishChanges: z
+    .object({
+      changing: z.array(z.object({ label: z.string(), change: z.enum(PUBLISH_CHANGE_KINDS) })),
+      hostsAdded: z.array(z.string())
+    })
+    .optional(),
+  /**
+   * Of the draft of an App or a Workflow, for a reader who may write it: the Data Stores whose
+   * test copy its calls reach (ADR-0031, DT-2). `present`: every call goes there;
+   * `made_on_change`: a changing call makes it, and reads stay live until then.
+   */
+  draftTestCopies: z
+    .array(
+      z.object({
+        name: z.string(),
+        title: z.string(),
+        copy: z.enum(DRAFT_TEST_TARGETS)
+      })
+    )
+    .optional(),
+  /**
+   * Of a live App or Workflow, for a reader of its draft: its version, the number of the publish
+   * that made it live, when and by whom. Members read this number, never a revision's.
    */
   liveVersion: z
     .object({
@@ -298,6 +326,29 @@ export const assetSchema = z.object({
   /** Unrecorded draft review lines naming its audience and shared source accounts. */
   publishQuestion: z.array(z.string()).optional(),
   /**
+   * Of a Workflow, for a reader of its draft who may publish it (LIVE-2): the Data Stores its
+   * steps call whose draft is not published and which the reader may publish. One Publish of
+   * the Workflow publishes each it names in `dataStores` first and applies its migrations; the
+   * Workflow goes live only once each store reached its level. Each names the migrations its
+   * draft would apply, in the order they apply.
+   */
+  publishDataStores: z
+    .array(
+      z.object({
+        name: z.string(),
+        title: z.string(),
+        /** The store's draft revision, which the publish names. */
+        revision: revisionNumberSchema,
+        /** Absent before the store's first publish. */
+        publishedRevision: revisionNumberSchema.optional(),
+        /** The number of the last migration the store has applied. Zero before the first. */
+        liveLevel: z.number().int().nonnegative(),
+        /** The names of the draft's migrations above the live level, in the order they apply. */
+        pendingMigrations: z.array(z.string())
+      })
+    )
+    .optional(),
+  /**
    * Of a Knowledge Base whose publish processes or embeds documents again: the confirmation of
    * the count and cost the publish question states, which the publish passes as
    * `confirmProcessing`. A stale one is refused with the new statement.
@@ -332,6 +383,26 @@ export const assetSchema = z.object({
    * warnings for the revision this read returns.
    */
   publishNarrative: publishNarrativeSchema.optional(),
+  /**
+   * Of an App (with the Workflows its Publish makes live), a Workflow, a Knowledge Base or an
+   * agent whose revision reaches a store with a source (a Data Store, or a Knowledge Base with
+   * synced sources), for whoever may publish it: the widening check (DS-13c). `holds` where
+   * everyone who would read the store may use each of its sources, and then one line that says
+   * so; otherwise one line per source the publish hands on, with how many people and who
+   * confirms. People are counted, never named. `confirmation` is offered only to a person in the
+   * interface who may confirm the hand-over, and the publish passes it as `confirmHandover`;
+   * a publish without it waits in the Inbox for such a person's approval.
+   */
+  publishHandover: z
+    .object({
+      holds: z.boolean(),
+      lines: z.array(z.string()),
+      confirmation: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/u)
+        .optional()
+    })
+    .optional(),
   /** Other visible workspace members with an unsaved checkout of this App's current draft. */
   appEditors: z
     .array(
@@ -508,6 +579,18 @@ export const assetWriteResponseSchema = z.object({
   warnings: z.array(assetWarningSchema)
 });
 
+/**
+ * Confirmation of the hand-over a change names (`publishHandover.confirmation`, DS-13c): a
+ * person signed in to the interface who holds `connection.write` on each source agrees that
+ * its data reaches readers of the store who may not use it. Taken from nobody else: a key, a
+ * service principal or an agent is refused, and a change without one that hands data on waits
+ * in the Inbox for such a person's approval. A stale one is refused with the new confirmation.
+ */
+export const confirmHandoverSchema = z
+  .string()
+  .regex(/^[a-f0-9]{64}$/u)
+  .optional();
+
 export const publishAssetRequestSchema = z.object({
   makeDependenciesAvailable: z.boolean().optional(),
   expectedAvailability: agentAvailabilitySchema.nullable().optional(),
@@ -517,6 +600,7 @@ export const publishAssetRequestSchema = z.object({
     .string()
     .regex(/^[a-f0-9]{64}$/u)
     .optional(),
+  confirmHandover: confirmHandoverSchema,
   /**
    * The number of the revision that becomes the published one. It is required: a publish
    * never means "whatever the draft is now". Naming an earlier number is the way back.
@@ -534,11 +618,13 @@ export const publishAssetRequestSchema = z.object({
     .max(APP_PUBLISH_WORKFLOWS_MAX)
     .optional(),
   /**
-   * Of an App only: the Data Store drafts this publish makes live with it (GOLIVE-1), each
-   * with the revision the person reviewed, as `apps.publish_review` lists them. Each must be
-   * a store the App's revision binds under `dataStores`. Each store is published first, in
-   * its own transaction, and its migrations applied; the App and its Workflows go live only
-   * once every store reached its level, and none of them where a migration fails.
+   * Of an App or a Workflow: the Data Store drafts this publish makes live with it (GOLIVE-1,
+   * LIVE-2), each with the revision the person reviewed, as `apps.publish_review` lists them
+   * for an App and `assets.get` lists them as `publishDataStores` for a Workflow. Each must be
+   * a store the App's revision binds under `dataStores`, or one the Workflow's revision calls.
+   * Each store is published first, in its own transaction, and its migrations applied; the
+   * App and its Workflows, or the Workflow, go live only once every store reached its level,
+   * and nothing of them where a migration fails.
    */
   dataStores: z
     .array(z.object({ name: z.string().min(1), revision: revisionNumberSchema }).strict())
@@ -559,8 +645,8 @@ export const assetPointersResponseSchema = z.object({
   /** The revision that was published before a publish, left out on the first one. */
   replacedRevision: revisionNumberSchema.optional(),
   /**
-   * The Data Stores and Workflows a publish of an App made live with it, in the order they
-   * were published: the stores first.
+   * The Data Stores and Workflows a publish of an App made live with it, or the Data Stores a
+   * publish of a Workflow made live with it, in the order they were published: the stores first.
    */
   publishedWith: z
     .array(
@@ -684,7 +770,9 @@ export const setAssetAvailabilityRequestSchema = z.object({
    * refused with a conflict where the stored one differs by now, and nothing is written.
    * Left out, the call replaces whatever is stored.
    */
-  expectedAvailability: agentAvailabilitySchema.nullable().optional()
+  expectedAvailability: agentAvailabilitySchema.nullable().optional(),
+  /** See `confirmHandover` of a publish: a Knowledge Base offered to more readers (DS-13c). */
+  confirmHandover: confirmHandoverSchema
 });
 
 export const validateAssetRequestSchema = z.object({
@@ -839,7 +927,9 @@ export const moveAssetRequestSchema = z.object({
    * The caller read what the move breaks (`breaks` of the check) and moves it all the same.
    * A move that breaks something is refused with `move_breaks` without it.
    */
-  acceptBreaks: z.boolean().optional()
+  acceptBreaks: z.boolean().optional(),
+  /** See `confirmHandover` of a publish: an asset moved to more readers (DS-13c). */
+  confirmHandover: confirmHandoverSchema
 });
 
 /** The owner a moved asset has afterwards, with its rung and, for a workspace, its name. */

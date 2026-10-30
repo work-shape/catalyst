@@ -1,5 +1,6 @@
 import {
   APP_ACTION_CALL_STATUSES,
+  FEEDBACK_TEXT_MAX_LENGTH,
   PREVIEW_CAPTURE_MAX_BYTES,
   PREVIEW_CAPTURE_MAX_HEIGHT,
   PREVIEW_CAPTURE_MAX_WIDTH,
@@ -173,6 +174,15 @@ export const appBridgePageMessageSchema = z.discriminatedUnion("type", [
     session,
     requestId,
     runId: calledName
+  }),
+  // The viewer's written feedback on the App (LU-6). The interface names the App and its
+  // revision when it sends it; the Page names nothing but the text.
+  z.strictObject({
+    ...mark,
+    type: z.literal("feedback"),
+    session,
+    requestId,
+    text: z.string().trim().min(1).max(FEEDBACK_TEXT_MAX_LENGTH)
   })
 ]);
 
@@ -222,7 +232,12 @@ export const appBridgeContextSchema = z.strictObject({
   fileSetNumber: z.number().int().positive(),
   initialRoute: z.string(),
   /** Per action of the manifest. Absent where the interface could not read it. */
-  can: z.record(z.string(), appActionPermissionSchema).optional()
+  can: z.record(z.string(), appActionPermissionSchema).optional(),
+  /**
+   * Whether the viewer can send feedback on the App (LU-6): the module is on and the frame
+   * shows a published App. Absent counts as `false`.
+   */
+  feedback: z.boolean().optional()
 });
 
 export type AppBridgeContext = z.infer<typeof appBridgeContextSchema>;
@@ -267,7 +282,7 @@ export type AppWorkflowRun = z.infer<typeof appWorkflowRunSchema>;
 
 /** Why a call or a read of a frame was refused or failed, as the frame is told. */
 const callFailure = z.strictObject({
-  /** `action_unknown`, `draft_safe_mode`, `forbidden`, `input_invalid` and so on. */
+  /** `action_unknown`, `draft_safe_mode`, `forbidden`, `input_invalid`, `limit_reached` and so on. */
   code: z.string(),
   message: z.string(),
   /** The right a `forbidden` call lacks. */
@@ -328,6 +343,15 @@ export const appBridgeHostMessageSchema = z.discriminatedUnion("type", [
     requestId,
     ok: z.boolean(),
     run: appWorkflowRunSchema.optional(),
+    error: callFailure.optional()
+  }),
+  // The answer to one `feedback`, named by the id the Page gave it.
+  z.strictObject({
+    ...mark,
+    type: z.literal("feedback_result"),
+    session,
+    requestId,
+    ok: z.boolean(),
     error: callFailure.optional()
   })
 ]);

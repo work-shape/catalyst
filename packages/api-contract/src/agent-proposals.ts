@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   agentUseSchema,
   assetFileSchema,
+  confirmHandoverSchema,
   dependencyAvailabilitySchema,
   queryBooleanSchema
 } from "./assets";
@@ -49,7 +50,9 @@ export const AGENT_GIVE_TOOLS_MAX = 200;
 export const giveAgentToolsRequestSchema = z.object({
   agentId: z.string().min(1),
   toolNames: z.array(z.string().trim().min(1).max(300)).min(1).max(AGENT_GIVE_TOOLS_MAX),
-  expectedLiveRevision: revisionNumberSchema
+  expectedLiveRevision: revisionNumberSchema,
+  /** See `confirmHandover` of a publish: tools that add a source to a store (DS-13c). */
+  confirmHandover: confirmHandoverSchema
 });
 /**
  * The live revision the give wrote and the one it replaced, and the tools it added: none where

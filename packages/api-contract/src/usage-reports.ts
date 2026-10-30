@@ -12,6 +12,7 @@ import {
   type UsageActivity,
   type UsageWindowSummary
 } from "./governance";
+import { usageSpendLevelSchema, type UsageSpendPeriod } from "./usage-limits";
 
 // The Usage page (LU-3, limits spec 3.3 and 3.4): the Breakdown with its "group by", the Users
 // view, and a shared workspace's Usage tab. Every figure is a sum of a day or a month; nothing
@@ -68,11 +69,20 @@ export const usageBreakdownQuerySchema = z
  */
 export const usageBreakdownRowSchema = modelUsageWindowSummarySchema.extend({
   key: z.string(),
-  name: z.string().optional()
+  name: z.string().optional(),
+  /**
+   * Grouped by agent with the feedback Module on: the comments the agent's answers received in
+   * the period. A count only, never who wrote them (limits spec 3.3 and 3.4).
+   */
+  feedbackCount: z.number().int().nonnegative().optional()
 });
 
 export type UsageBreakdownDimension = (typeof USAGE_BREAKDOWN_DIMENSIONS)[number];
-export type UsageBreakdownRow = UsageWindowSummary & { key: string; name?: string | undefined };
+export type UsageBreakdownRow = UsageWindowSummary & {
+  key: string;
+  name?: string | undefined;
+  feedbackCount?: number | undefined;
+};
 
 export interface UsageBreakdown {
   from: string;
@@ -81,6 +91,8 @@ export interface UsageBreakdown {
   personalWorkspacesKey: typeof PERSONAL_WORKSPACES_KEY;
   total: UsageWindowSummary;
   rows: UsageBreakdownRow[];
+  feedback?: { reviewable: boolean } | undefined;
+  unusedAgents?: string[] | undefined;
 }
 
 export const usageBreakdownSchema: z.ZodType<UsageBreakdown> = z.object({
@@ -90,7 +102,17 @@ export const usageBreakdownSchema: z.ZodType<UsageBreakdown> = z.object({
   /** The key every Personal Workspace shares: their usage is one row for everyone. */
   personalWorkspacesKey: z.literal(PERSONAL_WORKSPACES_KEY),
   total: modelUsageWindowSummarySchema,
-  rows: z.array(usageBreakdownRowSchema)
+  rows: z.array(usageBreakdownRowSchema),
+  /**
+   * Present where the rows carry `feedbackCount`. `reviewable`: the caller reads these comments
+   * in their Inbox, so a count links there.
+   */
+  feedback: z.object({ reviewable: z.boolean() }).optional(),
+  /**
+   * Grouped by agent, for the whole instance or one shared workspace: the agents offered there
+   * that caused no usage in the period, by name.
+   */
+  unusedAgents: z.array(z.string()).optional()
 });
 
 export const usageMonthQuerySchema = z.object({
@@ -131,10 +153,13 @@ export const usageUsersSchema: z.ZodType<UsageUsers> = z.object({
   items: z.array(usageUserMonthSchema)
 });
 
-/** A shared workspace's Usage tab: its month, its days and its Breakdown. */
+/** A shared workspace's Usage tab: its day, its month, its limit, its days and its Breakdown. */
 export interface WorkspaceUsage {
   workspaceName: string;
+  today: UsageWindowSummary;
   month: UsageWindowSummary;
+  limit?:
+    { currency?: string | undefined; day: UsageSpendPeriod; month: UsageSpendPeriod } | undefined;
   days: ModelUsageDailyBucket[];
   activity: UsageActivity;
   breakdown: UsageBreakdown;
@@ -143,7 +168,13 @@ export interface WorkspaceUsage {
 
 export const workspaceUsageSchema: z.ZodType<WorkspaceUsage> = z.object({
   workspaceName: z.string(),
+  today: modelUsageWindowSummarySchema,
   month: modelUsageWindowSummarySchema,
+  /**
+   * The workspace's spend limit as it holds now, with its amounts: the tab is its Owners' and
+   * Admins', who read them (limits spec 3.1). Absent where no limit applies to the workspace.
+   */
+  limit: usageSpendLevelSchema.extend({ currency: z.string().optional() }).optional(),
   days: z.array(modelUsageDailyBucketSchema),
   activity: usageActivitySchema,
   breakdown: usageBreakdownSchema,

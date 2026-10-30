@@ -8,10 +8,13 @@ import {
   collaborationWorkspaceWithRoleSchema,
   createCollaborationWorkspaceRequestSchema,
   deleteCollaborationWorkspaceRequestSchema,
+  memberBundleSchema,
+  requestWorkspaceBundleSchema,
   updateCollaborationWorkspaceRequestSchema,
   updateWorkspaceMemberRoleRequestSchema,
   workspaceAccessRequestItemSchema,
   workspaceAccessRequestSchema,
+  workspaceMemberBundlesListSchema,
   workspaceMemberCandidateSchema,
   workspaceMemberSchema,
   workspaceMembershipSchema
@@ -28,7 +31,9 @@ import { defineOperation, defineRegisteredOperation, json, page } from "./define
 
 // The ten changing operations but `workspaces.ensure_personal` are operations of the registry.
 // Their right is the caller's role in the workspace, which is no action a grant gives, so each
-// checks it itself and requires none.
+// checks it itself and requires none. A personal key reaches the operations that name
+// `workspaces:manage` with the account and workspaces level (CLI-PARITY-5), through the same
+// checks as the screen; a workspace's usage, its files and the agents stay out of a key's reach.
 export const collaborationWorkspaceOperations = {
   "workspaces.ensure_personal": defineOperation({
     id: "workspaces.ensure_personal",
@@ -52,6 +57,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:read",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "reading",
     query: listQuerySchema,
@@ -67,6 +73,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     body: createCollaborationWorkspaceRequestSchema,
@@ -82,6 +89,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:read",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "reading",
     query: listQuerySchema,
@@ -97,6 +105,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:read",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "reading",
     response: json(collaborationWorkspaceWithRoleSchema),
@@ -145,6 +154,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     body: updateCollaborationWorkspaceRequestSchema,
@@ -160,6 +170,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "reading",
     response: json(collaborationWorkspaceDeletionImpactSchema),
@@ -175,6 +186,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     body: deleteCollaborationWorkspaceRequestSchema,
@@ -190,6 +202,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:read",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "reading",
     query: listQuerySchema,
@@ -239,6 +252,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "reading",
     query: listQuerySchema.extend({ q: z.string().optional() }),
@@ -254,6 +268,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     body: addWorkspaceMemberRequestSchema,
@@ -270,6 +285,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     body: updateWorkspaceMemberRoleRequestSchema,
@@ -286,6 +302,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     response: json(workspaceMembershipSchema),
@@ -300,10 +317,79 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     response: json(workspaceMembershipSchema),
     errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  // AP-3: Builder and Publisher per member. An Owner or Admin of the workspace, or the member
+  // for themselves, asks for a bundle; an instance admin who holds it decides the request in
+  // the Inbox, or grants it here at once. The Owner or Admin and an instance admin take one back.
+  "workspaces.member_bundles.list": defineOperation({
+    id: "workspaces.member_bundles.list",
+    method: "GET",
+    path: "/api/v1/workspaces/:collaborationWorkspaceId/member-bundles",
+    summary:
+      "Read Builder and Publisher of each member of a Shared Workspace, and what the caller may change. Needs the role Owner or Admin.",
+    tag: "Collaboration Workspaces",
+    auth: "user",
+    scope: "collaboration_workspace:read",
+    personalKeyScope: "workspaces:manage",
+    requires: [],
+    effect: "reading",
+    response: json(workspaceMemberBundlesListSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "workspaces.member_bundles.request": defineRegisteredOperation({
+    id: "workspaces.member_bundles.request",
+    method: "POST",
+    path: "/api/v1/workspaces/:collaborationWorkspaceId/members/:userId/bundles/:bundle/request",
+    summary:
+      "Ask an instance admin for Builder or Publisher for a member of a Shared Workspace. Needs the role Owner or Admin, or the member asks for themselves. Nothing changes until the request is approved.",
+    tag: "Collaboration Workspaces",
+    auth: "user",
+    scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
+    requires: [],
+    effect: "changing",
+    body: requestWorkspaceBundleSchema,
+    response: json(memberBundleSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "workspaces.member_bundles.grant": defineRegisteredOperation({
+    id: "workspaces.member_bundles.grant",
+    method: "PUT",
+    path: "/api/v1/workspaces/:collaborationWorkspaceId/members/:userId/bundles/:bundle",
+    summary:
+      "Give a member of a Shared Workspace Builder or Publisher there at once. Needs users.manage and the bundle itself in that workspace.",
+    tag: "Collaboration Workspaces",
+    auth: "user",
+    scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
+    requires: ["users.manage"],
+    effect: "changing",
+    response: json(memberBundleSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "workspaces.member_bundles.revoke": defineRegisteredOperation({
+    id: "workspaces.member_bundles.revoke",
+    method: "DELETE",
+    path: "/api/v1/workspaces/:collaborationWorkspaceId/members/:userId/bundles/:bundle",
+    summary:
+      "Take back Builder or Publisher a member holds in a Shared Workspace. Needs the role Owner or Admin, or users.manage.",
+    tag: "Collaboration Workspaces",
+    auth: "user",
+    scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
+    requires: [],
+    effect: "changing",
+    response: json(memberBundleSchema),
+    errors: ["NOT_FOUND"],
     rateClass: "write"
   }),
   "workspaces.access_requests.create": defineRegisteredOperation({
@@ -314,6 +400,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     response: json(workspaceAccessRequestSchema),
@@ -328,6 +415,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:read",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "reading",
     query: listQuerySchema,
@@ -343,6 +431,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     response: json(workspaceMembershipSchema),
@@ -357,6 +446,7 @@ export const collaborationWorkspaceOperations = {
     tag: "Collaboration Workspaces",
     auth: "user",
     scope: "collaboration_workspace:manage",
+    personalKeyScope: "workspaces:manage",
     requires: [],
     effect: "changing",
     response: json(workspaceAccessRequestSchema),

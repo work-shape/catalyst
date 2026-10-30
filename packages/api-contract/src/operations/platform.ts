@@ -1,4 +1,4 @@
-import { configAssetReferencesSchema } from "../configuration";
+import { capabilitiesSchema, configAssetReferencesSchema } from "../configuration";
 import { platformContextSchema, platformDocsQuerySchema, platformDocsSchema } from "../platform";
 import { defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
@@ -49,6 +49,22 @@ export const platformOperations = {
     requires: [],
     effect: "reading",
     response: json(configAssetReferencesSchema),
+    errors: [],
+    rateClass: "read"
+  }),
+  // Studio's "Fähigkeiten" page (TOOLS-2), for the callers of the references. The agents it
+  // names are those the caller may read, and of a module that is off only a user manager hears.
+  "platform.capabilities.get": defineOperation({
+    id: "platform.capabilities.get",
+    method: "GET",
+    path: "/api/v1/context/capabilities",
+    summary: "Read what this instance's agents can be given, by package, and the agents using it",
+    tag: "Platform",
+    auth: "principal",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(capabilitiesSchema),
     errors: [],
     rateClass: "read"
   })

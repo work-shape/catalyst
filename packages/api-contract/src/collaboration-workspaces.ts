@@ -1,8 +1,11 @@
 import {
   COLLABORATION_WORKSPACE_KINDS,
   DELETION_STATES,
+  MEMBER_BUNDLE_CHANGES,
+  MEMBER_BUNDLE_STATES,
   WORKSPACE_ACCENT_COLORS,
   WORKSPACE_ACCESS_STATES,
+  WORKSPACE_BUNDLES,
   WORKSPACE_MEMBERSHIP_ROLES,
   WORKSPACE_VISIBILITIES
 } from "@work-shape/catalyst-asset-schemas";
@@ -140,5 +143,42 @@ export type CollaborationWorkspaceDirectoryItem = z.infer<
   typeof collaborationWorkspaceDirectoryItemSchema
 >;
 export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
+
+// AP-3: Builder and Publisher of each member on the Members screen.
+export const workspaceBundleSchema = z.enum(WORKSPACE_BUNDLES);
+export type WorkspaceBundle = z.infer<typeof workspaceBundleSchema>;
+
+/**
+ * One bundle of one member as the caller reads it. `held` is a row in this workspace, which
+ * the workspace's Owner or Admin may take back; `inherited` is held through a role, a group or
+ * the whole instance, and is changed where it is given.
+ */
+export const memberBundleSchema = z.object({
+  state: z.enum(MEMBER_BUNDLE_STATES),
+  /**
+   * What the caller's switch does: turning it on grants or requests, turning it off revokes or
+   * withdraws the request. Absent, the switch is the caller's to read only.
+   */
+  change: z.enum(MEMBER_BUNDLE_CHANGES).optional(),
+  /** The pending request, while one is open. */
+  requestId: z.string().optional()
+});
+export type MemberBundle = z.infer<typeof memberBundleSchema>;
+
+export const workspaceMemberBundlesSchema = z.object({
+  userId: z.string(),
+  builder: memberBundleSchema,
+  publisher: memberBundleSchema
+});
+export type WorkspaceMemberBundles = z.infer<typeof workspaceMemberBundlesSchema>;
+
+export const workspaceMemberBundlesListSchema = z.object({
+  items: z.array(workspaceMemberBundlesSchema)
+});
+
+/** Why the bundle is asked for: shown to who decides, never required. */
+export const requestWorkspaceBundleSchema = z.object({
+  reason: z.string().trim().max(500).optional()
+});
 export type WorkspaceMemberCandidate = z.infer<typeof workspaceMemberCandidateSchema>;
 export type WorkspaceAccessRequestItem = z.infer<typeof workspaceAccessRequestItemSchema>;

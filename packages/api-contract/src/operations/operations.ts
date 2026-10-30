@@ -64,6 +64,7 @@ export const operationRunOperations = {
     tag: "Operations",
     auth: "principal",
     scope: "governance:read",
+    personalKeyScope: "instance:inspect",
     // The Operations page, in the Settings group "System" (RIGHTS-1e). One run stays readable
     // by its caller and by `audit.view` through `operations.get_run`.
     requires: ["system.view"],

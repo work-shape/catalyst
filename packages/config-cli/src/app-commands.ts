@@ -66,7 +66,7 @@ export const APP_VERBS = {
   publish: {
     usage: "publish <app> [--revision <n>] [--audience self|workspace|instance] [--yes]",
     summary:
-      "Choose who may use the App, show what the revision makes live, then ask before publishing it (assets.publish)"
+      "Choose who may use the App, show what the revision makes live, then ask before publishing it (assets.publish). A publish that hands a source's data to people who may not use the source waits in the Inbox until a person who may change the source approves it"
   },
   status: {
     usage: "status <app> [dir]",

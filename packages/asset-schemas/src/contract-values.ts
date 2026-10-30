@@ -58,7 +58,29 @@ export const FIRST_PARTY_AUTH_SCOPES = [
   // store and its migrations stay under `config_assets:*`. A scope caps what a key may be
   // used for; whether its holder may do it is decided by the grants.
   "data_store_rows:read",
-  "data_store_rows:write"
+  "data_store_rows:write",
+  // What the use level of a personal key reaches of those rows (CLI-PARITY-4): a read of a
+  // store's rows, an insert and a query of a Knowledge Base, and nothing else under
+  // `data_store_rows:*`. Only a personal key's call is asked for it, through the operation's
+  // `personalKeyScope`; every other credential keeps the scopes above.
+  "data_store_rows:use",
+  // What the use level of a personal key reaches of Workflows: starting a run by hand, with
+  // `workflow.use` alone (CLI-PARITY-4 review). Only a personal key's call is asked for it, through
+  // the operation's `personalKeyScope`.
+  "workflow_runs:use",
+  // What the instance level of a personal key reads of the instance (CLI-PARITY-6a): usage,
+  // audit events, background jobs, Operation Runs, Modules and the last infrastructure check,
+  // each still asking the right of its own (`usage.view`, `audit.view`, `system.view`). Only
+  // a personal key's call is asked for it, through the operation's `personalKeyScope`.
+  "instance:inspect",
+  // What the account and workspaces level of a personal key reaches (CLI-PARITY-5): the
+  // person's name and model preference and the revocation of their own keys, never a new key,
+  // a confirmed connect code, the password or the account's deletion; and the Shared
+  // Workspaces as the person's role in each allows, never a workspace's usage. Only a personal
+  // key's call is asked for them, through the operation's `personalKeyScope`; `me:write` and
+  // `collaboration_workspace:*` stay off every key.
+  "account:manage",
+  "workspaces:manage"
 ] as const;
 
 export type ChatSessionAuthScope = (typeof CHAT_SESSION_AUTH_SCOPES)[number];
@@ -304,6 +326,12 @@ export type CatalogueCategory = (typeof CATALOGUE_CATEGORIES)[number];
 export const OPERATION_TARGETS = ["live", "test", "dry_run"] as const;
 export type OperationTarget = (typeof OPERATION_TARGETS)[number];
 
+/** The test target of an asset a call of a draft reaches (ADR-0031): there, or made by a change. */
+export const DRAFT_TEST_TARGETS = ["present", "made_on_change"] as const;
+
+/** How a changing call a publish makes live differs from the live revision (DT-1b). */
+export const PUBLISH_CHANGE_KINDS = ["new", "changed"] as const;
+
 export const OPERATION_RUN_STATUSES = [
   "running",
   "pending_confirmation",
@@ -384,6 +412,9 @@ export type SkillChangeType = (typeof SKILL_CHANGE_TYPES)[number];
 
 export const GUARDRAIL_OUTCOMES = ["allow", "warn", "require_approval", "block"] as const;
 export type GuardrailOutcome = (typeof GUARDRAIL_OUTCOMES)[number];
+
+/** The kinds of a guardrail's check: an RE2 pattern, or a model reading the content. */
+export const GUARDRAIL_CHECK_KINDS = ["pattern", "model_judge"] as const;
 
 export const APP_MODES = ["published", "draft"] as const;
 export type AppMode = (typeof APP_MODES)[number];
@@ -471,6 +502,29 @@ export type CollaborationWorkspaceKind = (typeof COLLABORATION_WORKSPACE_KINDS)[
 
 export const WORKSPACE_ACCESS_STATES = ["member", "request_pending", "can_request"] as const;
 export type WorkspaceAccessState = (typeof WORKSPACE_ACCESS_STATES)[number];
+
+/** The two bundles a member of a Shared Workspace holds one by one (AP-3). */
+export const WORKSPACE_BUNDLES = ["builder", "publisher"] as const;
+export type WorkspaceBundle = (typeof WORKSPACE_BUNDLES)[number];
+
+/**
+ * Where a member stands with one bundle on the Members screen: held through a row in this
+ * workspace, held some other way (a role, a group or the whole instance), asked for, or not.
+ */
+export const MEMBER_BUNDLE_STATES = ["none", "requested", "held", "inherited"] as const;
+export type MemberBundleState = (typeof MEMBER_BUNDLE_STATES)[number];
+
+/** What the caller's switch does to one bundle of one member. */
+export const MEMBER_BUNDLE_CHANGES = ["grant", "request", "revoke", "withdraw"] as const;
+export type MemberBundleChange = (typeof MEMBER_BUNDLE_CHANGES)[number];
+
+/** Why a request for Builder or Publisher can no longer give what it asked. */
+export const GRANT_REQUEST_STALE_REASONS = [
+  "member_left",
+  "member_inactive",
+  "already_held"
+] as const;
+export type GrantRequestStaleReason = (typeof GRANT_REQUEST_STALE_REASONS)[number];
 
 export const DELETION_STATES = ["deleting", "deleted"] as const;
 export type DeletionState = (typeof DELETION_STATES)[number];
@@ -668,6 +722,12 @@ export type ConnectionOperationStatus = (typeof CONNECTION_OPERATION_STATUSES)[n
 
 export const CONNECTION_SECRET_STATES = ["set", "not_set", "unreadable"] as const;
 export type ConnectionSecretState = (typeof CONNECTION_SECRET_STATES)[number];
+/**
+ * The states of a Connection's test credential (ADR-0031). `stale`: one is stored that no call
+ * can use, since the Connection's address or auth scheme changed after it was set.
+ */
+export const CONNECTION_TEST_CREDENTIAL_STATES = ["not_set", "set", "stale"] as const;
+export type ConnectionTestCredentialState = (typeof CONNECTION_TEST_CREDENTIAL_STATES)[number];
 
 export const CONNECTOR_TEST_STATUSES = [
   "ready",
@@ -959,7 +1019,34 @@ export const WORKFLOW_EXECUTED_STEP_TYPES = [...WORKFLOW_STEP_TYPES] as const;
 export const WORKFLOW_RESERVED_STEP_TYPES = [] as const;
 export type WorkflowReservedStepType = (typeof WORKFLOW_RESERVED_STEP_TYPES)[number];
 
-export const WORKFLOW_TRIGGER_KINDS = ["manual", "schedule", "parent", "outside"] as const;
+/**
+ * The bounds of a `webhook` trigger. A request is at most `maxBodyBytes`, its timestamp at most
+ * `toleranceMs` away from the instance's clock, its nonce used once, and a Workflow accepts
+ * `perMinute` requests a minute unless its trigger sets its own, up to `perMinuteMax`.
+ */
+export const WORKFLOW_WEBHOOK_LIMITS = {
+  maxBodyBytes: 256 * 1_024,
+  toleranceMs: 5 * 60_000,
+  perMinute: 60,
+  perMinuteMax: 600,
+  nonceMaxLength: 200
+} as const;
+
+/** The headers of a signed webhook request. */
+export const WORKFLOW_WEBHOOK_HEADERS = {
+  timestamp: "catalyst-webhook-timestamp",
+  nonce: "catalyst-webhook-nonce",
+  signature: "catalyst-webhook-signature"
+} as const;
+
+export const WORKFLOW_TRIGGER_KINDS = [
+  "manual",
+  "schedule",
+  "parent",
+  "outside",
+  "webhook",
+  "platform_event"
+] as const;
 export type WorkflowTriggerKind = (typeof WORKFLOW_TRIGGER_KINDS)[number];
 
 export const NOTIFY_CHANNELS = ["inbox", "mail"] as const;
@@ -1007,6 +1094,9 @@ export type AssetOwnerKind = (typeof ASSET_OWNER_KINDS)[number];
 
 export const READING_POLICY_VALUES = ["allow", "deny"] as const satisfies readonly PolicyValue[];
 export type ReadingPolicyValue = (typeof READING_POLICY_VALUES)[number];
+
+/** Who locked "Always allow": the release config, which no screen lifts, or an instance admin. */
+export const ALWAYS_ALLOW_LOCK_SOURCES = ["release", "instance"] as const;
 
 export const CONNECTION_OPERATION_POLICIES = [
   "deny",
@@ -1190,3 +1280,26 @@ export const SERVER_PREVIEW_CAPTURE_REFUSALS = ["capture_busy", "capture_failed"
 
 /** A project: its rights, kind, audiences and limits (PRJ-1). */
 export * from "./contract-values/project";
+
+/**
+ * What `workflows.capabilities` says of a setting's number: bytes, a count, seconds, minutes,
+ * CPUs, or a duration written as text such as `7d`.
+ */
+export const WORKFLOW_CAPABILITY_UNITS = [
+  "bytes",
+  "count",
+  "seconds",
+  "minutes",
+  "cpus",
+  "duration"
+] as const;
+export type WorkflowCapabilityUnit = (typeof WORKFLOW_CAPABILITY_UNITS)[number];
+
+/**
+ * Whether the instance runs code steps: `available` where it has a sandbox and a command
+ * worker, `no_sandbox` where a code step would fail at once.
+ */
+export const WORKFLOW_CODE_STEP_AVAILABILITY = ["available", "no_sandbox"] as const;
+
+/** How the runner image's package manifest was read at startup (EW-PKG). */
+export const WORKFLOW_PACKAGE_MANIFEST_STATES = ["available", "missing", "invalid"] as const;

@@ -281,7 +281,7 @@ export const conversationOperations = {
     response: json(
       z.union([startConversationRunResponseSchema, queuedConversationRunResponseSchema])
     ),
-    errors: ["NOT_FOUND", "CONFLICT"],
+    errors: ["NOT_FOUND", "CONFLICT", "GUARDRAIL_BLOCKED"],
     rateClass: "write"
   }),
   "conversations.runs.create": defineOperation({
@@ -296,7 +296,7 @@ export const conversationOperations = {
     effect: "changing",
     body: createConversationRunRequestSchema,
     response: json(startConversationRunResponseSchema),
-    errors: ["NOT_FOUND", "CONFLICT"],
+    errors: ["NOT_FOUND", "CONFLICT", "GUARDRAIL_BLOCKED"],
     rateClass: "write"
   }),
   "conversations.runs.observe": defineOperation({

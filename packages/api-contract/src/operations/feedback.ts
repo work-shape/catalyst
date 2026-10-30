@@ -5,7 +5,9 @@ import {
   listFeedbackQuerySchema,
   markFeedbackHandledRequestSchema,
   ownFeedbackSchema,
+  sendAppFeedbackRequestSchema,
   sendFeedbackRequestSchema,
+  sendResultFeedbackRequestSchema,
   updateFeedbackRequestSchema
 } from "../feedback";
 import { defineRegisteredOperation, json, page } from "./define-operation";
@@ -13,11 +15,12 @@ import { defineRegisteredOperation, json, page } from "./define-operation";
 const withdrawnFeedbackSchema = z.object({ withdrawn: z.literal(true) });
 
 /**
- * Written feedback on agent messages, of the module `feedback` (LU-4). Its author sends,
- * changes and withdraws a comment under an answer of a conversation they can read, until a
- * reviewer has marked it handled. A holder of `feedback.review`, on the instance or on the
- * workspace that owns the agent, reads it, marks it handled and stores a machine-written
- * summary on it. Spec: limits-usage-analytics-and-feedback.md, 3.5.
+ * Written feedback, of the module `feedback`. Its author sends, changes and withdraws a comment
+ * under an answer of a conversation they can read, until a reviewer has marked it handled
+ * (LU-4); sends one from inside a published App, and one on the result of a Workflow run that
+ * a notice in their Inbox reports (LU-6). A holder of `feedback.review`, on the instance or on
+ * the workspace that owns the agent, the App or the Workflow, reads it, marks it handled and
+ * stores a machine-written summary on it. Spec: limits-usage-analytics-and-feedback.md, 3.5.
  */
 export const feedbackOperations = {
   "feedback.list_own": defineRegisteredOperation({
@@ -75,6 +78,53 @@ export const feedbackOperations = {
     requires: [],
     effect: "changing",
     response: json(withdrawnFeedbackSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "feedback.send_from_app": defineRegisteredOperation({
+    id: "feedback.send_from_app",
+    method: "POST",
+    path: "/api/v1/app-content-sessions/:pageSessionId/feedback",
+    summary:
+      "Send a written comment on the published App a frame shows to the App's reviewers; the frame names the App and its revision",
+    tag: "Feedback",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: sendAppFeedbackRequestSchema,
+    response: json(ownFeedbackSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "feedback.list_own_on_result": defineRegisteredOperation({
+    id: "feedback.list_own_on_result",
+    method: "GET",
+    path: "/api/v1/approval-requests/:requestId/feedback",
+    summary:
+      "List the caller's own feedback on the Workflow run a notice in their Inbox reports, with its state",
+    tag: "Feedback",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(z.object({ items: z.array(ownFeedbackSchema) })),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "feedback.send_on_result": defineRegisteredOperation({
+    id: "feedback.send_on_result",
+    method: "POST",
+    path: "/api/v1/approval-requests/:requestId/feedback",
+    summary:
+      "Send a written comment on the Workflow run a notice in the caller's Inbox reports to the Workflow's reviewers",
+    tag: "Feedback",
+    auth: "user",
+    scope: "governance:write",
+    requires: [],
+    effect: "changing",
+    body: sendResultFeedbackRequestSchema,
+    response: json(ownFeedbackSchema),
     errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
   }),

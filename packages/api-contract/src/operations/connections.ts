@@ -13,6 +13,7 @@ import {
   CONNECTION_OPERATION_STATUSES,
   CONNECTION_PROVIDER_REVOCATIONS,
   CONNECTION_SECRET_STATES,
+  CONNECTION_TEST_CREDENTIAL_STATES,
   CONNECTOR_TEST_STATUSES,
   operationPagingSchema,
   OPERATION_EFFECTS
@@ -28,6 +29,8 @@ import { defineRegisteredOperation, json, redirect } from "./define-operation";
 
 /** The longest secret a write takes. The Secret Store counts its bytes again. */
 const SECRET_VALUE_MAX_CHARS = 16 * 1024;
+/** The longest name of a test account (`TEST_CREDENTIAL_ACCOUNT_MAX_CHARS` of the core). */
+const TEST_CREDENTIAL_ACCOUNT_MAX_CHARS = 200;
 
 /** How long the description of an operation is at most as these answers carry it. */
 export const CONNECTION_OPERATION_DESCRIPTION_MAX_CHARS = 4_000;
@@ -124,6 +127,28 @@ const connectionOAuthSchema = z.object({
   adminConsentUrl: z.string().url().optional()
 });
 
+/**
+ * The test credential of a shared Connection (ADR-0031): a draft's calls are made with it
+ * instead of the live credential, and never fall back to that. Never its value.
+ */
+const connectionTestCredentialSchema = z.object({
+  /**
+   * `stale`: one is stored that no call can use, since the Connection's address or auth scheme
+   * changed after it was set. A draft's calls are refused until it is set again or removed.
+   */
+  state: z.enum(CONNECTION_TEST_CREDENTIAL_STATES),
+  version: z.number().int().positive().optional(),
+  /** Its own address, where it has one. Without one, the calls go to the Connection's. */
+  endpoint: z.string().optional(),
+  /** The test account as the person who set it named it. */
+  account: z.string().optional(),
+  setAt: timestampSchema.optional(),
+  /** The id of the person who set it. */
+  setBy: z.string().optional(),
+  /** The Connection's type takes an address of the test credential's own. */
+  takesEndpoint: z.boolean()
+});
+
 export const connectionDetailSchema = z.object({
   name: z.string(),
   health: z.enum(CONNECTION_HEALTH_STATES),
@@ -156,7 +181,9 @@ export const connectionDetailSchema = z.object({
   /** The shared sign-in, where one was made for the Connection's address. */
   binding: connectionBindingSchema.optional(),
   /** Only for a Connection whose auth scheme is `oauth`. */
-  oauth: connectionOAuthSchema.optional()
+  oauth: connectionOAuthSchema.optional(),
+  /** Only for a shared Connection that takes a test credential, or where one is stored. */
+  testCredential: connectionTestCredentialSchema.optional()
 });
 
 /**
@@ -389,6 +416,23 @@ const connectionSecretWriteSchema = z.object({
   expectedRevision: z.number().int().positive()
 });
 
+/**
+ * A test credential entered once, as `connectionSecretWriteSchema` enters a secret. `endpoint`
+ * is its own address, which must be on the egress list; left out, its calls go to the
+ * Connection's. `expectedVersion` is the test credential's version the writer saw.
+ */
+const connectionTestCredentialWriteSchema = connectionSecretWriteSchema.extend({
+  endpoint: z.string().url().max(2_048).optional(),
+  account: z.string().trim().min(1).max(TEST_CREDENTIAL_ACCOUNT_MAX_CHARS).optional()
+});
+
+const connectionTestCredentialSetSchema = z.object({
+  state: z.literal("set"),
+  version: z.number().int().positive()
+});
+
+const connectionTestCredentialRemovedSchema = z.object({ state: z.literal("not_set") });
+
 const connectionDiscoveryRequestSchema = z.object({ status: z.literal("queued") });
 
 const personContextSubjectSchema = z.object({
@@ -401,6 +445,50 @@ export const connectionPersonContextSchema = personContextSubjectSchema.extend({
 });
 export type ConnectionPersonContext = z.infer<typeof connectionPersonContextSchema>;
 
+/** What a right on a Connection lets its holder do, in the order of its levels. */
+export const CONNECTION_ACCESS_VERBS = ["read", "use", "write", "delete", "approve"] as const;
+const connectionAccessVerbsSchema = z.array(z.enum(CONNECTION_ACCESS_VERBS));
+
+/**
+ * Who may use one Connection (CONN-WHO-1): the roles that hold a right on it, then each person,
+ * group and service principal that holds one by a row of its own, each with what it may do. A
+ * role's people hold their rights through the role and are not listed again. Every caller who
+ * reads the Connection gets the built-in roles. Custom roles, people and groups come only to a
+ * caller who manages users (`users.manage` with the `user_admin:read` scope), and service
+ * principals only to one who also sees service principals. Whom the caller may not see is
+ * neither named nor counted.
+ */
+export const connectionAccessSchema = z.object({
+  /** The built-in roles first, from `superadmin` down, then, where shown, custom roles by name. */
+  roles: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      builtIn: z.boolean(),
+      verbs: connectionAccessVerbsSchema
+    })
+  ),
+  holders: z.array(
+    z.object({
+      // A role is listed with the roles above.
+      kind: z.enum(GRANT_HOLDER_KINDS).exclude(["role"]),
+      id: z.string(),
+      /** What people read: a person's or an account's label; a group by its id. */
+      title: z.string(),
+      /** A service principal that is switched off: it keeps its rights and can use none. */
+      disabled: z.boolean().optional(),
+      verbs: connectionAccessVerbsSchema
+    })
+  ),
+  /**
+   * Whether the caller is shown custom roles, people and groups. False for a caller who manages
+   * no users: `roles` then holds the built-in roles only and `holders` is empty, whoever holds a
+   * right.
+   */
+  holdersShown: z.boolean()
+});
+
+export type ConnectionAccess = z.infer<typeof connectionAccessSchema>;
 export type ConnectionDetail = z.infer<typeof connectionDetailSchema>;
 export type ConnectionSecretState = z.infer<typeof connectionSecretStateSchema>;
 export type ConnectionDiscoveredTool = z.infer<typeof connectionDiscoveredToolSchema>;
@@ -553,6 +641,21 @@ export const connectionOperations = {
     errors: ["NOT_FOUND"],
     rateClass: "read"
   }),
+  "connections.access": defineRegisteredOperation({
+    id: "connections.access",
+    method: "GET",
+    path: "/api/v1/connections/:name/access",
+    summary:
+      "Read who may use one Connection: the roles with a right on it, then each holder with what it may do",
+    tag: "Connections",
+    auth: "user",
+    scope: "config_assets:read",
+    requires: [],
+    effect: "reading",
+    response: json(connectionAccessSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
   "connections.test": defineRegisteredOperation({
     id: "connections.test",
     method: "POST",
@@ -582,6 +685,39 @@ export const connectionOperations = {
     secret: true,
     body: connectionSecretWriteSchema,
     response: json(connectionSecretStateSchema),
+    errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "connections.set_test_credential": defineRegisteredOperation({
+    id: "connections.set_test_credential",
+    method: "PUT",
+    path: "/api/v1/connections/:name/test-credential",
+    summary:
+      "Set or rotate the test credential of one shared Connection: a draft's calls use it instead of the live credential. The value is never answered",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    // The call carries a secret. The run keeps no answer and the call never waits.
+    secret: true,
+    body: connectionTestCredentialWriteSchema,
+    response: json(connectionTestCredentialSetSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "connections.remove_test_credential": defineRegisteredOperation({
+    id: "connections.remove_test_credential",
+    method: "DELETE",
+    path: "/api/v1/connections/:name/test-credential",
+    summary:
+      "Remove the test credential of one Connection. A draft's changing calls are simulated again",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    response: json(connectionTestCredentialRemovedSchema),
     errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
   }),

@@ -32,6 +32,7 @@ import { systemOperations } from "./system";
 import { userOperations } from "./users";
 import { workflowOperations } from "./workflows";
 import { workflowPrincipalRightsOperations } from "./workflow-principal-rights";
+import { workflowCapabilitiesOperations } from "./workflow-capabilities";
 
 /**
  * The operations of each area, keyed by the file that declares them. The path inventory pins one
@@ -72,6 +73,7 @@ export const operationAreas: Readonly<Record<string, Readonly<Record<string, unk
   system: systemOperations,
   users: userOperations,
   "workflow-principal-rights": workflowPrincipalRightsOperations,
+  "workflow-capabilities": workflowCapabilitiesOperations,
   workflows: workflowOperations
 };
 
@@ -100,6 +102,7 @@ export type ApiOperations = typeof scheduledStartOperations &
   typeof guardrailOperations &
   typeof workflowOperations &
   typeof workflowPrincipalRightsOperations &
+  typeof workflowCapabilitiesOperations &
   typeof dataStoreOperations &
   typeof knowledgeOperations &
   typeof userOperations &
@@ -137,6 +140,7 @@ const allOperations = {
   ...guardrailOperations,
   ...workflowOperations,
   ...workflowPrincipalRightsOperations,
+  ...workflowCapabilitiesOperations,
   ...dataStoreOperations,
   ...knowledgeOperations,
   ...userOperations,
@@ -169,6 +173,7 @@ export * from "./connections";
 export * from "./guardrails";
 export * from "./workflows";
 export * from "./workflow-principal-rights";
+export * from "./workflow-capabilities";
 
 export type ApiOperationName = keyof typeof apiOperations;
 

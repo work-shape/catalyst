@@ -424,6 +424,33 @@ export const configAssetReferencesSchema = z.object({
     .optional()
 });
 
+/**
+ * One package of what this instance's agents can be given, as Studio's "Fähigkeiten" page shows
+ * it (TOOLS-2): what no module owns (`general`), one module, or the instance's own tools (`own`).
+ */
+export const capabilityPackageSchema = z.object({
+  kind: z.enum(["general", "module", "own"]),
+  /** The module, for a package of `kind` module. */
+  module: z.string().optional(),
+  /** False for a module that is off. Only a reader who manages users is told of one. */
+  enabled: z.boolean(),
+  tools: z.array(agentToolReferenceSchema),
+  /** The skills the release ships with the package. */
+  skills: z.array(
+    z.object({
+      name: z.string(),
+      title: z.string(),
+      summary: z.string().optional(),
+      /** A key of the icon registry of the UI library. */
+      icon: z.string().optional()
+    })
+  ),
+  /** The agents the reader may read that hold one of its tools or skills. */
+  agents: z.array(z.object({ name: z.string(), title: z.string() }))
+});
+
+export const capabilitiesSchema = z.object({ packages: z.array(capabilityPackageSchema) });
+
 export const configAssetsOverviewSchema = z.object({
   version: z.number().int().nonnegative(),
   defaultAgentName: z.string().optional(),
@@ -441,6 +468,7 @@ export type ConfigAssetPublication = z.infer<typeof configAssetPublicationSchema
 export type ConfigAssetsOverview = z.infer<typeof configAssetsOverviewSchema>;
 export type ConfigAssetReferences = z.infer<typeof configAssetReferencesSchema>;
 export type AgentToolReference = z.infer<typeof agentToolReferenceSchema>;
+export type CapabilityPackage = z.infer<typeof capabilityPackageSchema>;
 export type ToolGroupName = z.infer<typeof toolGroupSchema>;
 export type AgentAvailability = z.infer<typeof agentAvailabilitySchema>;
 export type CollaborationWorkspaceAgents = z.infer<typeof collaborationWorkspaceAgentsSchema>;

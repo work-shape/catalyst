@@ -15,6 +15,67 @@ const text = z
     message: `Document text exceeds ${KNOWLEDGE_FILE_MAX_BYTES} bytes`
   });
 
+/** How long an origin link may be. */
+export const KNOWLEDGE_ORIGIN_LINK_MAX_CHARS = 4_000;
+
+/** What an edit did to the origin link of a document: entered or changed it, or cleared it. */
+export const KNOWLEDGE_ORIGIN_LINK_CHANGES = ["set", "cleared"] as const;
+
+/**
+ * Query or fragment parameters that carry a credential: a link holding one would let whoever
+ * reads it reach the original without the source's own sign-in. Compared in lower case. Best
+ * effort: a token in the path, in a hash route or under another name passes, since share links
+ * can't be detected reliably.
+ */
+const CREDENTIAL_PARAMETERS = new Set([
+  "access_token",
+  "id_token",
+  "refresh_token",
+  "token",
+  "auth",
+  "authorization",
+  "apikey",
+  "api_key",
+  "password",
+  "secret",
+  "client_secret",
+  "sig",
+  "signature",
+  "x-amz-signature",
+  "x-amz-credential",
+  "x-amz-security-token",
+  "x-goog-signature",
+  "x-goog-credential"
+]);
+
+/** Whether a parsed web address carries a credential: a user or password, or a token parameter. */
+function carriesCredential(link: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return false;
+  }
+  if (url.username !== "" || url.password !== "") return true;
+  const fragment = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+  return [url.searchParams, new URLSearchParams(fragment)].some((parameters) =>
+    [...parameters.keys()].some((key) => CREDENTIAL_PARAMETERS.has(key.toLowerCase()))
+  );
+}
+
+/**
+ * Where a person opens the original of a document at its source (DS-6b): an `http` or `https`
+ * address and nothing else, never one that carries a credential. The source's own sign-in
+ * decides who reaches the original; a token in the link would decide it in its place.
+ */
+export const knowledgeOriginLinkSchema = z
+  .url({ protocol: /^https?$/u, error: "An origin link is an http or https address" })
+  .max(KNOWLEDGE_ORIGIN_LINK_MAX_CHARS)
+  .refine((link) => !carriesCredential(link), {
+    error:
+      "An origin link names where the original is and carries no sign-in: leave out a user, a password and any token or signature parameter"
+  });
+
 /** Reserved until CONN-DL: the Workflow's account must be allowed to use this Connection. */
 export const knowledgeIngestFetchSchema = z.strictObject({
   connection: id,
@@ -27,10 +88,7 @@ const ingestItemIdentity = z.strictObject({
   version: id,
   name: z.string().min(1).max(1_000),
   path: z.string().startsWith("/").max(4_000).optional(),
-  originLink: z
-    .url({ protocol: /^https?$/u })
-    .max(4_000)
-    .optional(),
+  originLink: knowledgeOriginLinkSchema.optional(),
   metadata: z.record(z.string(), z.json()).optional(),
   text: z.never().optional(),
   fileId: z.never().optional(),
