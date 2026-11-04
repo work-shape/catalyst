@@ -36,6 +36,17 @@ catalyst references --json
 
 The kind is the first word: `agent`, `skill`, `guardrail`, `app`, `workflow`, `data-store` or any other kind `catalyst kinds` lists. Add `--workspace <id>` for the assets one workspace owns, and `--json` for the instance's answer as it came.
 
+## Where data belongs
+
+Decide this before you put data into any asset. A skill folder holds instructions, small fixed reference files and offline calculators: at most 2 MiB a file, 8 MiB and 500 files a skill (`catalyst skill validate` and `put` refuse more). Its scripts run in the instance's sandbox with no network, no secrets and no tools, so never write `curl` or another fetch into a skill script and never put a corpus into a skill folder.
+
+- A larger or changing corpus (statutes, manuals, document collections) is a Knowledge Base: filled by upload, by a synced document source such as Dropbox, or by a Workflow that calls the Knowledge Base's `ingest` operation. Cite with dates.
+- Records people or Apps write are a Data Store.
+- An outside system or anything with a credential is a Connection, used by the agent or a Workflow and never by a skill script. An App reaches it only through a named action.
+- A PDF or file an App makes is generated in the browser with a bundled library and downloaded.
+
+Where the 8 MiB or the network stops you, change the design, not the folder. `catalyst docs configure/where-data-belongs` has the page.
+
 ## Use a skill of the instance here
 
 Only when the person asks to use a skill locally, run `catalyst skill pull <name> .claude/skills/<name>` for Claude Code or `catalyst skill pull <name> .agents/skills/<name>` for Codex. Pulling again refreshes the folder and refuses local edits. Its scripts may assume Catalyst's sandbox, so read them before running them.

@@ -77,7 +77,13 @@ export const platformContextWorkspaceSchema = z.object({
   kind: z.enum(COLLABORATION_WORKSPACE_KINDS),
   /** The caller is a member: a new agent it makes there starts offered there. */
   member: z.boolean(),
-  actions: z.array(z.string())
+  actions: z.array(z.string()),
+  /**
+   * The use level a personal key limited to this workspace can carry: the use rights the
+   * caller may hand on there. An issuance choice for the key screen, as `useActions` of the
+   * context. Absent from instances before it was added.
+   */
+  useActions: z.array(z.string()).optional()
 });
 
 /** Where a caller is and what it can do there: the first read of an outside editor. */
@@ -123,9 +129,10 @@ export const platformContextSchema = z.object({
    */
   useActions: z.array(z.string()),
   /**
-   * The reading, writing and publishing rights a personal key can carry, of the rights the
-   * caller holds somewhere, as `useActions`. The key `catalyst setup` asks for starts with
-   * these and the use level ticked. These are issuance choices, not this credential's rights.
+   * The reading, writing, deleting and publishing rights a personal key can carry, of the
+   * rights the caller holds somewhere, as `useActions`. The key screen offers these and no
+   * others; a connect code's key starts with them and the use level ticked. These are issuance
+   * choices, not this credential's rights.
    */
   authoringActions: z.array(z.string()),
   /**

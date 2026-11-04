@@ -713,18 +713,27 @@ export const revertAssetRequestSchema = z.object({
 });
 
 export const setAssetDefaultRequestSchema = z.object({
-  /** The asset that becomes the instance's default of its kind, or `null` for none. */
+  /**
+   * The asset that becomes the instance's default of its kind, or `null` for none. With
+   * `workspaceId`, the agent new chats start with in that Shared Workspace, or `null` to follow
+   * the instance default there again.
+   */
   name: nameText(z.string().min(1)).nullable(),
   /**
    * The id of the named asset as the caller read it. Given, the call is refused with a
    * conflict where the name is held by another asset by now. Left out, nothing is compared.
    */
-  expectedAssetId: z.string().min(1).optional()
+  expectedAssetId: z.string().min(1).optional(),
+  /**
+   * A Shared Workspace, to set its own default agent instead of the instance's: an instance
+   * admin or the workspace's owner or admin may. The agent must be available there.
+   */
+  workspaceId: workspaceIdSchema
 });
 
 export const setAssetDefaultResponseSchema = z.object({
   /** The version of the instance's whole asset set after the change. */
-  version: z.number().int().positive()
+  version: z.number().int().nonnegative()
 });
 
 export const adoptAssetRepositoryRequestSchema = z.object({

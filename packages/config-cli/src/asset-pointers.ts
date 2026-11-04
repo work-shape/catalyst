@@ -31,17 +31,25 @@ export async function setDefault(
   api: ConfigApi,
   kind: string,
   name: string | null,
-  scope: { workspaceId?: string }
+  scope: { workspaceId?: string },
+  /** A Shared Workspace whose own default this sets, instead of the instance's. */
+  defaultOf?: string
 ) {
+  // A workspace's owner may set its default without the right to read the agent, so the
+  // workspace form compares nothing; the store checks the agent is available there.
   const asset =
-    name === null
+    name === null || defaultOf !== undefined
       ? undefined
       : await api.read((client) => client.assets.get({ params: { kind, name }, query: scope }));
   return api.change(
     (client, idempotencyKey) =>
       client.assets.set_default({
         params: { kind },
-        body: { name, ...(asset === undefined ? {} : { expectedAssetId: asset.id }) },
+        body: {
+          name,
+          ...(asset === undefined ? {} : { expectedAssetId: asset.id }),
+          ...(defaultOf === undefined ? {} : { workspaceId: defaultOf })
+        },
         idempotencyKey
       }),
     "It may have been applied: run 'list' before sending it again."

@@ -55,8 +55,9 @@ export interface ConnectedKey {
  * Starts a connect code under `clientLabel`, prints where to confirm it, waits for the
  * confirmation and saves the key it issues. `openUrl` also opens the address in a browser.
  * With `asksUseLevel` the address asks Settings to start the key with the use level ticked
- * but for `connection.use`, as `catalyst setup` does; the person still chooses. Answers nothing when the code expired
- * unconfirmed. A refusal throws.
+ * but for `connection.use`, as `catalyst setup` does; the person still chooses. Settings since
+ * this release starts every connect code's key so, with every right the person holds; older
+ * instances read the ask. Answers nothing when the code expired unconfirmed. A refusal throws.
  */
 export async function loginByConnectCode(
   options: ConfigCommandOptions,

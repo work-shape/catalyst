@@ -29,6 +29,11 @@ export const collaborationWorkspaceSchema = z.object({
   emoji: z.string().nullable(),
   accentColor: workspaceAccentColorSchema.nullable(),
   personalUserId: z.string().nullable(),
+  /**
+   * The agent new chats start with in this Shared Workspace. Left out, the instance default
+   * is the default here.
+   */
+  defaultAgentName: z.string().optional(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema
 });

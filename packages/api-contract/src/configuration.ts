@@ -279,6 +279,8 @@ export const agentAvailabilitySchema = z.object({
 export const administeredCollaborationWorkspaceSchema = z.object({
   id: z.string(),
   name: z.string(),
+  /** The default agent the workspace names for itself; left out, it follows the instance's. */
+  defaultAgentName: z.string().optional(),
   createdAt: timestampSchema
 });
 
