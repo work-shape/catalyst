@@ -1,6 +1,8 @@
 import {
   APP_ACTION_CALL_STATUSES,
   APP_MODES,
+  HTML_PDF_MAX_HTML_BYTES,
+  htmlPdfOptionsSchema,
   OPERATION_EFFECTS,
   PREVIEW_CAPTURE_MAX_BYTES,
   previewReportSchema,
@@ -278,6 +280,19 @@ export const pendingPreviewCapturesSchema = z
 export const appSessionContextSchema = z.object({
   can: z.record(z.string(), appActionPermissionSchema)
 });
+
+/**
+ * HTML to PDF for the frame (PDF-1): the document, whole and inline, and how its pages are laid
+ * out. The renderer reaches no network, so whatever the document shows it holds itself or as a
+ * `data:` address. The size is checked again in bytes.
+ */
+export const appPdfRenderRequestSchema = z
+  .object({
+    ...pageSessionProof,
+    html: z.string().min(1).max(HTML_PDF_MAX_HTML_BYTES),
+    options: htmlPdfOptionsSchema.optional()
+  })
+  .strict();
 
 export const appActionCallRequestSchema = z
   .object({

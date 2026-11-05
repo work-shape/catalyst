@@ -6,6 +6,7 @@ import {
   appActionCallResultSchema,
   appActionsListQuerySchema,
   appActionsSchema,
+  appPdfRenderRequestSchema,
   appFromPageQuerySchema,
   appFromPageSchema,
   appPreviewCaptureAnswerRequestSchema,
@@ -29,7 +30,7 @@ import {
   updateAppFromPageRequestSchema
 } from "../apps";
 import { appWorkflowRunSchema } from "../app-bridge";
-import { defineOperation, defineRegisteredOperation, json } from "./define-operation";
+import { blob, defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
 /**
  * What a call of a frame declares. It runs through the call path as the operation its action
@@ -323,6 +324,25 @@ export const appOperations = {
     path: "/api/v1/app-content-sessions/:pageSessionId/actions/:name",
     summary: "Call a named action of the Page or App a frame shows, with the caller's rights",
     body: appActionCallRequestSchema
+  }),
+  // HTML to PDF (PDF-1). POST because it carries the token of the frame's address. A
+  // computation in the instance's renderer, not a governance event: no Operation Run, audit
+  // event or log line holds the document or the PDF, so it is no registered operation.
+  "apps.sessions.render_pdf": defineOperation({
+    id: "apps.sessions.render_pdf",
+    method: "POST",
+    path: "/api/v1/app-content-sessions/:pageSessionId/pdf",
+    summary:
+      "Print HTML the Page or App a frame shows hands over to a PDF, in the instance's own renderer without network access",
+    tag: "Apps",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    body: appPdfRenderRequestSchema,
+    response: blob("application/pdf"),
+    errors: ["NOT_FOUND", "VALIDATION_FAILED", "RATE_LIMITED", "TIMEOUT"],
+    rateClass: "write"
   }),
   // POST because it carries the token of the frame's address, which never stands in a path.
   // The run is read through `workflows.get_run` with the caller's rights, which lets whoever

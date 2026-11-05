@@ -43,7 +43,7 @@ Decide this before you put data into any asset. A skill folder holds instruction
 - A larger or changing corpus (statutes, manuals, document collections) is a Knowledge Base: filled by upload, by a synced document source such as Dropbox, or by a Workflow that calls the Knowledge Base's `ingest` operation. Cite with dates.
 - Records people or Apps write are a Data Store.
 - An outside system or anything with a credential is a Connection, used by the agent or a Workflow and never by a skill script. An App reaches it only through a named action.
-- A PDF or file an App makes is generated in the browser with a bundled library and downloaded.
+- An App makes a PDF with the kit's `pdf.download` or `pdf.fromHtml`, never a bundled PDF library. Another file an App makes is generated in the browser with a bundled library and downloaded.
 
 Where the 8 MiB or the network stops you, change the design, not the folder. `catalyst docs configure/where-data-belongs` has the page.
 

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.25",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.25, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.26",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.26, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -1201,6 +1201,86 @@
           }
         },
         "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/app-content-sessions/{pageSessionId}/pdf": {
+      "post": {
+        "operationId": "apps.sessions.render_pdf",
+        "summary": "Print HTML the Page or App a frame shows hands over to a PDF, in the instance's own renderer without network access",
+        "tags": [
+          "Apps"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pageSessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppPdfRenderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The content itself",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "x-catalyst-effect": "reading",
         "x-catalyst-rate-class": "write"
       }
     },
@@ -47608,6 +47688,74 @@
         "enum": [
           "published",
           "draft"
+        ]
+      },
+      "AppPdfRenderRequest": {
+        "type": "object",
+        "properties": {
+          "fileSetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "html": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4194304
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "A3",
+                  "A4",
+                  "A5",
+                  "Letter",
+                  "Legal"
+                ]
+              },
+              "landscape": {
+                "type": "boolean"
+              },
+              "margin": {
+                "type": "object",
+                "properties": {
+                  "top": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "pattern": "^(?:0|\\d{1,3}(?:\\.\\d{1,2})?(?:mm|cm|in|px))$"
+                  },
+                  "right": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "pattern": "^(?:0|\\d{1,3}(?:\\.\\d{1,2})?(?:mm|cm|in|px))$"
+                  },
+                  "bottom": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "pattern": "^(?:0|\\d{1,3}(?:\\.\\d{1,2})?(?:mm|cm|in|px))$"
+                  },
+                  "left": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "pattern": "^(?:0|\\d{1,3}(?:\\.\\d{1,2})?(?:mm|cm|in|px))$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "fileSetId",
+          "token",
+          "html"
         ]
       },
       "AppPreview": {

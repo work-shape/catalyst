@@ -1,6 +1,9 @@
 import {
   APP_ACTION_CALL_STATUSES,
   FEEDBACK_TEXT_MAX_LENGTH,
+  HTML_PDF_MAX_HTML_BYTES,
+  HTML_PDF_MAX_PDF_BYTES,
+  htmlPdfOptionsSchema,
   PREVIEW_CAPTURE_MAX_BYTES,
   PREVIEW_CAPTURE_MAX_HEIGHT,
   PREVIEW_CAPTURE_MAX_WIDTH,
@@ -183,6 +186,16 @@ export const appBridgePageMessageSchema = z.discriminatedUnion("type", [
     session,
     requestId,
     text: z.string().trim().min(1).max(FEEDBACK_TEXT_MAX_LENGTH)
+  }),
+  // HTML the Page wants as a PDF (PDF-1). The interface hands it to the instance's renderer
+  // with the viewer's session; the Page gets the PDF's bytes back and nothing else.
+  z.strictObject({
+    ...mark,
+    type: z.literal("pdf"),
+    session,
+    requestId,
+    html: z.string().min(1).max(HTML_PDF_MAX_HTML_BYTES),
+    options: htmlPdfOptionsSchema.optional()
   })
 ]);
 
@@ -352,6 +365,19 @@ export const appBridgeHostMessageSchema = z.discriminatedUnion("type", [
     session,
     requestId,
     ok: z.boolean(),
+    error: callFailure.optional()
+  }),
+  // The answer to one `pdf`: the PDF's bytes, or why there is none.
+  z.strictObject({
+    ...mark,
+    type: z.literal("pdf_result"),
+    session,
+    requestId,
+    ok: z.boolean(),
+    pdf: z
+      .instanceof(ArrayBuffer)
+      .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= HTML_PDF_MAX_PDF_BYTES)
+      .optional(),
     error: callFailure.optional()
   })
 ]);
