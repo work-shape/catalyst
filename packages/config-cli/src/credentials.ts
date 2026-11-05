@@ -10,7 +10,8 @@ export interface StoredCredential {
   name: string;
   /** What the key may do, as it was issued. Left out by a CLI before `catalyst setup`. */
   scopes?: string[];
-  expiresAt: string;
+  /** Absent for a key that never expires. */
+  expiresAt?: string;
   savedAt: string;
 }
 
@@ -118,8 +119,7 @@ function isCredentialFile(value: unknown): value is CredentialFile {
       typeof entry.keyId === "string" &&
       "name" in entry &&
       typeof entry.name === "string" &&
-      "expiresAt" in entry &&
-      typeof entry.expiresAt === "string" &&
+      (!("expiresAt" in entry) || typeof entry.expiresAt === "string") &&
       "savedAt" in entry &&
       typeof entry.savedAt === "string"
   );

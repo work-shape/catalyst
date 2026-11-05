@@ -19,7 +19,8 @@ export const personalApiKeySchema = z.object({
   keyPrefix: z.string(),
   scopes: z.array(personalApiKeyScopeSchema),
   createdAt: timestampSchema,
-  expiresAt: timestampSchema,
+  /** Absent for a key that never expires; it acts until it is revoked. */
+  expiresAt: timestampSchema.optional(),
   revokedAt: timestampSchema.optional(),
   lastUsedAt: timestampSchema.optional()
 });
@@ -27,8 +28,8 @@ export const personalApiKeySchema = z.object({
 const keyFieldsSchema = z.object({
   name: z.string().trim().min(1).max(100),
   scopes: z.array(personalApiKeyScopeSchema).min(1).max(64),
-  /** At most a year ahead. */
-  expiresAt: timestampSchema
+  /** At most a year ahead, or `null` for a key that never expires and acts until revoked. */
+  expiresAt: timestampSchema.nullable()
 });
 
 export const createPersonalApiKeyRequestSchema = keyFieldsSchema;

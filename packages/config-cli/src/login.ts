@@ -30,7 +30,7 @@ export async function loginCommand(options: ConfigCommandOptions): Promise<numbe
       options,
       [
         `Logged in to ${credentialOrigin(url)} with the key '${key.name}' (${key.keyPrefix}…).`,
-        `It may: ${key.scopes.join(", ")}, as far as your rights reach, until ${formatTime(key.expiresAt)}.`,
+        `It may: ${key.scopes.join(", ")}, as far as your rights reach, until ${keyEnd(key.expiresAt)}.`,
         `Saved in ${key.path}. See and revoke it at ${apiKeysAddress(url)}.`
       ].join("\n")
     );
@@ -46,7 +46,8 @@ export interface ConnectedKey {
   name: string;
   keyPrefix: string;
   scopes: string[];
-  expiresAt: string;
+  /** Absent for a key that never expires. */
+  expiresAt?: string;
   /** The credential file it was saved in. */
   path: string;
 }
@@ -95,14 +96,14 @@ export async function loginByConnectCode(
       keyId: answer.key.id,
       name: answer.key.name,
       scopes: answer.key.scopes,
-      expiresAt: answer.key.expiresAt,
+      ...expiryOf(answer.key.expiresAt),
       savedAt: new Date().toISOString()
     });
     return {
       name: answer.key.name,
       keyPrefix: answer.key.keyPrefix,
       scopes: answer.key.scopes,
-      expiresAt: answer.key.expiresAt,
+      ...expiryOf(answer.key.expiresAt),
       path
     };
   }
@@ -162,6 +163,15 @@ async function call<Output>(request: () => Promise<Output>): Promise<Output> {
   }
 }
 
-export function formatTime(iso: string): string {
+function formatTime(iso: string): string {
   return new Date(iso).toLocaleString();
+}
+
+/** When a key stops working: its expiry, or its revocation for a key that never expires. */
+export function keyEnd(expiresAt: string | undefined): string {
+  return expiresAt === undefined ? "it is revoked" : formatTime(expiresAt);
+}
+
+function expiryOf(expiresAt: string | undefined): { expiresAt?: string } {
+  return expiresAt === undefined ? {} : { expiresAt };
 }

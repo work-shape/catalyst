@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.27",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.27, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.28",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.28, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -52236,7 +52236,14 @@
             }
           },
           "expiresAt": {
-            "$ref": "#/components/schemas/Timestamp"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -57423,8 +57430,7 @@
           "name",
           "keyPrefix",
           "scopes",
-          "createdAt",
-          "expiresAt"
+          "createdAt"
         ]
       },
       "PersonalApiKeyScope": {

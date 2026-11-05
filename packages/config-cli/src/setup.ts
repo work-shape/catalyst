@@ -12,7 +12,7 @@ import {
 } from "./command-support";
 import { credentialOrigin, readStoredCredential, type StoredCredential } from "./credentials";
 import { type ConfigCliEnv, readConfigCliEnv } from "./env";
-import { apiKeysAddress, formatTime, loginByConnectCode, resolveInstanceUrl } from "./login";
+import { apiKeysAddress, keyEnd, loginByConnectCode, resolveInstanceUrl } from "./login";
 import { openInBrowser } from "./open-browser";
 
 /** The tools `catalyst setup` writes the Catalyst skill for, with where each reads skills. */
@@ -83,7 +83,7 @@ export async function setupCommand(options: SetupOptions): Promise<number> {
     const saved = await workingSavedKey(options, url);
     let keyLine: string;
     if (saved) {
-      keyLine = `Kept the saved key '${saved.name}'${scopesOf(saved.scopes)}, valid until ${formatTime(saved.expiresAt)}.`;
+      keyLine = `Kept the saved key '${saved.name}'${scopesOf(saved.scopes)}, valid until ${keyEnd(saved.expiresAt)}.`;
     } else {
       const key = await loginByConnectCode(
         options,
@@ -101,7 +101,7 @@ export async function setupCommand(options: SetupOptions): Promise<number> {
         );
         return 1;
       }
-      keyLine = `Logged in with the key '${key.name}'${scopesOf(key.scopes)}, valid until ${formatTime(key.expiresAt)}.`;
+      keyLine = `Logged in with the key '${key.name}'${scopesOf(key.scopes)}, valid until ${keyEnd(key.expiresAt)}.`;
     }
 
     const path = catalystSkillPath(options.tool, readConfigCliEnv(options.env));
@@ -198,7 +198,12 @@ async function workingSavedKey(
   url: string
 ): Promise<StoredCredential | undefined> {
   const saved = await readStoredCredential(readConfigCliEnv(options.env), url);
-  if (saved === undefined || Date.parse(saved.expiresAt) <= Date.now()) return undefined;
+  if (
+    saved === undefined ||
+    (saved.expiresAt !== undefined && Date.parse(saved.expiresAt) <= Date.now())
+  ) {
+    return undefined;
+  }
   try {
     const api = await createConfigApi({
       baseUrl: url,
