@@ -30,6 +30,7 @@ import {
   holdsWholeInstance,
   fetchRemoteAsset,
   formatCounts,
+  filedForApproval,
   formatDraftAuthor,
   isRecord,
   listRemoteAssets,
@@ -108,39 +109,24 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   // Read to its last page or not at all: a listing that fails stops the push, so a prune
   // never takes an asset it could not list for one that is gone.
   const listing = await listRemoteAssets(api, workingCopyKinds(manifest));
-  // The server fences a shared skill's draft separately from its live revision. Refuse
-  // locally before sending any writes, including a folder upload in a mixed push.
-  for (const asset of touched.filter((asset) => asset.kind === "skill")) {
-    const remote = listing.get(asset.key);
-    if (
-      remote &&
-      (remote.draft?.revision ?? null) !== (baselineAssets[asset.key]?.draftRevision ?? null)
-    ) {
-      writeError(
-        options,
-        [
-          "The skill draft changed. Read it again before saving",
-          formatPushConflict(
-            [
-              {
-                kind: "skill",
-                name: asset.name,
-                draft: { revision: remote.draft?.revision ?? null },
-                ...(remote.draft
-                  ? {
-                      changedBy: formatDraftAuthor(remote.draft.author),
-                      changedAt: remote.draft.updatedAt
-                    }
-                  : {})
-              }
-            ],
-            false,
-            options
-          )
-        ].join("\n")
-      );
-      return 1;
-    }
+  // A skill's draft from before skills went live on save refuses every write of it until it is
+  // published or discarded (SKILL-LIVE-1). Refuse locally before sending any writes, including a
+  // folder upload in a mixed push.
+  const skillDrafts = touched.flatMap((asset) => {
+    const draft = asset.kind === "skill" ? listing.get(asset.key)?.draft : undefined;
+    return draft ? [{ name: asset.name, draft }] : [];
+  });
+  if (skillDrafts.length > 0) {
+    writeError(
+      options,
+      skillDrafts
+        .map(
+          ({ name, draft }) =>
+            `skill:${name} has an unpublished draft from before skills went live on save. Publish it with 'catalyst skill publish ${name} --revision ${draft.revision}' or discard it on the skill page, then push again.`
+        )
+        .join("\n")
+    );
+    return 1;
   }
   const touchedKeys = new Set(touched.map((asset) => asset.key));
   const localKeys = new Set(assetEntries(local).map((asset) => asset.key));
@@ -229,8 +215,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   const items: SyncBatch["items"] = [
     ...syncTouched.map((asset) => {
       const base = baseOf(asset.key);
-      // An agent that is there, and a team's or the instance's skill, is written as its draft,
-      // against the draft revision last seen (SKILL-DRAFT-1).
+      // An agent that is there is written as its draft, against the draft revision last seen.
       const draftRevision = baselineAssets[asset.key]?.draftRevision;
       return {
         type: "put" as const,
@@ -315,6 +300,8 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   }
   /** The agents and skills this push wrote as drafts, which `--publish` makes live. */
   const drafted: PushedDraft[] = [];
+  /** The skills this push filed for approval: the working copy keeps them as not yet written. */
+  const filed: string[] = [];
   if (items.length > 0 || changesDefault) {
     // The default agent the push is made against, as the revisions are: the one of the last pull.
     const batch: SyncBatch = {
@@ -333,9 +320,15 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     }
     const result = synced;
     const revisions: Record<string, RecordedRevision> = {};
+    const filedInSync = new Set<string>();
     for (const item of result.items) {
       if (item.status !== "applied" || item.type !== "put") continue;
       const key = `${item.kind}:${item.name}`;
+      if (item.approvalRequestId !== undefined) {
+        filedInSync.add(key);
+        filed.push(filedForApproval(key, item.approvalRequestId, item.revision));
+        continue;
+      }
       if (item.draftRevision === undefined) {
         // A new agent is live at its first revision and has no draft; so is every write of a
         // personal skill, and a new skill.
@@ -362,7 +355,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
         });
       }
     }
-    const pushed = bundleOf(syncTouched);
+    const pushed = bundleOf(syncTouched.filter((asset) => !filedInSync.has(asset.key)));
     await recordBaseline(
       workingDir,
       instance.key,
@@ -380,6 +373,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       )
     );
     writeOutput(options, `Pushed ${formatCounts(pushed)}, version ${result.version}.`);
+    for (const line of filed) writeOutput(options, line);
     for (const draft of drafted) {
       writeOutput(
         options,
@@ -400,7 +394,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   let skillsWritten = false;
   for (const asset of fileSkills) {
     const base = baseOf(asset.key);
-    // A team's or the instance's skill is written as its draft (SKILL-DRAFT-1).
+    // A skill is live or files a request, by who pushes it (SKILL-LIVE-1).
     const skillDraftRevision = baselineAssets[asset.key]?.draftRevision;
     try {
       const outcome = await api.change(
@@ -429,6 +423,18 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
           )
         );
         return 1;
+      }
+      if (outcome.output.approvalRequestId !== undefined) {
+        const line = filedForApproval(
+          asset.key,
+          outcome.output.approvalRequestId,
+          outcome.output.revision
+        );
+        filed.push(line);
+        writeOutput(options, line);
+        for (const warning of outcome.output.warnings ?? [])
+          writeOutput(options, `Warning: ${warning.message}`);
+        continue;
       }
       const id = listing.get(asset.key)?.id ?? (await api.getAsset("skill", asset.name))?.id;
       const { draftRevision } = outcome.output;
@@ -473,7 +479,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
         writeOutput(options, `Warning: ${warning.message}`);
     } catch (error) {
       if (!(error instanceof ConfigApiError)) throw error;
-      // A shared skill's draft that moved since the last pull names who moved it.
+      // A skill's draft from before SKILL-LIVE-1 that moved since the last pull names who moved it.
       const draftConflict = readDraftConflict(error);
       const conflicts = draftConflict
         ? [{ ...draftConflict, kind: "skill", name: asset.name }]
@@ -510,17 +516,19 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
     options
   });
-  if (guardrailsWritten !== 0 || !options.publish || drafted.length === 0) {
-    return guardrailsWritten;
-  }
-  return publishDrafts(api, drafted, {
-    workingDir,
-    instanceKey: instance.key,
-    version: baseline.lastPulledVersion,
-    pushed: new Map(syncTouched.map(byKey)),
-    ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
-    options
-  });
+  const finished =
+    guardrailsWritten !== 0 || !options.publish || drafted.length === 0
+      ? guardrailsWritten
+      : await publishDrafts(api, drafted, {
+          workingDir,
+          instanceKey: instance.key,
+          version: baseline.lastPulledVersion,
+          pushed: new Map(syncTouched.map(byKey)),
+          ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
+          options
+        });
+  // What was filed waits for its approval, as a publish that waits does.
+  return finished === 0 && filed.length > 0 ? 3 : finished;
 }
 
 /** An agent or a skill a push wrote as its draft, and the live revision it left alone. */

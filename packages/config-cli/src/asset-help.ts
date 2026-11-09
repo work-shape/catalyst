@@ -55,9 +55,11 @@ publish offers it in its workspace. A workspace's agent made by someone without 
 starts offered nowhere; 'catalyst agent publish <name> --revision 1' publishes it as made,
 without a draft. A service principal's key publishes no agent. 'catalyst agent discard
 <name> --revision <n>' drops the draft.
-A skill of the instance or of a Shared Workspace has one shared draft too: a put or a push
-writes it, 'catalyst skill publish <name> --revision <n>' (or 'push --publish') makes it live,
-and 'catalyst skill discard <name> --revision <n>' drops it. A personal skill is live on save.
+A skill has no draft: a put, a push or a revert is live. A skill of the instance or of a Shared
+Workspace asks for skill.publish on a person's account or key with config_assets:publish;
+without it the write files a request a holder of skill.approve decides in the Inbox, says so
+and exits with 3. 'catalyst skill publish <name> --revision <n>' and 'catalyst skill discard
+<name> --revision <n>' decide a draft from before this rule; until then its writes are refused.
 Exit codes: 0 done, 1 refused or failed, 2 usage, 3 waits for an approval (nothing changed yet).
 `;
 }

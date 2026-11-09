@@ -42,7 +42,13 @@ export function settle<Output>(
   }
   if (session.values.json) writeOutput(session.options, JSON.stringify(outcome.output, null, 2));
   else writeOutput(session.options, lines(outcome.output).join("\n"));
-  return EXIT.done;
+  // A write that files a request made nothing live: it waits, as a held call does.
+  const filed =
+    typeof outcome.output === "object" &&
+    outcome.output !== null &&
+    "approvalRequestId" in outcome.output &&
+    outcome.output.approvalRequestId !== undefined;
+  return filed ? EXIT.pending : EXIT.done;
 }
 
 export function print(session: Session, value: unknown, text: () => string): number {
@@ -82,7 +88,7 @@ export function requireAgentForDraftFence(session: Session, fence: object): void
   }
 }
 
-/** A write over an agent's or a shared skill's draft that moved: the refusal, and who moved it. */
+/** A write over an agent's draft that moved: the refusal, and who moved it. */
 export function explainDraftChanged(
   name: string,
   verb: "put" | "revert",

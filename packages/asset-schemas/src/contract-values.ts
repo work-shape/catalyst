@@ -571,6 +571,9 @@ export type ModelProviderAuthMode = (typeof MODEL_PROVIDER_AUTH_MODES)[number];
 export const CONVERSATION_VISIBILITIES = ["workspace", "private"] as const;
 /** A conversation a person has, or the run thread of a Child Agent Run. */
 export const CONVERSATION_KINDS = ["chat", "run_thread"] as const;
+
+/** The longest title a person or their agent can give a conversation. */
+export const CONVERSATION_TITLE_MAX_CHARS = 120;
 export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
 export type ConversationVisibility = (typeof CONVERSATION_VISIBILITIES)[number];
 

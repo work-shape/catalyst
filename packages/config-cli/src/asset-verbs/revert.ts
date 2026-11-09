@@ -1,3 +1,4 @@
+import { filedForApproval } from "../command-support";
 import { formatWarnings } from "../asset-output";
 import {
   settle,
@@ -14,7 +15,7 @@ import type { Verb } from "./types";
 export const revertVerb: Verb = {
   usage: "revert <name> --to <n> --if-revision <n> [--if-draft-revision <n|none>]",
   summary:
-    "Make an earlier revision the content again (assets.revert). For an agent it becomes the draft",
+    "Make an earlier revision the content again (assets.revert). For an agent it becomes the draft; a shared skill goes live, or files a request without skill.publish",
   named: true,
   options: {
     to: { type: "string" },
@@ -39,10 +40,16 @@ export const revertVerb: Verb = {
         )
         .catch(explainDraftChanged(name, "revert", session.kind.kind));
       return settle(session, outcome, (output) => [
-        output.draftRevision !== undefined &&
-        (session.kind.kind === AGENT_KIND || session.kind.kind === "skill")
-          ? `Wrote the content of revision ${revision} of ${session.kind.kind} '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published.`
-          : `Reverted ${session.kind.kind} '${name}' to the content of revision ${revision}; it is revision ${output.revision} now.`,
+        output.approvalRequestId !== undefined
+          ? filedForApproval(
+              `${session.kind.kind} '${name}'`,
+              output.approvalRequestId,
+              output.revision
+            )
+          : output.draftRevision !== undefined &&
+              (session.kind.kind === AGENT_KIND || session.kind.kind === "skill")
+            ? `Wrote the content of revision ${revision} of ${session.kind.kind} '${name}' as draft revision ${output.draftRevision}; live revision ${output.publishedRevision ?? "-"} is unchanged until it is published.`
+            : `Reverted ${session.kind.kind} '${name}' to the content of revision ${revision}; it is revision ${output.revision} now.`,
         ...formatWarnings(output.warnings)
       ]);
     };

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.29",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.29, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.30",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.30, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -49963,6 +49963,9 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              },
+              "approvalRequestId": {
+                "type": "string"
               }
             },
             "required": [
@@ -50160,6 +50163,9 @@
             "items": {
               "$ref": "#/components/schemas/AssetFileEntry"
             }
+          },
+          "approvalRequestId": {
+            "type": "string"
           },
           "warnings": {
             "type": "array",

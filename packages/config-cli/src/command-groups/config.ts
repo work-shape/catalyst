@@ -8,7 +8,9 @@ const commands = {
   pull: `Sync remote config assets into the local working copy. An agent is pulled
              at its live revision; each pending draft is listed with its author`,
   push: `Merge local config assets into the remote instance. A changed agent that
-             exists is written as its draft: "draft revision n", nothing live yet`,
+             exists is written as its draft: "draft revision n", nothing live yet. A
+             changed skill goes live, or files a request where the key may not publish
+             it, and the exit code is 3`,
   diff: `Show local changes, remote newer assets, and conflicts, each agent against
              its live revision, and name each pending agent draft`,
   validate: `Validate local assets and remote references`,
@@ -60,6 +62,13 @@ such as 'guardrails/*/guardrail.yaml'. Each is a folder with its guardrail.yaml 
 model_judge check, its instruction in check.md. Guardrails are no part of a release: a push
 writes each as its draft with assets.put after the batch, which needs the config_assets:write
 scope. Publishing is a step of its own.
+
+A team's or the instance's skill has no draft. A push of a changed skill writes one new live
+revision, whatever files changed, for a person's key with skill.publish and the
+config_assets:publish scope. Any other key, a release key among them, files a skill_change
+request instead: the push prints the request and that the live revision is unchanged, exits 3,
+and keeps the change in the working copy as not yet written. A push again names the same
+request. After the approval in the Inbox, 'catalyst config pull --only skill:<name>' records it.
 
 An agent has its live revision and at most one draft, which every writer shares. A push of
 a changed agent writes that draft and names the draft revision the last pull or push saw: it

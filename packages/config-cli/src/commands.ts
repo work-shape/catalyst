@@ -140,7 +140,7 @@ export async function pullConfig(options: ConfigCommandOptions): Promise<number>
   const present = pulled.flatMap((asset) => (asset ? [asset] : []));
   const selected = bundleOf(present);
   const listed = new Map(wanted.map(byKey));
-  // An agent, and a skill with a shared draft, is pulled at its live revision, with the draft
+  // An agent, and a skill with a draft from before SKILL-LIVE-1, is pulled at its live revision, with the draft
   // revision the pull saw: the next push names it.
   const revisions = Object.fromEntries(
     present.map((asset) => [

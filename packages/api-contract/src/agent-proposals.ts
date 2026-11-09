@@ -80,9 +80,9 @@ export const agentTryConversationResponseSchema = z.object({
 });
 
 /**
- * The one shared draft of a skill the instance or a Shared Workspace owns (SKILL-DRAFT-1), as
- * `skills.draft.get` answers it to a holder of the skill's write right. Its folder's files come
- * with it where the read asks for them.
+ * A skill's draft from before skills went live on save (SKILL-LIVE-1), as `skills.draft.get`
+ * answers it to a holder of the skill's write right. Its folder's files come with it where the
+ * read asks for them. No write makes a new one.
  */
 export const skillDraftSchema = agentDraftSchema
   .omit({ agent: true, dependencyAvailability: true })

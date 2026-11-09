@@ -1,5 +1,6 @@
 import {
   AGENT_PREVIEW_SOURCES,
+  CONVERSATION_TITLE_MAX_CHARS,
   FOLLOW_UP_MODES,
   FOLLOW_UP_STATUSES,
   TOOL_DECISION_MODES,
@@ -496,7 +497,7 @@ export const conversationDataStoreAddedSchema = z.object({
 });
 
 export const renameConversationRequestSchema = z.object({
-  title: z.string().trim().min(1).max(120)
+  title: z.string().trim().min(1).max(CONVERSATION_TITLE_MAX_CHARS)
 });
 
 /** How a call waits: for its own person's confirmation, or for another person's approval. */

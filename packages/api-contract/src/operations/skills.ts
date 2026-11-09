@@ -7,8 +7,9 @@ import {
 import { defineRegisteredOperation, json } from "./define-operation";
 
 /**
- * The shared draft of a skill the instance or a Shared Workspace owns (SKILL-DRAFT-1), available
- * only to holders of the skill's write right. `assets.publish` makes it live with `skill.publish`.
+ * A skill's draft from before skills went live on save (SKILL-LIVE-1), available only to holders
+ * of the skill's write right. `assets.publish` makes it live with `skill.publish`. No write makes
+ * a new one, so these answer no draft on an instance without one left.
  */
 export const skillOperations = {
   "skills.draft.get": defineRegisteredOperation({

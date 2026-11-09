@@ -152,6 +152,11 @@ export interface RemoteAsset {
 export type AgentDraftSummary = NonNullable<AssetSummary["agentDraft"]>;
 
 /** Who wrote a draft last, in the words a person reads. */
+/** What a write without `skill.publish` did (SKILL-LIVE-1). */
+export function filedForApproval(subject: string, requestId: string, live: number): string {
+  return `${subject}: not live. Filed for approval as request ${requestId}, because this key or account may not publish it; live revision ${live} is unchanged until a holder of skill.approve approves it in the Inbox.`;
+}
+
 export function formatDraftAuthor(author: AgentDraftSummary["author"]): string {
   if (author.release) return "a release push";
   const person =

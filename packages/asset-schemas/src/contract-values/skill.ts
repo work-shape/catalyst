@@ -1,7 +1,7 @@
 export const SKILL_ACTIONS = [
   "skill.read",
   "skill.write",
-  // Makes the shared draft of a team's or the instance's skill live (SKILL-DRAFT-1).
+  // A save of a team's or the instance's skill is live with it; without it, a request (SKILL-LIVE-1).
   "skill.publish",
   "skill.delete",
   "skill.approve"

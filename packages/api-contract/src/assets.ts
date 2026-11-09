@@ -576,6 +576,11 @@ export const assetWriteResponseSchema = z.object({
   /** The file set of the revision and its source files, after a write that carried files. */
   fileSetId: z.string().optional(),
   files: z.array(assetFileEntrySchema).optional(),
+  /**
+   * The change waits for this `skill_change` request: its writer may not make the skill live.
+   * `revision` names the live revision, which stays as it was (SKILL-LIVE-1).
+   */
+  approvalRequestId: z.string().optional(),
   warnings: z.array(assetWarningSchema)
 });
 
@@ -898,7 +903,9 @@ export const assetSyncAppliedItemSchema = z.discriminatedUnion("status", [
     /** The revision this batch gave the asset. */
     revision: revisionNumberSchema,
     draftRevision: revisionNumberSchema.optional(),
-    publishedRevision: revisionNumberSchema.optional()
+    publishedRevision: revisionNumberSchema.optional(),
+    /** The change waits for this request: `revision` names the live one, as it was. */
+    approvalRequestId: z.string().optional()
   }),
   // A delete in a release of an asset that is not there: nothing was written for it.
   z.object({
