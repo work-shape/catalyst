@@ -7,4 +7,4 @@
  * (`packages/docs/src/content/docs/configure/cli/maintainers.md`). The page offers no command
  * while it is undefined, which the check refuses on a committed tree.
  */
-export const PUBLISHED_CLI_VERSION: string | undefined = "0.8.0-rc.30";
+export const PUBLISHED_CLI_VERSION: string | undefined = "0.8.0-rc.31";

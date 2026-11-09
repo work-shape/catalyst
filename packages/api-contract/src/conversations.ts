@@ -127,6 +127,7 @@ const knowledgeCitationSourceSchema = z.object({
   fileId: z.string().min(1),
   fileName: z.string().min(1),
   page: z.number().int().positive().optional(),
+  sheet: z.string().min(1).optional(),
   originLink: z.string().optional()
 });
 

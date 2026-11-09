@@ -191,7 +191,7 @@ const knowledgeStateResponseSchema = z.object({
   embedding: knowledgeEmbeddingStateSchema.optional(),
   /**
    * The formats this instance reads into a Knowledge Base that keeps documents: `txt` and
-   * `markdown`, with document processing also `pdf` and `docx`. Omitted for a structured one.
+   * `markdown`, with document processing also `pdf`, `docx`, `xlsx` and `pptx`. Omitted for a structured one.
    */
   documentFormats: z.array(z.string()).optional(),
   /** The id of the Knowledge Base's asset. */
@@ -239,7 +239,7 @@ const knowledgeListDocumentsResponseSchema = z.object({
       fileId: z.string(),
       fileName: z.string(),
       title: z.string(),
-      /** `txt`, `markdown`, `pdf` or `docx`. */
+      /** `txt`, `markdown`, `pdf`, `docx`, `xlsx` or `pptx`. */
       format: z.string(),
       /** The size of the file in bytes. */
       bytes: z.number().int(),
