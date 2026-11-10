@@ -84,6 +84,24 @@ export function formatAssetList(kind: AssetKind, assets: readonly AssetSummary[]
   );
 }
 
+/**
+ * Where an asset is offered, in words: "every workspace", the selected ones, or every workspace
+ * except the Shared Workspaces named, with or without Personal Workspaces.
+ */
+export function availabilityPhrase(availability: NonNullable<Asset["availability"]>): string {
+  const personal = availability.personalWorkspaces ? ["personal workspaces"] : [];
+  switch (availability.mode) {
+    case "all":
+      return "every workspace";
+    case "all_except":
+      return `every ${availability.personalWorkspaces ? "" : "shared "}workspace except ${list(
+        availability.collaborationWorkspaceIds
+      )}`;
+    case "selected":
+      return list([...personal, ...availability.collaborationWorkspaceIds]);
+  }
+}
+
 export function formatAsset(asset: Asset): string {
   const facts: Array<[string, string | undefined]> = [
     ["kind", asset.kind],
@@ -95,16 +113,7 @@ export function formatAsset(asset: Asset): string {
     ["content of revision", asset.contentRevision?.toString()],
     ["scope", scopeLabel(asset.scope)],
     ["default", asset.isDefault ? "yes" : undefined],
-    [
-      "available in",
-      asset.availability &&
-        (asset.availability.mode === "all"
-          ? "every workspace"
-          : list([
-              ...(asset.availability.personalWorkspaces ? ["personal workspaces"] : []),
-              ...asset.availability.collaborationWorkspaceIds
-            ]))
-    ],
+    ["available in", asset.availability && availabilityPhrase(asset.availability)],
     ["updated", asset.updatedAt]
   ];
   const lines = facts.flatMap(([label, value]) =>

@@ -59,11 +59,29 @@ export async function runFollowCommand(
           "ID\tSTATUS\tSUMMARY\tDECISION",
           ...items.map(
             (request) =>
-              `${request.id}\t${request.status}\t${request.summary}\t${request.decision?.decidedByLabel ?? ""}${request.decision?.comment ? `: ${request.decision.comment}` : ""}`
+              `${request.id}\t${request.status}\t${request.summary}\t${request.decision?.decidedByLabel ?? ""}${request.decision?.comment ? `: ${request.decision.comment}` : ""}${request.status === "superseded" ? `\t${supersededLine(request)}` : ""}`
           )
         ].join("\n")
       );
     }
   }
   return EXIT.done;
+}
+
+/**
+ * What a superseded request says in the list: that it can do nothing, so a reader does not
+ * wonder what approving it would change, and why, where the instance says.
+ */
+function supersededLine(request: Pick<ApprovalRequestView, "applyResult">): string {
+  const result = request.applyResult;
+  const error =
+    typeof result === "object" && result !== null && "error" in result ? result.error : undefined;
+  const reason =
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+      ? ` ${error.message}`
+      : "";
+  return `Settled without a decision: it can do nothing, nothing of it ran or will run.${reason}`;
 }

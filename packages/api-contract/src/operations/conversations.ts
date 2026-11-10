@@ -2,6 +2,10 @@ import { listQuerySchema } from "../shared";
 import { z } from "zod";
 import {
   addConversationDataStoreRequestSchema,
+  addConversationPersonRequestSchema,
+  conversationPersonRemovedSchema,
+  conversationShareCandidatesSchema,
+  shareCandidatesQuerySchema,
   conversationDataStoreAddedSchema,
   queuedConversationRunResponseSchema,
   conversationFollowUpSchema,
@@ -130,6 +134,55 @@ export const conversationOperations = {
     response: json(conversationSchema),
     errors: ["NOT_FOUND", "CONFLICT"],
     rateClass: "write"
+  }),
+  // Who reads a private chat beside its creator (CHAT-SHARE). Only the person in their own
+  // session changes it: never an agent tool, and a key or a delegated actor is refused by the
+  // service whatever its scopes.
+  "conversations.add_person": defineOperation({
+    id: "conversations.add_person",
+    method: "POST",
+    path: "/api/v1/conversations/:conversationId/people",
+    summary:
+      "Name a member of the chat's workspace to read and write in the creator's private chat",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    body: addConversationPersonRequestSchema,
+    response: json(conversationSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "conversations.remove_person": defineOperation({
+    id: "conversations.remove_person",
+    method: "DELETE",
+    path: "/api/v1/conversations/:conversationId/people/:userId",
+    summary:
+      "Take a named person off a private chat: its creator removes anyone, a named person leaves",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    effect: "changing",
+    response: json(conversationPersonRemovedSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "conversations.share_candidates": defineOperation({
+    id: "conversations.share_candidates",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/share-candidates",
+    summary: "The members of the chat's workspace its creator may name, preselected or searched",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: shareCandidatesQuerySchema,
+    response: json(conversationShareCandidatesSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN"],
+    rateClass: "read"
   }),
   "conversations.thread.get": defineOperation({
     id: "conversations.thread.get",

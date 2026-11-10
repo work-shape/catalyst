@@ -4,14 +4,23 @@ import { RELEASE_VERSION } from "@work-shape/catalyst-api-contract";
 import { commandGroups } from "./command-groups";
 import { assetsGroup } from "./command-groups/assets";
 import type { CliRuntimeOptions } from "./cli-runtime";
+import { readConfigCliEnv } from "./env";
+import { enableSelfUpdate } from "./self-update";
+import { refreshWrittenSkills } from "./setup";
 
 export * from "./api";
-export { cliCompatibilityError } from "./instance-output";
+export { CliVersionError, cliCompatibilityError, releaseVersionOf } from "./instance-output";
+export {
+  enableSelfUpdate,
+  npmCommand,
+  type SelfUpdateHost,
+  updateToServerVersion
+} from "./self-update";
 export { publishReview, type PublishReview } from "./app-commands";
 export * from "./commands";
 export * from "./diff";
 export * from "./serialization";
-export { renderCatalystSkill } from "./setup";
+export { refreshWrittenSkills, renderCatalystSkill } from "./setup";
 export * from "./working-copy";
 
 export type { CliRuntimeOptions } from "./cli-runtime";
@@ -37,5 +46,14 @@ export async function runCli(argv: string[], runtime: CliRuntimeOptions = {}): P
 const entryPath = process.argv[1];
 // The bin is reached through a node_modules symlink, so compare resolved paths.
 if (entryPath && import.meta.url === pathToFileURL(realpathSync(entryPath)).href) {
+  const env = readConfigCliEnv();
+  if (env.CATALYST_CLI_UPDATED_FROM !== undefined) {
+    // The command run again after this version replaced an older one: skills setup wrote follow.
+    const refreshed = await refreshWrittenSkills(env).catch(() => []);
+    if (refreshed.length > 0) {
+      process.stderr.write(`Updated the Catalyst skill at ${refreshed.join(" and ")}.\n`);
+    }
+  }
+  enableSelfUpdate(process.argv.slice(2));
   process.exitCode = await runCli(process.argv.slice(2));
 }

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.31",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.31, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.32",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.32, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -1953,7 +1953,8 @@
             "schema": {
               "type": "string",
               "enum": [
-                "decided"
+                "decided",
+                "others_own"
               ]
             }
           },
@@ -3816,6 +3817,17 @@
             }
           },
           {
+            "name": "owners",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000,
+              "pattern": "^[^,]+(?:,[^,]+)*$"
+            }
+          },
+          {
             "name": "locale",
             "in": "query",
             "required": false,
@@ -4372,7 +4384,8 @@
               "type": "string",
               "enum": [
                 "all",
-                "selected"
+                "selected",
+                "all_except"
               ]
             }
           },
@@ -8634,7 +8647,8 @@
                         "unauthorized",
                         "network_denied",
                         "unavailable",
-                        "oauth_required"
+                        "oauth_required",
+                        "token_required"
                       ]
                     },
                     "testedAt": {
@@ -9138,12 +9152,83 @@
                                 },
                                 "secret": {
                                   "type": "boolean"
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "enum": [
+                                    "text",
+                                    "number",
+                                    "list"
+                                  ]
+                                },
+                                "default": {
+                                  "type": "string"
+                                },
+                                "advanced": {
+                                  "type": "boolean",
+                                  "const": true
                                 }
                               },
                               "required": [
                                 "label",
                                 "optional",
                                 "secret"
+                              ]
+                            }
+                          },
+                          "sharedAccountNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "en": {
+                                    "type": "string"
+                                  },
+                                  "de": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "operations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "description": {
+                                  "type": "string"
+                                },
+                                "effect": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reading",
+                                    "changing"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "description",
+                                "effect"
+                              ]
+                            }
+                          },
+                          "exposures": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "agent",
+                                "bridge",
+                                "workflow",
+                                "outside"
                               ]
                             }
                           }
@@ -9155,7 +9240,9 @@
                           "documentSource",
                           "authScheme",
                           "settings",
-                          "fields"
+                          "fields",
+                          "operations",
+                          "exposures"
                         ]
                       }
                     },
@@ -12784,6 +12871,162 @@
         "x-catalyst-rate-class": "read"
       }
     },
+    "/api/v1/conversations/{conversationId}/people": {
+      "post": {
+        "operationId": "conversations.add_person",
+        "summary": "Name a member of the chat's workspace to read and write in the creator's private chat",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddConversationPersonRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/conversations/{conversationId}/people/{userId}": {
+      "delete": {
+        "operationId": "conversations.remove_person",
+        "summary": "Take a named person off a private chat: its creator removes anyone, a named person leaves",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationPersonRemoved"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
     "/api/v1/conversations/{conversationId}/preview-captures": {
       "get": {
         "operationId": "apps.preview_captures.pending",
@@ -13754,6 +13997,93 @@
         },
         "x-catalyst-effect": "changing",
         "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/conversations/{conversationId}/share-candidates": {
+      "get": {
+        "operationId": "conversations.share_candidates",
+        "summary": "The members of the chat's workspace its creator may name, preselected or searched",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationShareCandidates"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
       }
     },
     "/api/v1/conversations/{conversationId}/structured-data/{structuredDataResourceId}": {
@@ -28362,6 +28692,12 @@
                           },
                           "originLink": {
                             "type": "string"
+                          },
+                          "statedAt": {
+                            "type": "string"
+                          },
+                          "retrievedAt": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -28837,6 +29173,46 @@
                                   "storeBytes"
                                 ]
                               },
+                              "schedule": {
+                                "type": "object",
+                                "properties": {
+                                  "changes": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "const": "off"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 9007199254740991
+                                      }
+                                    ]
+                                  },
+                                  "full": {
+                                    "type": "string"
+                                  },
+                                  "defaultChanges": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "defaultFull": {
+                                    "type": "string"
+                                  },
+                                  "minChanges": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "changes",
+                                  "full",
+                                  "defaultChanges",
+                                  "defaultFull"
+                                ]
+                              },
                               "lastChangeAt": {
                                 "type": "string"
                               },
@@ -29209,6 +29585,46 @@
                                   "bytes",
                                   "stop",
                                   "storeBytes"
+                                ]
+                              },
+                              "schedule": {
+                                "type": "object",
+                                "properties": {
+                                  "changes": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "const": "off"
+                                      },
+                                      {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 9007199254740991
+                                      }
+                                    ]
+                                  },
+                                  "full": {
+                                    "type": "string"
+                                  },
+                                  "defaultChanges": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "defaultFull": {
+                                    "type": "string"
+                                  },
+                                  "minChanges": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "changes",
+                                  "full",
+                                  "defaultChanges",
+                                  "defaultFull"
                                 ]
                               },
                               "lastChangeAt": {
@@ -44973,6 +45389,18 @@
           "toolCallId"
         ]
       },
+      "AddConversationPersonRequest": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
       "AddFromProjectRequest": {
         "type": "object",
         "properties": {
@@ -45234,7 +45662,8 @@
             "type": "string",
             "enum": [
               "all",
-              "selected"
+              "selected",
+              "all_except"
             ]
           },
           "personalWorkspaces": {
@@ -48561,6 +48990,10 @@
           "addresseeUserId": {
             "type": "string"
           },
+          "requesterDecides": {
+            "type": "boolean",
+            "const": true
+          },
           "status": {
             "$ref": "#/components/schemas/ApprovalRequestStatus"
           },
@@ -48719,6 +49152,10 @@
           },
           "addresseeUserId": {
             "type": "string"
+          },
+          "requesterDecides": {
+            "type": "boolean",
+            "const": true
           },
           "status": {
             "$ref": "#/components/schemas/ApprovalRequestStatus"
@@ -50250,6 +50687,12 @@
                   "minLength": 1
                 },
                 "originLink": {
+                  "type": "string"
+                },
+                "statedAt": {
+                  "type": "string"
+                },
+                "retrievedAt": {
                   "type": "string"
                 }
               },
@@ -52331,6 +52774,15 @@
           },
           "projectId": {
             "type": "string"
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationPerson"
+            }
+          },
+          "createdByDisplayLabel": {
+            "type": "string"
           }
         },
         "required": [
@@ -52344,7 +52796,8 @@
           "status",
           "createdAt",
           "updatedAt",
-          "retainedUntil"
+          "retainedUntil",
+          "people"
         ]
       },
       "ConversationCreationTarget": {
@@ -52530,6 +52983,15 @@
           "projectId": {
             "type": "string"
           },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationPerson"
+            }
+          },
+          "createdByDisplayLabel": {
+            "type": "string"
+          },
           "latestMessageAt": {
             "$ref": "#/components/schemas/Timestamp"
           },
@@ -52554,7 +53016,46 @@
           "status",
           "createdAt",
           "updatedAt",
-          "retainedUntil"
+          "retainedUntil",
+          "people"
+        ]
+      },
+      "ConversationPerson": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "displayLabel": {
+            "type": "string"
+          },
+          "addedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "userId",
+          "displayLabel",
+          "addedAt"
+        ]
+      },
+      "ConversationPersonRemoved": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "conversationId",
+          "userId",
+          "removed"
         ]
       },
       "ConversationProjectInstructions": {
@@ -52928,6 +53429,42 @@
           }
         ]
       },
+      "ConversationShareCandidate": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "displayLabel": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "hasAccess": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "userId",
+          "displayLabel",
+          "hasAccess"
+        ]
+      },
+      "ConversationShareCandidates": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationShareCandidate"
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      },
       "ConversationSubject": {
         "type": "object",
         "properties": {
@@ -53004,6 +53541,12 @@
                   "type": "string"
                 },
                 "agentName": {
+                  "type": "string"
+                },
+                "ownerUserId": {
+                  "type": "string"
+                },
+                "ownerDisplayLabel": {
                   "type": "string"
                 }
               },
@@ -57277,6 +57820,11 @@
             "minimum": 0,
             "maximum": 9007199254740991
           },
+          "othersOwn": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "mine": {
             "type": "object",
             "properties": {
@@ -57301,6 +57849,7 @@
           "count",
           "canReview",
           "decided",
+          "othersOwn",
           "mine"
         ]
       },
@@ -60813,7 +61362,8 @@
             "type": "string",
             "enum": [
               "all",
-              "selected"
+              "selected",
+              "all_except"
             ]
           },
           "personalWorkspaces": {

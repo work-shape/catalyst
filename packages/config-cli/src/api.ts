@@ -16,6 +16,7 @@ import {
 } from "@work-shape/catalyst-api-client";
 
 import { CliVersionError, cliCompatibilityError } from "./instance-output";
+import { onCliVersionMismatch, onInstanceAnswer } from "./self-update";
 
 export class ConfigApiError extends Error {
   readonly status: number;
@@ -295,9 +296,10 @@ export function instanceFetch(
       const mismatch = cliCompatibilityError(RELEASE_VERSION, serverVersion);
       if (diagnostics.checkVersion !== false && mismatch) {
         await response.body?.cancel();
-        throw mismatch;
+        throw mismatch instanceof CliVersionError ? await onCliVersionMismatch(mismatch) : mismatch;
       }
     }
+    onInstanceAnswer();
     return response;
   };
 }

@@ -12,7 +12,12 @@ import {
   type InstanceBaseline,
   type WorkingCopyBundle
 } from "./working-copy";
-import { agentPublishRefusalHint, askBeforePublish, waitingPublishLine } from "./publish-question";
+import {
+  OVERTAKEN_LINE,
+  agentPublishRefusalHint,
+  askBeforePublish,
+  waitingPublishLine
+} from "./publish-question";
 import { preflightGuardrails } from "./push-guardrail-preflight";
 import { CANONICAL_FORM_VERSION } from "./serialization";
 import {
@@ -612,7 +617,10 @@ async function publishDrafts(
       return 1;
     }
     if (outcome.status === "pending_approval") {
-      writeError(options, `${draft.key}: ${waitingPublishLine(outcome.run)}`);
+      writeError(
+        options,
+        `${draft.key}: ${waitingPublishLine(outcome.run, undefined, OVERTAKEN_LINE)}`
+      );
       unpublished(index + 1);
       return 3;
     }

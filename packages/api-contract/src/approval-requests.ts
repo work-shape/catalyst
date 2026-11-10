@@ -35,6 +35,11 @@ export const approvalRequestSchema = z.object({
    * Absent on a request the holders of a right decide.
    */
   addresseeUserId: z.string().optional(),
+  /**
+   * The requester held the right that decides it when filing. Pending, it is listed in To
+   * decide for them alone; the other holders of the right find it with `scope=others_own`.
+   */
+  requesterDecides: z.literal(true).optional(),
   status: approvalRequestStatusSchema,
   decision: z
     .object({
@@ -62,10 +67,18 @@ export const approvalRequestViewSchema = approvalRequestSchema.extend({
   canRevert: z.boolean()
 });
 
+/** The lists of `approval_requests.list` beside the plain one. */
+export const APPROVAL_REQUEST_LIST_SCOPES = ["decided", "others_own"] as const;
+export type ApprovalRequestListScope = (typeof APPROVAL_REQUEST_LIST_SCOPES)[number];
+
 export const listApprovalRequestsQuerySchema = z.object({
   status: approvalRequestStatusSchema.optional(),
-  /** `decided`: the requests that are no longer pending and changed in the last 30 days. */
-  scope: z.enum(["decided"]).optional()
+  /**
+   * `decided`: the requests that are no longer pending and changed in the last 30 days.
+   * `others_own`: the pending requests other people filed who may decide them themselves,
+   * which the plain list leaves out.
+   */
+  scope: z.enum(APPROVAL_REQUEST_LIST_SCOPES).optional()
 });
 export const pendingApprovalRequestCountSchema = z.object({
   /** The pending requests the caller can decide. */
@@ -73,6 +86,11 @@ export const pendingApprovalRequestCountSchema = z.object({
   canReview: z.boolean(),
   /** How many requests the list with `scope=decided` holds for the caller. */
   decided: z.number().int().nonnegative(),
+  /**
+   * How many pending requests the list with `scope=others_own` holds: not in `count`, since
+   * their requesters decide them themselves.
+   */
+  othersOwn: z.number().int().nonnegative(),
   /** The requests the caller made: those still pending, and all of them. */
   mine: z.object({
     pending: z.number().int().nonnegative(),

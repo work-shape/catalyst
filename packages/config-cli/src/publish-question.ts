@@ -51,15 +51,42 @@ export async function askBeforePublish(
  * The line of a publish that waits and changed nothing yet: for the caller's own confirmation
  * in their Inbox, after `--yes`, or for an approver.
  */
+/**
+ * What becomes of a waiting publish when another revision goes live first, said with every
+ * waiting publish: it can never overwrite that revision.
+ */
+export const OVERTAKEN_LINE =
+  "If another version goes live before it is decided, this request is settled as superseded: it can do nothing then and never overwrites that version.";
+
+/**
+ * Whether the instance answered a publish with nothing to do: the revision it names is live,
+ * and nothing newer waits beside it. No request was filed.
+ */
+export function isAlreadyLive(error: unknown): boolean {
+  return (
+    error instanceof ConfigApiError &&
+    error.status === 409 &&
+    isRecord(error.details) &&
+    error.details.reason === "already_live"
+  );
+}
+
+/** What the CLI says of a publish with nothing to do. */
+export function alreadyLiveLine(kind: string, name: string, revision: number): string {
+  return `Revision ${revision} of ${kind} '${name}' is already live. Nothing to do: nothing was published and no request was filed.`;
+}
+
 export function waitingPublishLine(
   run: { id: string; status?: string; approvalRequestId?: string },
-  approvalHint?: string
+  approvalHint?: string,
+  /** What the caller adds of this kind of call, such as `OVERTAKEN_LINE` of a publish. */
+  note?: string
 ): string {
   const named = `${run.approvalRequestId === undefined ? "" : `request ${run.approvalRequestId}, `}Operation Run ${run.id}`;
   if (run.status === "pending_confirmation") {
-    return `Waits in your Inbox for your confirmation; nothing has changed yet (${named}). Allow it there to publish, or deny it.`;
+    return `Waits in your Inbox for your confirmation; nothing has changed yet (${named}). Allow it there to publish, or deny it.${note ? ` ${note}` : ""}`;
   }
-  return `Waits for an approval on the instance; nothing has changed yet (${named}).${approvalHint ? ` ${approvalHint}` : ""}`;
+  return `Waits for an approval on the instance; nothing has changed yet (${named}).${approvalHint ? ` ${approvalHint}` : ""}${note ? ` ${note}` : ""}`;
 }
 
 /**

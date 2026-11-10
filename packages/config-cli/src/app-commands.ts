@@ -24,7 +24,7 @@ import {
 import { folderIsEmpty, writeFolderFiles } from "./asset-folder";
 import { formatRefusal, formatWarnings } from "./asset-output";
 import { connectApi, resolveWorkingDir, type ConfigCommandOptions } from "./command-support";
-import { askBeforePublish, waitingPublishLine } from "./publish-question";
+import { OVERTAKEN_LINE, askBeforePublish, waitingPublishLine } from "./publish-question";
 import { readManifestIfPresent, resolveInstance } from "./working-copy";
 
 // Repository kinds share pull, push and status, including their folder baseline and
@@ -490,7 +490,8 @@ async function publish(
       outcome.run,
       values.json,
       options,
-      "If you are an instance approver, you can approve it in the Inbox."
+      "If you are an instance approver, you can approve it in the Inbox.",
+      OVERTAKEN_LINE
     );
   }
   writeOut(
@@ -855,10 +856,11 @@ function pendingApproval(
   run: { id: string; status?: string; approvalRequestId?: string },
   json: boolean,
   options: ConfigCommandOptions,
-  hint?: string
+  hint?: string,
+  note?: string
 ): number {
   if (json) writeOut(options, JSON.stringify({ status: "pending_approval", run }, null, 2));
-  else writeErr(options, waitingPublishLine(run, hint));
+  else writeErr(options, waitingPublishLine(run, hint, note));
   return EXIT.pending;
 }
 

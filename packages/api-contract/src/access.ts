@@ -1,4 +1,5 @@
 import {
+  ASSET_RIGHT_VERBS,
   ACCESS_SOURCES,
   APP_AUDIENCES,
   GRANT_EFFECTS,
@@ -160,7 +161,7 @@ export type RefusalReason = (typeof REFUSAL_REASONS)[number];
 const refusalReasonSchema = z.enum(REFUSAL_REASONS);
 
 /** The verbs a check on one asset answers for, in the order a screen lists them. */
-export const ASSET_CHECK_VERBS = ["read", "use", "write", "delete"] as const;
+export const ASSET_CHECK_VERBS = ASSET_RIGHT_VERBS;
 const assetCheckVerbSchema = z.enum(ASSET_CHECK_VERBS);
 
 /**

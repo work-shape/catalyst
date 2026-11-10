@@ -51,6 +51,13 @@ export const conversationSubjectSchema = z.object({
  */
 export const conversationCreationTargetSchema = z.literal("instance");
 
+/** A member a private chat's creator named, as every reader of the chat sees them. */
+export const conversationPersonSchema = z.object({
+  userId: z.string(),
+  displayLabel: z.string(),
+  addedAt: timestampSchema
+});
+
 export const conversationSchema = z.object({
   id: z.string(),
   clientInstanceId: z.string(),
@@ -69,7 +76,56 @@ export const conversationSchema = z.object({
   /** `instance`: its first saves create agents, skills and guardrails for the instance. */
   creationTarget: conversationCreationTargetSchema.optional(),
   /** The project of its workspace it is in; its readers are the project's audience. */
-  projectId: z.string().optional()
+  projectId: z.string().optional(),
+  /**
+   * The members of its workspace its creator named, who read and write in this private chat
+   * while members (CHAT-SHARE). Empty on every other conversation; a run thread carries its
+   * root's.
+   */
+  people: z.array(conversationPersonSchema),
+  /**
+   * The creator's name, on a chat that names people: its other readers see who started it and
+   * who wrote each turn. Missing on every other conversation.
+   */
+  createdByDisplayLabel: z.string().optional()
+});
+
+/** Names a member of the chat's workspace to read and write in it (CHAT-SHARE). */
+export const addConversationPersonRequestSchema = z.object({ userId: z.string().min(1) }).strict();
+
+/** What a removal or a leave did: false where the person was not named. */
+export const conversationPersonRemovedSchema = z.object({
+  conversationId: z.string(),
+  userId: z.string(),
+  removed: z.boolean()
+});
+
+/** The longest search text of `conversations.share_candidates`, in characters. */
+export const SHARE_CANDIDATES_QUERY_MAX_CHARS = 200;
+/** How many candidates `conversations.share_candidates` answers at most. */
+export const SHARE_CANDIDATES_LIMIT_MAX = 50;
+
+export const shareCandidatesQuerySchema = z.object({
+  /** A prefix of a name, of a word of the name, or of an email, among the people offered. */
+  query: z.string().trim().min(1).max(SHARE_CANDIDATES_QUERY_MAX_CHARS).optional(),
+  limit: z.coerce.number().int().min(1).max(SHARE_CANDIDATES_LIMIT_MAX).default(5)
+});
+
+/**
+ * A member of the chat's workspace its creator knows from it: one they named before in this
+ * workspace, then one who last wrote in a chat of it the creator reads. A search filters these
+ * people only, never the workspace's members. `email` is present only where the query typed
+ * its start; `hasAccess` marks those already named.
+ */
+export const conversationShareCandidateSchema = z.object({
+  userId: z.string(),
+  displayLabel: z.string(),
+  email: z.string().optional(),
+  hasAccess: z.boolean()
+});
+
+export const conversationShareCandidatesSchema = z.object({
+  candidates: z.array(conversationShareCandidateSchema)
 });
 
 export const moveConversationRequestSchema = z.object({
@@ -128,7 +184,11 @@ const knowledgeCitationSourceSchema = z.object({
   fileName: z.string().min(1),
   page: z.number().int().positive().optional(),
   sheet: z.string().min(1).optional(),
-  originLink: z.string().optional()
+  originLink: z.string().optional(),
+  /** The date the cited synced document states of its version, shown on its chip. ISO. */
+  statedAt: z.string().optional(),
+  /** When the platform fetched it, shown on the chip where no date is stated. ISO. */
+  retrievedAt: z.string().optional()
 });
 
 export const messageCitationSchema = z.object({
@@ -1029,7 +1089,24 @@ export const conversationThreadSnapshotSchema = z.object({
    * The agent of each run the conversation held, oldest first, by the message that started the
    * run: where another agent answers from that message on, the history says so (T30).
    */
-  runAgents: z.array(z.object({ inputMessageId: z.string(), agentName: z.string() })).optional(),
+  runAgents: z
+    .array(
+      z.object({
+        inputMessageId: z.string(),
+        agentName: z.string(),
+        /**
+         * The person the run acts for, on a chat that names people or that more than one person
+         * wrote in (CHAT-SHARE-2).
+         */
+        ownerUserId: z.string().optional(),
+        /**
+         * That person's name, on the same chats: their turns stay attributed after they leave
+         * it or are removed. Missing where the account is gone.
+         */
+        ownerDisplayLabel: z.string().optional()
+      })
+    )
+    .optional(),
   /**
    * What the conversation's latest run was asked to use. Absent before the first run; a run that
    * followed the configured defaults leaves both fields out.

@@ -479,6 +479,17 @@ export const listAssetsQuerySchema = z.object({
   text: nameText(z.string().min(1).max(200)).optional(),
   workspaceId: workspaceIdSchema,
   /**
+   * One page across several owners, in place of `workspaceId`: `instance` and workspace ids,
+   * separated by commas. Each asset is listed by the same right as in its owner's own list.
+   */
+  owners: nameText(
+    z
+      .string()
+      .min(1)
+      .max(10_000)
+      .regex(/^[^,]+(?:,[^,]+)*$/u, "owners separated by commas")
+  ).optional(),
+  /**
    * The language of the titles and descriptions, where a kind holds them in several. A
    * language the instance does not offer, or none, answers its default.
    */

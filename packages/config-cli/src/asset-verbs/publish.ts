@@ -1,7 +1,13 @@
 import { workflowPublishReview } from "../workflow-publish-review";
 import { kindNoun } from "../asset-output";
 import { writeOutput } from "../command-support";
-import { agentPublishRefusalHint, askBeforePublish } from "../publish-question";
+import {
+  OVERTAKEN_LINE,
+  agentPublishRefusalHint,
+  alreadyLiveLine,
+  askBeforePublish,
+  isAlreadyLive
+} from "../publish-question";
 import {
   settle,
   revisionNumber,
@@ -14,6 +20,9 @@ import {
 } from "./support";
 import { guardrailDryRunBeforePublish } from "./guardrails";
 import type { Verb } from "./types";
+
+/** The answer of a publish of the live revision with nothing newer beside it. */
+const ALREADY_LIVE: unique symbol = Symbol("already live");
 
 export const publishVerb: Verb = {
   usage: "publish <name> --revision <n> [--yes] [--confirm <blocked>]",
@@ -107,10 +116,22 @@ export const publishVerb: Verb = {
           "It may have been applied: run 'show' before sending it again."
         )
         .catch((error: unknown) => {
+          // Nothing to do is no failure: the revision is live and no request was filed.
+          if (isAlreadyLive(error)) return ALREADY_LIVE;
           const hint = agent ? agentPublishRefusalHint(error) : undefined;
           if (hint === undefined) throw error;
           throw new ExplainedRefusal(error, hint);
         });
+      if (typeof outcome === "symbol") {
+        const line = alreadyLiveLine(session.kind.kind, name, revision);
+        if (session.values.json)
+          writeOutput(
+            session.options,
+            JSON.stringify({ status: "already_live", liveRevision: revision }, null, 2)
+          );
+        else writeOutput(session.options, line);
+        return EXIT.done;
+      }
       return settle(
         session,
         outcome,
@@ -125,7 +146,8 @@ export const publishVerb: Verb = {
             ? `Published draft revision ${output.draftRevision} of ${session.kind.kind} '${name}' as live revision ${output.publishedRevision}${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
             : `Published revision ${output.publishedRevision} of ${session.kind.kind} '${name}'${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
         ],
-        asks ? "If you are an instance approver, you can approve it in the Inbox." : undefined
+        asks ? "If you are an instance approver, you can approve it in the Inbox." : undefined,
+        OVERTAKEN_LINE
       );
     };
   }

@@ -5,6 +5,7 @@ import {
   CONNECTION_BINDING_STATES,
   GRANT_HOLDER_KINDS,
   CONNECTION_EXPOSURES,
+  CONNECTOR_FORM_FIELD_VALUES,
   CONNECTION_CREDENTIAL_MODES,
   CONNECTION_HEALTH_STATES,
   CONNECTION_NAME_MAX_LENGTH,
@@ -314,9 +315,27 @@ export const connectorTypeOffersSchema = z.object({
           help: localizedTextSchema.optional(),
           optional: z.boolean(),
           setting: z.string().optional(),
-          secret: z.boolean()
+          secret: z.boolean(),
+          /** What a setting holds: a whole number or a list of names. Text where left out. */
+          value: z.enum(CONNECTOR_FORM_FIELD_VALUES).optional(),
+          /** What the field starts with. Never for the secret. */
+          default: z.string().optional(),
+          /** The field folds away under "Technical details". */
+          advanced: z.literal(true).optional()
         })
-      )
+      ),
+      /** Whose account everyone reads, before the secret and where the setup asks who may use it. */
+      sharedAccountNote: localizedTextSchema.optional(),
+      /** The type's own operations, approved after Verbinden. Empty for a type without a catalog. */
+      operations: z.array(
+        z.object({
+          name: z.string(),
+          description: z.string(),
+          effect: connectionOperationEffectSchema
+        })
+      ),
+      /** Where an approved operation may be used: only by agents for a type whose results are private. */
+      exposures: z.array(z.enum(CONNECTION_EXPOSURES))
     })
   ),
   /**

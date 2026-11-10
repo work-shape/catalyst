@@ -138,6 +138,31 @@ export async function setupCommand(options: SetupOptions): Promise<number> {
   }
 }
 
+/**
+ * After the CLI updated itself: rewrites every Catalyst skill `catalyst setup` wrote and nobody
+ * changed since with this version's skill, and answers their paths. A skill a person changed,
+ * and anything that is no file, stays as it is.
+ */
+export async function refreshWrittenSkills(env: ConfigCliEnv): Promise<string[]> {
+  const skill = await renderCatalystSkill();
+  const paths = [
+    ...new Set(
+      Object.keys(LOCAL_AGENT_TOOLS)
+        .filter(isLocalAgentTool)
+        .map((tool) => catalystSkillPath(tool, env))
+    )
+  ];
+  const refreshed: string[] = [];
+  for (const path of paths) {
+    const existing = await readSkillFile(path).catch(() => undefined);
+    if (typeof existing === "string" && existing !== skill && writtenBySetup(existing)) {
+      await replaceFile(path, skill);
+      refreshed.push(path);
+    }
+  }
+  return refreshed;
+}
+
 /** What stands at the skill's path when it is no file: a link, a folder or another entry. */
 const NOT_A_FILE = Symbol("not a file");
 

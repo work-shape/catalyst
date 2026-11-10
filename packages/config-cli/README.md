@@ -13,13 +13,13 @@ It needs Node 22 or later. The key is read from `CATALYST_API_KEY`, is sent only
 
 Run `catalyst doctor` to check the address, sign-in, versions and effective key rights. Its four lines contain no keys, tokens, identities or response contents and are safe to share. Pass `--instance <url>` to select an instance explicitly. Use the instance's HTTPS origin, without `/api` or a sign-in path.
 
-Install the CLI of the server's release. When they differ, commands print the exact update command, including prerelease versions, for example:
+The CLI must be the server's release. When the server's first answer to a command names a newer release and you run the command in a terminal, a CLI installed with `npm install --global` installs that version of itself, says so in one line and runs the command again; a Catalyst skill that `catalyst setup` wrote and you did not change is updated with it. It never installs an older version, never reacts to a later answer of the same command, never replaces a checkout `npm link` points at, and never runs in CI (`CI` set), without a terminal, or with `CATALYST_NO_AUTO_UPDATE=1`. There, and when the install fails, commands print the exact update command, including prerelease versions, for example:
 
 ```powershell
 npm install --global @work-shape/catalyst-cli@<server-version>
 catalyst doctor
 ```
 
-Replace `<server-version>` with the version in the diagnostic. Run each line separately; this also works in Windows PowerShell 5.1, which does not support `&&`. For a project-local installation, omit `--global` and run `npx catalyst doctor`. Updating the CLI preserves saved sign-ins. Run `catalyst setup <tool> --instance <url>` again to refresh the installed skill.
+Replace `<server-version>` with the version in the diagnostic. Run each line separately; this also works in Windows PowerShell 5.1, which does not support `&&`. A project-local installation is never updated by the CLI: the diagnostic names the project's folder and its install command (npm, pnpm or yarn, exact version), or `pnpm add --global` for pnpm's global install; run it there, then `npx catalyst doctor`. Updating the CLI preserves saved sign-ins. After a manual update, run `catalyst setup <tool> --instance <url>` again to refresh the installed skill.
 
 MIT licence.

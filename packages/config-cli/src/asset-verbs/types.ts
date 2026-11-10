@@ -31,6 +31,7 @@ export interface Values {
   published: boolean;
   help: boolean;
   "available-in"?: string[];
+  except?: string[];
   tool?: string[];
 }
 export type OptionName = keyof Values;

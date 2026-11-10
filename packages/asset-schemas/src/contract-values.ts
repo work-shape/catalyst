@@ -191,6 +191,12 @@ export const GUARDRAIL_NAME_MAX_LENGTH = 64;
 export const CONNECTION_EXPOSURES = ["agent", "bridge", "workflow", "outside"] as const;
 export type ConnectionExposure = (typeof CONNECTION_EXPOSURES)[number];
 
+/**
+ * What a setting field of a Connector type's form holds: text, a whole number such as a port,
+ * or a list of names such as folders.
+ */
+export const CONNECTOR_FORM_FIELD_VALUES = ["text", "number", "list"] as const;
+
 /** The health of a Connection as its page and its list show it. */
 export const CONNECTION_HEALTH_STATES = [
   "unknown",
@@ -222,6 +228,9 @@ export type GrantHolderKind = (typeof GRANT_HOLDER_KINDS)[number];
 
 export const GRANT_SCOPE_KINDS = ["instance", "workspace", "asset"] as const;
 export type GrantScopeKind = (typeof GRANT_SCOPE_KINDS)[number];
+
+/** The verbs of a right on one asset that a screen and an owner-bound asset know: see to remove. */
+export const ASSET_RIGHT_VERBS = ["read", "use", "write", "delete"] as const;
 
 /** Where a role's grant lies: the whole instance, one workspace or one asset. */
 export const ROLE_GRANT_SCOPE_KINDS = [
@@ -376,7 +385,9 @@ export const OPERATION_DENIAL_REASONS = [
   "holder_inactive",
   "holder_not_administrable",
   "user_only",
-  "outside_key_scope"
+  "outside_key_scope",
+  // An owner-bound right of a person's own MCP server, and the caller is not its owner (PMCP).
+  "not_owner"
 ] as const;
 export type OperationDenialReason = (typeof OPERATION_DENIAL_REASONS)[number];
 
@@ -437,7 +448,12 @@ export type ConfigAssetKind = (typeof CONFIG_ASSET_KINDS)[number];
 export const CONFIG_ASSET_CHANGE_OPERATIONS = ["create", "update", "delete", "revert"] as const;
 export type ConfigAssetChangeOperation = (typeof CONFIG_ASSET_CHANGE_OPERATIONS)[number];
 
-export const AGENT_AVAILABILITY_MODES = ["all", "selected"] as const;
+/**
+ * Where an asset is offered: every workspace, the selected ones, or every workspace except the
+ * selected Shared Workspaces, those made later included. Personal Workspaces follow their own
+ * switch with `selected` and `all_except`; no Personal Workspace is excluded one by one.
+ */
+export const AGENT_AVAILABILITY_MODES = ["all", "selected", "all_except"] as const;
 export type AgentAvailabilityMode = (typeof AGENT_AVAILABILITY_MODES)[number];
 
 /**
@@ -738,7 +754,12 @@ export const CONNECTOR_TEST_STATUSES = [
   "network_denied",
   "unavailable",
   /** The server asks for an OAuth sign-in, or the Connection signs in and nobody has. */
-  "oauth_required"
+  "oauth_required",
+  /**
+   * A person's own server refuses a request without a credential and describes no sign-in:
+   * it takes a token (PMCP).
+   */
+  "token_required"
 ] as const;
 export type ConnectorTestStatus = (typeof CONNECTOR_TEST_STATUSES)[number];
 
@@ -1266,6 +1287,23 @@ export type WorkflowDatasetDownloadFormat = (typeof WORKFLOW_DATASET_DOWNLOAD_FO
 
 /** Instance resources whose use may be inherited through workspace availability. */
 export const WORKSPACE_USE_ASSET_KINDS = ["knowledge_base", "connection"] as const;
+
+/**
+ * The kinds of right, the part of an action before its dot, of the asset kinds a workspace can
+ * own: those whose registered `owners` include `workspace`. A form page holds an App's rights,
+ * so `app` stands for it too. The workspace bundles expand their verbs on these alone, so a kind
+ * no workspace can own, such as a Connection, is in neither bundle (PMCP-1). A kind a later
+ * release lets a workspace own is added here, and a test holds this list to the registry.
+ */
+export const WORKSPACE_OWNED_RIGHT_KINDS = [
+  "agent",
+  "skill",
+  "app",
+  "workflow",
+  "data_store",
+  "knowledge_base",
+  "guardrail"
+] as const;
 
 /** Published assets that consume Connections or stored data. Agents hold tools separately. */
 export const PUBLISHED_DATA_CONSUMER_KINDS = ["app", "workflow", "knowledge_base"] as const;

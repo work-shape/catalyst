@@ -28,10 +28,11 @@ export function settle<Output>(
   session: Session,
   outcome: OperationOutcome<Output, { id: string; status?: string; approvalRequestId?: string }>,
   lines: (output: Output) => string[],
-  approvalHint?: string
+  approvalHint?: string,
+  waitingNote?: string
 ): number {
   if (outcome.status === "pending_approval") {
-    const text = waitingPublishLine(outcome.run, approvalHint);
+    const text = waitingPublishLine(outcome.run, approvalHint, waitingNote);
     if (session.values.json)
       writeOutput(
         session.options,

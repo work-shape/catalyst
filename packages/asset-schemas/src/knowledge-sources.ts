@@ -148,6 +148,21 @@ const sourceStatusSchema = z.strictObject({
   last: knowledgeSyncResultSchema.optional(),
   /** "Wartet auf Bestätigung": the running first pass stopped at 10,000 items. */
   confirmation: knowledgeFirstPassConfirmationSchema.optional(),
+  /**
+   * When a connector source syncs by itself (SRC-SYNC), as it applies: its `changes` poll in
+   * minutes or `off`, its full pass as a cron expression in the instance's time zone or `off`,
+   * and what its connector type gives a source that sets none: the poll, the full pass, and the
+   * shortest poll the type allows, where it has one.
+   */
+  schedule: z
+    .strictObject({
+      changes: z.union([z.literal("off"), z.number().int().min(1)]),
+      full: z.string(),
+      defaultChanges: z.number().int().min(1),
+      defaultFull: z.string(),
+      minChanges: z.number().int().min(1).optional()
+    })
+    .optional(),
   /** "Letzte Änderung verarbeitet". */
   lastChangeAt: z.string().optional(),
   /** "Älteste offene Änderung". */

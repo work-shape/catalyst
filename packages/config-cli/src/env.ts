@@ -9,8 +9,19 @@ export interface ConfigCliEnv {
   readonly HOME?: string | undefined;
   /** Claude Code's own folder in place of `~/.claude`, where `catalyst setup` writes its skill. */
   readonly CLAUDE_CONFIG_DIR?: string | undefined;
+  /** Set to anything but `0` or `false`, the CLI never installs another version of itself. */
+  readonly CATALYST_NO_AUTO_UPDATE?: string | undefined;
+  /** Set by the CLI on the command it runs again after updating itself: the old version. */
+  readonly CATALYST_CLI_UPDATED_FROM?: string | undefined;
+  /** Set by CI services; there the CLI never updates itself. */
+  readonly CI?: string | undefined;
 }
 
 export function readConfigCliEnv(env?: ConfigCliEnv): ConfigCliEnv {
   return env ?? process.env;
+}
+
+/** This process's environment and the version the command run again was updated from. */
+export function environmentUpdatedFrom(version: string): NodeJS.ProcessEnv {
+  return { ...process.env, CATALYST_CLI_UPDATED_FROM: version };
 }
