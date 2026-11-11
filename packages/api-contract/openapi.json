@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.32",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.32, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.33",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.33, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -10205,6 +10205,105 @@
         "x-catalyst-rate-class": "write"
       }
     },
+    "/api/v1/conversations/shared-from-outside": {
+      "get": {
+        "operationId": "conversations.shared_from_outside.list",
+        "summary": "List the chats shared with the caller from workspaces they are no member of",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SharedFromOutsideListItem"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/conversations/{conversationId}": {
       "delete": {
         "operationId": "conversations.delete",
@@ -13419,6 +13518,80 @@
         "x-catalyst-rate-class": "read"
       }
     },
+    "/api/v1/conversations/{conversationId}/reader-offer": {
+      "get": {
+        "operationId": "conversations.reader_offer.get",
+        "summary": "What the caller is offered in a chat they read: its workspace, and their agents",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "conversation:read"
+            ]
+          },
+          {
+            "sessionToken": [
+              "conversation:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReaderOffer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "reading",
+        "x-catalyst-rate-class": "read"
+      }
+    },
     "/api/v1/conversations/{conversationId}/resources": {
       "get": {
         "operationId": "conversations.resources.list",
@@ -14002,7 +14175,7 @@
     "/api/v1/conversations/{conversationId}/share-candidates": {
       "get": {
         "operationId": "conversations.share_candidates",
-        "summary": "The members of the chat's workspace its creator may name, preselected or searched",
+        "summary": "The people of the instance the chat's creator may name, preselected or searched",
         "tags": [
           "Conversations"
         ],
@@ -31374,6 +31547,27 @@
                               "part",
                               "version"
                             ]
+                          },
+                          "ownServer": {
+                            "type": "object",
+                            "properties": {
+                              "host": {
+                                "type": "string"
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "tools": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "host",
+                              "enabled",
+                              "tools"
+                            ]
                           }
                         },
                         "required": [
@@ -31382,6 +31576,17 @@
                           "title"
                         ]
                       }
+                    },
+                    "ownServers": {
+                      "type": "object",
+                      "properties": {
+                        "mayAdd": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mayAdd"
+                      ]
                     }
                   },
                   "required": [
@@ -53031,6 +53236,10 @@
           },
           "addedAt": {
             "$ref": "#/components/schemas/Timestamp"
+          },
+          "deactivated": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -53083,6 +53292,217 @@
         },
         "required": [
           "changed"
+        ]
+      },
+      "ConversationReaderOffer": {
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "outside": {
+            "type": "boolean"
+          },
+          "defaultAgentName": {
+            "type": "string"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "defaultModelBindingId": {
+                  "type": "string"
+                },
+                "selectableModels": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "bindingId": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "compactThresholdTokens": {
+                        "type": "number"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "vendor": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "$ref": "#/components/schemas/ModelRegion"
+                      },
+                      "personalDataBlocked": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "usageTier": {
+                        "$ref": "#/components/schemas/ModelUsageTier"
+                      },
+                      "reasoningEffort": {
+                        "$ref": "#/components/schemas/ReasoningEffort"
+                      },
+                      "selectableReasoningEfforts": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/ReasoningEffort"
+                        }
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "selectableReasoningEfforts"
+                    ]
+                  }
+                },
+                "compactThresholdTokens": {
+                  "type": "number"
+                },
+                "buildsAssets": {
+                  "type": "boolean"
+                },
+                "welcomeMessage": {
+                  "type": "string"
+                },
+                "welcomeSubtitle": {
+                  "type": "string"
+                },
+                "initialPrompts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "prompt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "prompt"
+                    ]
+                  }
+                },
+                "starters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "skillName": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "hint": {
+                        "type": "string"
+                      },
+                      "prompt": {
+                        "type": "string"
+                      },
+                      "icon": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "skillName",
+                      "title",
+                      "prompt"
+                    ]
+                  }
+                },
+                "connections": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "service": {
+                        "type": "string"
+                      },
+                      "connectorType": {
+                        "type": "string"
+                      },
+                      "tools": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "toolName": {
+                              "type": "string"
+                            },
+                            "effect": {
+                              "type": "string",
+                              "enum": [
+                                "reading",
+                                "changing"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "toolName",
+                            "effect"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "title",
+                      "tools"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "displayName",
+                "selectableModels",
+                "initialPrompts"
+              ]
+            }
+          }
+        },
+        "required": [
+          "workspace",
+          "outside",
+          "agents"
         ]
       },
       "ConversationResourceListItem": {
@@ -53443,12 +53863,16 @@
           },
           "hasAccess": {
             "type": "boolean"
+          },
+          "member": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "displayLabel",
-          "hasAccess"
+          "hasAccess",
+          "member"
         ]
       },
       "ConversationShareCandidates": {
@@ -61601,6 +62025,95 @@
         "required": [
           "level",
           "limits"
+        ]
+      },
+      "SharedFromOutsideListItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientInstanceId": {
+            "type": "string"
+          },
+          "collaborationWorkspaceId": {
+            "type": "string"
+          },
+          "createdByUserId": {
+            "type": "string"
+          },
+          "createdByExternalUserId": {
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/ConversationVisibility"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "retainedUntil": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "deletedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ConversationSubject"
+          },
+          "creationTarget": {
+            "$ref": "#/components/schemas/ConversationCreationTarget"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationPerson"
+            }
+          },
+          "createdByDisplayLabel": {
+            "type": "string"
+          },
+          "latestMessageAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "activeRun": {
+            "$ref": "#/components/schemas/ActiveRunSummary"
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "lastViewedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "workspaceName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "clientInstanceId",
+          "collaborationWorkspaceId",
+          "createdByUserId",
+          "createdByExternalUserId",
+          "visibility",
+          "title",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "retainedUntil",
+          "people",
+          "workspaceName"
         ]
       },
       "SkillDraft": {

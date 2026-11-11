@@ -53,6 +53,12 @@ export interface AgentConfig {
   maxSteps?: number;
   toolNames: string[];
   /**
+   * Whether a run its person starts in their own private chat is offered the tools of the MCP
+   * servers that person added for themselves, in the group "Deine MCP-Server" (PMCP-4). Unset
+   * is on; `false` keeps outside tools away from an agent whose instructions must not meet them.
+   */
+  ownServers?: boolean;
+  /**
    * The other agents this agent may start as subagents with `run_agent`, besides itself. Each
    * is started only where the person may use it in the conversation's workspace.
    */

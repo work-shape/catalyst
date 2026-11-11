@@ -311,6 +311,11 @@ export const agentConfigSchema = z.object({
   maxSteps: z.number().int().positive().optional(),
   toolNames: z.array(z.string().min(1)).default([]),
   /**
+   * Whether a run its person starts in their own private chat is offered the tools of the MCP
+   * servers that person added for themselves (PMCP-4). Unset is on.
+   */
+  ownServers: z.boolean().optional(),
+  /**
    * The agents this agent may start as subagents through `run_agent`, beside itself. Only an
    * agent whose `toolNames` lists `run_agent` starts any.
    */

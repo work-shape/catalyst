@@ -539,9 +539,26 @@ export const personalConnectionsSchema = z.object({
       service: z.string().optional(),
       catalogue: z
         .object({ entry: z.string(), part: z.enum(CATALOGUE_PARTS), version: z.number().int() })
+        .optional(),
+      /**
+       * Only on an MCP server the caller added for themselves (PMCP), which is listed to its
+       * owner alone, also while it is switched off: its host, whether it is on, and how many
+       * tools its owner accepted.
+       */
+      ownServer: z
+        .object({
+          host: z.string(),
+          enabled: z.boolean(),
+          tools: z.number().int().nonnegative()
+        })
         .optional()
     })
-  )
+  ),
+  /**
+   * Whether the caller may add an MCP server for themselves: the operator's switch is on, they
+   * hold `connection.add_own`, and they are signed in to the instance in a first-party session.
+   */
+  ownServers: z.object({ mayAdd: z.boolean() }).optional()
 });
 export const connectionPeopleSchema = z.object({
   people: z.array(

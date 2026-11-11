@@ -5,6 +5,7 @@ import {
   addConversationPersonRequestSchema,
   conversationPersonRemovedSchema,
   conversationShareCandidatesSchema,
+  conversationReaderOfferSchema,
   shareCandidatesQuerySchema,
   conversationDataStoreAddedSchema,
   queuedConversationRunResponseSchema,
@@ -28,6 +29,7 @@ import {
   unknownRunObservationSchema,
   startConversationRunRequestSchema,
   startConversationRunResponseSchema,
+  sharedFromOutsideListItemSchema,
   structuredDataResourceResponseSchema
 } from "../conversations";
 import { defineOperation, defineRegisteredOperation, json, page, sse } from "./define-operation";
@@ -58,6 +60,24 @@ export const conversationOperations = {
     }),
     response: page(conversationListItemSchema, ["updatedAt", "id"], true),
     errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.shared_from_outside.list": defineOperation({
+    id: "conversations.shared_from_outside.list",
+    method: "GET",
+    path: "/api/v1/conversations/shared-from-outside",
+    summary: "List the chats shared with the caller from workspaces they are no member of",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: listQuerySchema.extend({
+      /** Keeps the chats whose title contains this text, without regard to case. */
+      query: z.string().trim().min(1).max(CONVERSATION_TITLE_QUERY_MAX_CHARS).optional()
+    }),
+    response: page(sharedFromOutsideListItemSchema, ["updatedAt", "id"], true),
+    errors: [],
     rateClass: "read"
   }),
   "conversations.create": defineOperation({
@@ -173,7 +193,7 @@ export const conversationOperations = {
     id: "conversations.share_candidates",
     method: "GET",
     path: "/api/v1/conversations/:conversationId/share-candidates",
-    summary: "The members of the chat's workspace its creator may name, preselected or searched",
+    summary: "The people of the instance the chat's creator may name, preselected or searched",
     tag: "Conversations",
     auth: "user",
     scope: "conversation:read",
@@ -181,7 +201,22 @@ export const conversationOperations = {
     effect: "reading",
     query: shareCandidatesQuerySchema,
     response: json(conversationShareCandidatesSchema),
-    errors: ["NOT_FOUND", "FORBIDDEN"],
+    errors: ["NOT_FOUND", "FORBIDDEN", "RATE_LIMITED"],
+    rateClass: "read"
+  }),
+  "conversations.reader_offer.get": defineOperation({
+    id: "conversations.reader_offer.get",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/reader-offer",
+    summary: "What the caller is offered in a chat they read: its workspace, and their agents",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: z.object({ locale: z.string().optional() }),
+    response: json(conversationReaderOfferSchema),
+    errors: ["NOT_FOUND"],
     rateClass: "read"
   }),
   "conversations.thread.get": defineOperation({
