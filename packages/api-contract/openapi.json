@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.33",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.33, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.34",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.34, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -6873,6 +6873,38 @@
                         "state",
                         "takesEndpoint"
                       ]
+                    },
+                    "ownToken": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "set",
+                            "not_set",
+                            "needs_reconnect"
+                          ]
+                        },
+                        "scheme": {
+                          "type": "string",
+                          "enum": [
+                            "bearer",
+                            "header"
+                          ]
+                        },
+                        "since": {
+                          "$ref": "#/components/schemas/Timestamp"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "scheme"
+                      ]
                     }
                   },
                   "required": [
@@ -7654,6 +7686,142 @@
                     "providerHost",
                     "scopes",
                     "expiresAt"
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "Operation-Run-Id": {
+                "$ref": "#/components/headers/OperationRunId"
+              },
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenOrPolicyDeniedOrGuardrailBlocked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictOrIdempotencyKeyReusedOrOperationInProgressOrOutputNotRetained"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "x-catalyst-effect": "changing",
+        "x-catalyst-rate-class": "write"
+      }
+    },
+    "/api/v1/connections/{name}/own-secret": {
+      "put": {
+        "operationId": "connections.set_own_secret",
+        "summary": "Set or replace the caller's own token for a personal MCP Connection that takes one. The value is never answered",
+        "tags": [
+          "Connections"
+        ],
+        "security": [
+          {
+            "sessionCookie": [
+              "config_assets:write"
+            ]
+          },
+          {
+            "sessionToken": [
+              "config_assets:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "A key the caller chooses for one changing call, up to 255 characters. The same key with the same input answers what the first call answered instead of acting twice. A key belongs to its caller: another caller's same key is another call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384
+                  },
+                  "expectedVersion": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "value",
+                  "expectedVersion"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "const": "set"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "version"
                   ]
                 }
               }
@@ -31568,6 +31736,16 @@
                               "enabled",
                               "tools"
                             ]
+                          },
+                          "token": {
+                            "type": "object",
+                            "properties": {
+                              "version": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            }
                           }
                         },
                         "required": [
@@ -31582,6 +31760,147 @@
                       "properties": {
                         "mayAdd": {
                           "type": "boolean"
+                        },
+                        "entries": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "version": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "service": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "en": {
+                                        "type": "string"
+                                      },
+                                      "de": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                ]
+                              },
+                              "description": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "en": {
+                                        "type": "string"
+                                      },
+                                      "de": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                ]
+                              },
+                              "mark": {
+                                "type": "object",
+                                "properties": {
+                                  "color": {
+                                    "type": "string"
+                                  },
+                                  "logo": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "signIn": {
+                                "type": "string",
+                                "enum": [
+                                  "oauth",
+                                  "token"
+                                ]
+                              },
+                              "token": {
+                                "type": "object",
+                                "properties": {
+                                  "help": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "en": {
+                                            "type": "string"
+                                          },
+                                          "de": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  "link": {
+                                    "type": "string"
+                                  },
+                                  "header": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "help"
+                                ]
+                              },
+                              "tools": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "effect": {
+                                      "type": "string",
+                                      "enum": [
+                                        "reading",
+                                        "changing"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "effect"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "version",
+                              "service",
+                              "title",
+                              "description",
+                              "mark",
+                              "url",
+                              "signIn",
+                              "tools"
+                            ]
+                          }
                         }
                       },
                       "required": [

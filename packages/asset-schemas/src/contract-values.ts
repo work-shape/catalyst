@@ -748,6 +748,19 @@ export type ConnectionSecretState = (typeof CONNECTION_SECRET_STATES)[number];
 export const CONNECTION_TEST_CREDENTIAL_STATES = ["not_set", "set", "stale"] as const;
 export type ConnectionTestCredentialState = (typeof CONNECTION_TEST_CREDENTIAL_STATES)[number];
 
+/**
+ * The states of a person's own token on a personal MCP Connection (PMCP-6). `needs_reconnect`:
+ * the server refused it, and it was deleted.
+ */
+export const CONNECTION_OWN_TOKEN_STATES = ["set", "not_set", "needs_reconnect"] as const;
+export type ConnectionOwnTokenState = (typeof CONNECTION_OWN_TOKEN_STATES)[number];
+/** How a person's own token is sent: as a Bearer token, or under a header the Connection names. */
+export const CONNECTION_OWN_TOKEN_SCHEMES = ["bearer", "header"] as const;
+export type ConnectionOwnTokenScheme = (typeof CONNECTION_OWN_TOKEN_SCHEMES)[number];
+/** How a person signs in to an own-server catalogue entry (PMCP-CAT): at the service, or a token. */
+export const OWN_SERVER_SIGN_INS = ["oauth", "token"] as const;
+export type OwnServerSignIn = (typeof OWN_SERVER_SIGN_INS)[number];
+
 export const CONNECTOR_TEST_STATUSES = [
   "ready",
   "unauthorized",

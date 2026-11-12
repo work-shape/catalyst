@@ -12,12 +12,15 @@ import {
   CONNECTION_NAME_PATTERN,
   CONNECTION_OAUTH_REGISTRATIONS,
   CONNECTION_OPERATION_STATUSES,
+  CONNECTION_OWN_TOKEN_SCHEMES,
+  CONNECTION_OWN_TOKEN_STATES,
   CONNECTION_PROVIDER_REVOCATIONS,
   CONNECTION_SECRET_STATES,
   CONNECTION_TEST_CREDENTIAL_STATES,
   CONNECTOR_TEST_STATUSES,
   operationPagingSchema,
-  OPERATION_EFFECTS
+  OPERATION_EFFECTS,
+  OWN_SERVER_SIGN_INS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
 import { timestampSchema } from "../shared";
@@ -150,6 +153,18 @@ const connectionTestCredentialSchema = z.object({
   takesEndpoint: z.boolean()
 });
 
+/**
+ * The reader's own token on a personal MCP Connection that sends a bearer token or a header
+ * (PMCP-6): whether it is set, refused by the server, or not set, since when and the scheme.
+ * Never its value.
+ */
+const connectionOwnTokenSchema = z.object({
+  state: z.enum(CONNECTION_OWN_TOKEN_STATES),
+  scheme: z.enum(CONNECTION_OWN_TOKEN_SCHEMES),
+  since: timestampSchema.optional(),
+  version: z.number().int().positive().optional()
+});
+
 export const connectionDetailSchema = z.object({
   name: z.string(),
   health: z.enum(CONNECTION_HEALTH_STATES),
@@ -184,7 +199,9 @@ export const connectionDetailSchema = z.object({
   /** Only for a Connection whose auth scheme is `oauth`. */
   oauth: connectionOAuthSchema.optional(),
   /** Only for a shared Connection that takes a test credential, or where one is stored. */
-  testCredential: connectionTestCredentialSchema.optional()
+  testCredential: connectionTestCredentialSchema.optional(),
+  /** Only for a personal MCP Connection that takes each person's own token: the reader's. */
+  ownToken: connectionOwnTokenSchema.optional()
 });
 
 /**
@@ -445,6 +462,19 @@ const connectionTestCredentialWriteSchema = connectionSecretWriteSchema.extend({
   account: z.string().trim().min(1).max(TEST_CREDENTIAL_ACCOUNT_MAX_CHARS).optional()
 });
 
+/**
+ * A person's own token for a personal MCP Connection (PMCP-6), entered once. `expectedVersion`
+ * is the version of their token they saw, `null` where they had none.
+ */
+const connectionOwnSecretWriteSchema = z.object({
+  value: z.string().min(1).max(SECRET_VALUE_MAX_CHARS),
+  expectedVersion: z.number().int().positive().nullable()
+});
+const connectionOwnSecretSetSchema = z.object({
+  state: z.literal("set"),
+  version: z.number().int().positive()
+});
+
 const connectionTestCredentialSetSchema = z.object({
   state: z.literal("set"),
   version: z.number().int().positive()
@@ -551,14 +581,49 @@ export const personalConnectionsSchema = z.object({
           enabled: z.boolean(),
           tools: z.number().int().nonnegative()
         })
-        .optional()
+        .optional(),
+      /**
+       * Where each person pastes their own token instead of signing in (PMCP-6): the version
+       * of the caller's token, for replacing it. Its state is the row's `state`.
+       */
+      token: z.object({ version: z.number().int().positive().optional() }).optional()
     })
   ),
   /**
    * Whether the caller may add an MCP server for themselves: the operator's switch is on, they
    * hold `connection.add_own`, and they are signed in to the instance in a first-party session.
    */
-  ownServers: z.object({ mayAdd: z.boolean() }).optional()
+  ownServers: z
+    .object({
+      mayAdd: z.boolean(),
+      /**
+       * The catalogue entries a person adds as their own server (PMCP-CAT), listed while they may
+       * add one: a tile each on the add screen. No credential, client or scope.
+       */
+      entries: z
+        .array(
+          z.object({
+            id: z.string(),
+            version: z.number().int(),
+            service: z.string(),
+            title: localizedTextSchema,
+            description: localizedTextSchema,
+            mark: z.object({ color: z.string().optional(), logo: z.string().optional() }),
+            url: z.string(),
+            signIn: z.enum(OWN_SERVER_SIGN_INS),
+            token: z
+              .object({
+                help: localizedTextSchema,
+                link: z.string().optional(),
+                header: z.string().optional()
+              })
+              .optional(),
+            tools: z.array(z.object({ name: z.string(), effect: connectionOperationEffectSchema }))
+          })
+        )
+        .optional()
+    })
+    .optional()
 });
 export const connectionPeopleSchema = z.object({
   people: z.array(
@@ -739,6 +804,25 @@ export const connectionOperations = {
     secret: true,
     body: connectionTestCredentialWriteSchema,
     response: json(connectionTestCredentialSetSchema),
+    errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
+    rateClass: "write"
+  }),
+  "connections.set_own_secret": defineRegisteredOperation({
+    id: "connections.set_own_secret",
+    method: "PUT",
+    path: "/api/v1/connections/:name/own-secret",
+    summary:
+      "Set or replace the caller's own token for a personal MCP Connection that takes one. The value is never answered",
+    tag: "Connections",
+    // A person in their first-party session alone (refused in the route for anything else).
+    auth: "user",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    // The call carries a secret. The run keeps no answer and the call never waits.
+    secret: true,
+    body: connectionOwnSecretWriteSchema,
+    response: json(connectionOwnSecretSetSchema),
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
