@@ -194,6 +194,11 @@ const knowledgeStateResponseSchema = z.object({
    * `markdown`, with document processing also `pdf`, `docx`, `xlsx` and `pptx`. Omitted for a structured one.
    */
   documentFormats: z.array(z.string()).optional(),
+  /**
+   * The largest file in bytes such a Knowledge Base takes on this instance, as
+   * `knowledge.maxFileBytes` sets it. Omitted for a structured one.
+   */
+  maxFileBytes: z.number().int().optional(),
   /** The id of the Knowledge Base's asset. */
   id: z.string(),
   /** The id operations and routes name the Knowledge Base by. */
@@ -346,6 +351,11 @@ const knowledgeSearchResponseSchema = z.object({
       /** Reciprocal rank fusion of the lists in `signals`: compare it only within one Knowledge Base. */
       score: z.number(),
       originLink: z.string().optional(),
+      /**
+       * The path of a synced or Workflow-fed document below its source's boundary, folders and
+       * file name, such as `/Projekte/Nord/Angebot.pdf`. None for a file added by hand.
+       */
+      path: z.string().optional(),
       /**
        * The date a synced document states of its own version, such as the "Stand" of a web
        * page. An ISO date-time in UTC; none where the document states no date.

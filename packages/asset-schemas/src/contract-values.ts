@@ -887,10 +887,19 @@ export const KNOWLEDGE_DOCUMENT_STATES = ["pending", "indexed", "failed"] as con
 export type KnowledgeDocumentState = (typeof KNOWLEDGE_DOCUMENT_STATES)[number];
 
 /**
- * The largest file a Knowledge Base takes, as document processing takes it. A larger file is
- * refused when it is added, with this limit named.
+ * The largest file a Knowledge Base takes unless release config sets `knowledge.maxFileBytes`,
+ * and the most text one document carries through the write contracts, a setting or not. A
+ * larger file is refused when it is added or fetched, with the limit named.
  */
 export const KNOWLEDGE_FILE_MAX_BYTES = 25 * 1024 * 1024;
+
+/**
+ * The most `knowledge.maxFileBytes` may be. A file added by hand is read whole into memory, and
+ * extraction reads every file whole, so the bound holds the memory one add or one extraction takes. Document
+ * extraction checks a file against it, since the instance's own limit applied when the file was
+ * added or fetched.
+ */
+export const KNOWLEDGE_FILE_MAX_BYTES_CEILING = 256 * 1024 * 1024;
 
 /**
  * Why a document was not indexed. The first five and `knowledge_file_too_many_pages` can also
