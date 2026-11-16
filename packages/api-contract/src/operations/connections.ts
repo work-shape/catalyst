@@ -170,6 +170,11 @@ export const connectionDetailSchema = z.object({
   health: z.enum(CONNECTION_HEALTH_STATES),
   lastTestedAt: timestampSchema.optional(),
   lastErrorCode: z.string().optional(),
+  /**
+   * When the instance last wrote the Connection's state: a test, a discovery, a call that
+   * failed, or a write that reset it. Absent while nothing was written.
+   */
+  recordedAt: timestampSchema.optional(),
   secret: connectionSecretStateSchema,
   /** One credential for everyone who may use the Connection. The page says so. */
   sharedCredential: z.boolean(),

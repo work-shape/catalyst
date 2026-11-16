@@ -981,6 +981,10 @@ export const subagentSummarySchema = z.object({
   parentRunId: z.string(),
   toolCallId: z.string(),
   agentName: z.string(),
+  /** The agent's display name in the reader's locale; its name for an agent that is gone. */
+  agentDisplayName: z.string().optional(),
+  /** The model the subagent runs on: its id, and the label release config gives it. */
+  model: z.object({ model: z.string(), label: z.string().optional() }).optional(),
   description: z.string(),
   status: agentRunStatusSchema,
   startedAt: timestampSchema,

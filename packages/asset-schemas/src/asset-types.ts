@@ -59,10 +59,11 @@ export interface AgentConfig {
    */
   ownServers?: boolean;
   /**
-   * The other agents this agent may start as subagents with `run_agent`, besides itself. Each
-   * is started only where the person may use it in the conversation's workspace.
+   * The other agents this agent may start as subagents with `run_agent`, besides itself, or
+   * `"*"` for every agent (CR-3m). Each is started only where the person may use it in the
+   * conversation's workspace.
    */
-  subagentNames?: string[];
+  subagentNames?: string[] | "*";
   skillNames: string[];
   /**
    * The Knowledge Bases the agent answers from, by id. However many it lists, the agent has one

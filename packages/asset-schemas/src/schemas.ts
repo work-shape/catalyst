@@ -316,14 +316,17 @@ export const agentConfigSchema = z.object({
    */
   ownServers: z.boolean().optional(),
   /**
-   * The agents this agent may start as subagents through `run_agent`, beside itself. Only an
-   * agent whose `toolNames` lists `run_agent` starts any.
+   * The agents this agent may start as subagents through `run_agent`, beside itself, or `"*"`
+   * for every agent the person may use (CR-3m). Only an agent whose `toolNames` lists
+   * `run_agent` starts any.
    */
   subagentNames: z
-    .array(agentNameSchema)
-    .refine((names) => new Set(names).size === names.length, {
-      message: "A subagent is listed once"
-    })
+    .union([
+      z.literal("*"),
+      z.array(agentNameSchema).refine((names) => new Set(names).size === names.length, {
+        message: "A subagent is listed once"
+      })
+    ])
     .optional(),
   skillNames: z.array(skillNameSchema).default([]),
   knowledgeBases: z

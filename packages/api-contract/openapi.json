@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.37",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.37, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.38",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.38, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -6517,6 +6517,9 @@
                     },
                     "lastErrorCode": {
                       "type": "string"
+                    },
+                    "recordedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
                     },
                     "secret": {
                       "type": "object",
@@ -63189,6 +63192,23 @@
           },
           "agentName": {
             "type": "string"
+          },
+          "agentDisplayName": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "model"
+            ]
           },
           "description": {
             "type": "string"
