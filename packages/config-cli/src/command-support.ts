@@ -760,9 +760,23 @@ export function formatCommandError(error: unknown): string {
     if (error.status === 404 && reason === UNKNOWN_OPERATION_REASON) {
       return "This instance does not serve the asset operations this CLI uses. Upgrade the instance, or use the CLI of its release.";
     }
-    return `${error.code ? `${error.code}: ` : ""}${error.message}`;
+    const hint = keyScopeHint(error);
+    return `${error.code ? `${error.code}: ` : ""}${error.message}${hint ? `\n${hint}` : ""}`;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * What to do where the instance refused a call because the key does not carry a right its
+ * owner holds (`outside_key_scope`): a key carries only the rights ticked when it was issued,
+ * so a right given to its owner since then is missing from it, and a new key carries it.
+ * Nothing for any other refusal.
+ */
+export function keyScopeHint(error: ConfigApiError): string | undefined {
+  const details = isRecord(error.details) ? error.details : undefined;
+  if (error.status !== 403 || details?.reason !== "outside_key_scope") return undefined;
+  const right = typeof details.action === "string" ? ` '${details.action}'` : "";
+  return `Your account holds the right${right}, but this API key does not carry it: a key carries only the rights ticked when it was issued, so a right you were given after that is missing from it. Run 'catalyst login' and confirm a new key with the right ticked; it replaces the saved key. Where CATALYST_API_KEY is set, create a new key in Settings > API keys and set that instead.`;
 }
 
 export { isRecord } from "@work-shape/catalyst-asset-schemas";

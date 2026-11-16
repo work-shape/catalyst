@@ -125,16 +125,38 @@ export const knowledgeIngestOutputSchema = operationBatchResultSchema.extend({
 });
 export const knowledgeWithdrawInputSchema = z.strictObject({ itemIds: z.array(id).min(1) });
 export const knowledgeWithdrawOutputSchema = z.strictObject({ withdrawn: count });
+/** The most documents one call of `pending` hands out: each brings a dataset of its pages. */
+export const KNOWLEDGE_PENDING_MAX_LIMIT = 1_000;
 export const knowledgePendingInputSchema = z.strictObject({
   type: id.optional(),
+  /** Only documents whose `changedAt` is after this time. */
   since: z.iso.datetime({ offset: true }).optional(),
-  limit: z.number().int().positive()
+  limit: z.number().int().positive().max(KNOWLEDGE_PENDING_MAX_LIMIT)
 });
+/**
+ * One document `pending` hands out, oldest `changedAt` first. `source` is the id of the source
+ * it came from, or null for a file added by hand; `path` is its path at that source, or
+ * `/<name>`. `changedAt` is when its pages last changed: a new version fetched or added, or its
+ * content extracted again. Pass the last row's `changedAt` as the next call's `since`.
+ */
 export const knowledgePendingRowSchema = z.strictObject({
   id,
   type: id,
   contentHash: hash,
+  source: z.string().min(1).nullable(),
+  path: z.string().startsWith("/"),
+  name: z.string().min(1),
+  changedAt: z.iso.datetime({ offset: true }),
   pages: workflowDatasetReferenceSchema
+});
+/**
+ * One row of a document's `pages` dataset, in page order: an XLSX sheet or a PDF page, tables
+ * as Markdown. A page longer than one dataset row goes on in the next row of the same number;
+ * joining the rows of one page with a line break gives its text.
+ */
+export const knowledgePendingPageRowSchema = z.strictObject({
+  page: z.number().int().positive(),
+  text: z.string()
 });
 export const knowledgePendingOutputSchema = z.strictObject({
   documents: workflowDatasetReferenceSchema
@@ -279,7 +301,7 @@ export const knowledgeWriteContracts = {
   },
   pending: {
     description:
-      "Pull pending documents by type and time as a dataset; page text is another dataset reference.",
+      "Pull indexed documents of a type whose pages changed after a time, oldest change first, as a dataset; each row's page text is another dataset reference.",
     inputSchema: knowledgePendingInputSchema,
     outputSchema: knowledgePendingOutputSchema,
     rowSchema: knowledgePendingRowSchema,
@@ -324,6 +346,7 @@ export type KnowledgeWithdrawInput = z.infer<typeof knowledgeWithdrawInputSchema
 export type KnowledgeWithdrawOutput = z.infer<typeof knowledgeWithdrawOutputSchema>;
 export type KnowledgePendingInput = z.infer<typeof knowledgePendingInputSchema>;
 export type KnowledgePendingRow = z.infer<typeof knowledgePendingRowSchema>;
+export type KnowledgePendingPageRow = z.infer<typeof knowledgePendingPageRowSchema>;
 export type KnowledgePendingOutput = z.infer<typeof knowledgePendingOutputSchema>;
 export type KnowledgePutProcessedInput = z.infer<typeof knowledgePutProcessedInputSchema>;
 export type KnowledgeExtractFieldsInput = z.infer<typeof knowledgeExtractFieldsInputSchema>;

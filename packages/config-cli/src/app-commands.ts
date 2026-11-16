@@ -8,7 +8,6 @@ import {
   type PlatformContext
 } from "@work-shape/catalyst-api-contract";
 import { ConfigApiError, type ConfigApi } from "./api";
-import { publishFileChanges } from "./publish-file-changes";
 import { appPublishData } from "./app-publish-data";
 import { appPublishTogether } from "./app-publish-together";
 import {
@@ -24,7 +23,7 @@ import {
 import { folderIsEmpty, writeFolderFiles } from "./asset-folder";
 import { formatRefusal, formatWarnings } from "./asset-output";
 import { connectApi, resolveWorkingDir, type ConfigCommandOptions } from "./command-support";
-import { OVERTAKEN_LINE, askBeforePublish, waitingPublishLine } from "./publish-question";
+import { OVERTAKEN_LINE, waitingPublishLine } from "./publish-question";
 import { readManifestIfPresent, resolveInstance } from "./working-copy";
 
 // Repository kinds share pull, push and status, including their folder baseline and
@@ -66,7 +65,7 @@ export const APP_VERBS = {
   publish: {
     usage: "publish <app> [--revision <n>] [--audience self|workspace|instance] [--yes]",
     summary:
-      "Choose who may use the App, show what the revision makes live, then ask before publishing it (assets.publish). A publish that hands a source's data to people who may not use the source waits in the Inbox until a person who may change the source approves it"
+      "Choose who may use the App, show what the revision makes live, and publish it at once (assets.publish); --yes changes nothing. A publish that hands a source's data to people who may not use the source waits in the Inbox until a person who may change the source approves it"
   },
   status: {
     usage: "status <app> [dir]",
@@ -357,15 +356,14 @@ async function publish(
   if (values.revision !== undefined) revisionNumber(values.revision);
   const target = await openRepository(options, values, undefined, REPOSITORY_KINDS.app);
   let audience = readAudience(values.audience);
-  const get = (revision: string, files = false) =>
+  const get = (revision: string) =>
     target.api.read((client) =>
       client.assets.get({
         params: { kind: APP_KIND, name: app },
         query: {
           workspaceId: target.workspaceId,
           ...(audience ? { audience } : {}),
-          revision,
-          ...(files ? { files: "true" as const } : {})
+          revision
         }
       })
     );
@@ -437,38 +435,11 @@ async function publish(
     .filter(Boolean)
     .join("\n");
   const say = (text: string) => (values.json ? writeErr(options, text) : writeOut(options, text));
-  const narrative = values.yes ? undefined : candidate.publishNarrative;
+  // What it changes is said before it is sent; nothing asks first (PUB-LIVE-1).
+  const narrative = candidate.publishNarrative;
   say(
     narrative ? [narrative.summary, ...narrative.warnings, ...together.lines].join("\n") : question
   );
-  const answer = await askBeforePublish(options, {
-    kind: APP_KIND,
-    command: APP_KIND,
-    name: app,
-    revision: number,
-    yes: values.yes,
-    ...(narrative
-      ? {
-          details: async () => {
-            const detailed = await get(String(number), true);
-            const before =
-              candidate.publishedRevision === undefined
-                ? undefined
-                : await get(String(candidate.publishedRevision), true);
-            say(
-              [
-                question,
-                ...publishFileChanges(detailed, before),
-                ...(detailed.filesOmitted || before?.filesOmitted
-                  ? ["Some files are omitted from this review."]
-                  : [])
-              ].join("\n")
-            );
-          }
-        }
-      : {})
-  });
-  if (answer === "refused") return EXIT.refused;
   const outcome = await target.api.change(
     (client, idempotencyKey) =>
       client.assets.publish({
@@ -480,8 +451,7 @@ async function publish(
           ...(together.workflows.length > 0 ? { workflows: together.workflows } : {}),
           ...(together.dataStores.length > 0 ? { dataStores: together.dataStores } : {})
         },
-        idempotencyKey,
-        ...(answer === "unattended" ? { unattended: true } : {})
+        idempotencyKey
       }),
     `It may have been applied: run 'catalyst app status ${app}' before sending it again.`
   );

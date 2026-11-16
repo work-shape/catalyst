@@ -28,10 +28,13 @@ import {
   subagentListSchema,
   unknownRunObservationSchema,
   startConversationRunRequestSchema,
+  transcriptionQuerySchema,
+  transcriptionResponseSchema,
   startConversationRunResponseSchema,
   sharedFromOutsideListItemSchema,
   structuredDataResourceResponseSchema
 } from "../conversations";
+import { conversationCostSchema } from "../usage-limits";
 import { defineOperation, defineRegisteredOperation, json, page, sse } from "./define-operation";
 
 /**
@@ -277,6 +280,21 @@ export const conversationOperations = {
     errors: ["NOT_FOUND"],
     rateClass: "read"
   }),
+  "conversations.cost.get": defineOperation({
+    id: "conversations.cost.get",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/cost",
+    summary:
+      "Read the settled cost of a conversation so far: the caller's own calls, or the whole chat for a holder of usage.view in a chat more people read",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    response: json(conversationCostSchema),
+    errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
   "conversations.structured_data.get": defineOperation({
     id: "conversations.structured_data.get",
     method: "GET",
@@ -370,6 +388,24 @@ export const conversationOperations = {
       z.union([startConversationRunResponseSchema, queuedConversationRunResponseSchema])
     ),
     errors: ["NOT_FOUND", "CONFLICT", "GUARDRAIL_BLOCKED"],
+    rateClass: "write"
+  }),
+  "transcriptions.create": defineOperation({
+    id: "transcriptions.create",
+    method: "POST",
+    path: "/api/v1/transcriptions",
+    summary: "Turn a recording from the composer into text, which is not stored",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:write",
+    requires: [],
+    // It changes nothing: the recording and its text are not stored. The provider call is
+    // metered as every model call is.
+    effect: "reading",
+    multipart: true,
+    query: transcriptionQuerySchema,
+    response: json(transcriptionResponseSchema),
+    errors: ["NOT_FOUND", "TIMEOUT"],
     rateClass: "write"
   }),
   "conversations.runs.create": defineOperation({

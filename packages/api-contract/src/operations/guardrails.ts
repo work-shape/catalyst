@@ -151,8 +151,8 @@ export const unpublishGuardrailResponseSchema = z.object({
 });
 
 /**
- * A guardrail the release ships, such as "Publishing needs an instance admin's approval": on
- * until an instance admin switches it off, with who switched it last.
+ * A guardrail the release ships, such as "Publishing needs an instance admin's approval": on or
+ * off as the release ships it until an instance admin switches it, with who switched it last.
  */
 export const shippedGuardrailSchema = z.object({
   name: z.string(),
@@ -168,7 +168,7 @@ export const shippedGuardrailSchema = z.object({
    * admin set it to ask on every publish. Absent on a guardrail without that setting.
    */
   alwaysAsk: z.boolean().optional(),
-  /** Who switched it last and when. Absent while nobody has: it is on as the release ships it. */
+  /** Who switched it last and when. Absent while nobody has: it is as the release ships it. */
   switchedBy: z.object({ id: z.string(), label: z.string() }).optional(),
   switchedAt: timestampSchema.optional(),
   /** The caller holds `guardrail.publish` at instance scope and may switch it. */

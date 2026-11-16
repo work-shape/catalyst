@@ -1,56 +1,6 @@
 import { ConfigApiError } from "./api";
-import { isRecord, writeError, type ConfigCommandOptions } from "./command-support";
+import { isRecord } from "./command-support";
 
-/** How a publish goes ahead: answered here, sent for the Inbox with `--yes`, or not at all. */
-export type PublishAnswer = "answered" | "unattended" | "refused";
-
-/**
- * The question a publish of an App or a Workflow asks in the terminal before it is sent: a
- * yes submits the publish but never supplies an approval. With a publish guardrail on, even
- * an admin's CLI publish waits in the Inbox. An answer that is not yes publishes nothing.
- * `--yes` asks nothing: the publish is sent unattended, so it is not the caller's own
- * confirmation and waits in their Inbox until they allow it there (Confirmation in the Inbox).
- * A terminal nobody can answer without `--yes` publishes nothing. Where the publish does not
- * go ahead, it has said why.
- */
-export async function askBeforePublish(
-  options: ConfigCommandOptions,
-  publish: {
-    kind: string;
-    command: string;
-    name: string;
-    revision: number;
-    yes: boolean;
-    /** The review stays folded until the reader asks for Details. */
-    details?: () => void | Promise<void>;
-  }
-): Promise<PublishAnswer> {
-  const { kind, command, name, revision } = publish;
-  if (publish.yes) return "unattended";
-  if (!options.prompt) {
-    writeError(
-      options,
-      `Publishing ${/^[aeiou]/u.test(kind) ? "an" : "a"} ${kind} needs your answer here, so a run without a terminal to ask publishes nothing. Run 'catalyst ${command} publish ${name} --revision ${revision}' in a terminal and answer its question, add --yes to confirm it in your Inbox, or publish it in the interface.`
-    );
-    return "refused";
-  }
-  let answer: string;
-  do {
-    answer = await options.prompt(
-      `Publish revision ${revision} of ${kind} '${name}'? If approval is required, this files a request in the Inbox. ${publish.details ? "[y/N; d=Details]" : "[y/N]"} `
-    );
-    if (/^d(?:etails)?$/iu.test(answer.trim()) && publish.details) await publish.details();
-    else break;
-  } while (true);
-  if (/^y(?:es)?$/iu.test(answer.trim())) return "answered";
-  writeError(options, "Nothing was published.");
-  return "refused";
-}
-
-/**
- * The line of a publish that waits and changed nothing yet: for the caller's own confirmation
- * in their Inbox, after `--yes`, or for an approver.
- */
 /**
  * What becomes of a waiting publish when another revision goes live first, said with every
  * waiting publish: it can never overwrite that revision.
@@ -76,6 +26,10 @@ export function alreadyLiveLine(kind: string, name: string, revision: number): s
   return `Revision ${revision} of ${kind} '${name}' is already live. Nothing to do: nothing was published and no request was filed.`;
 }
 
+/**
+ * The line of a publish that waits and changed nothing yet: for an approver, where a guardrail
+ * of the instance holds it, or for the caller's own confirmation in their Inbox.
+ */
 export function waitingPublishLine(
   run: { id: string; status?: string; approvalRequestId?: string },
   approvalHint?: string,
@@ -98,10 +52,9 @@ export function waitingPublishLine(
 export function agentPublishRefusalHint(error: unknown): string | undefined {
   if (!(error instanceof ConfigApiError) || error.status !== 403) return undefined;
   const reason = isRecord(error.details) ? error.details.reason : undefined;
-  const keyRefused =
-    reason === "user_only" ||
-    reason === "outside_key_scope" ||
-    error.message.includes(`'${PUBLISH_SCOPE}'`);
+  // A personal key that lacks a right its owner holds is told so with the refusal itself.
+  if (reason === "outside_key_scope") return undefined;
+  const keyRefused = reason === "user_only" || error.message.includes(`'${PUBLISH_SCOPE}'`);
   return keyRefused
     ? `This key publishes no agent. A service principal's key, such as the release key of an operated instance, writes agent drafts and publishes none (AP-10); a personal key publishes only with the publish right, scope ${PUBLISH_SCOPE}. Publish the draft with such a personal key or on the agent page.`
     : "Publishing an agent needs the right agent.publish on it, which an instance admin holds.";

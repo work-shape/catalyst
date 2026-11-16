@@ -6,7 +6,18 @@ import {
   type RemoteAsset
 } from "./command-support";
 
-/** Check every guardrail before the release batch or any guardrail write can start. */
+/** A guardrail that changed on the instance since the last pull: the push skips it. */
+export interface StaleGuardrail {
+  kind: string;
+  name: string;
+  currentRevision: number | null;
+}
+
+/**
+ * Check every guardrail before the release batch or any guardrail write can start. Answers the
+ * guardrails that changed on the instance since the last pull, which the push skips, or nothing
+ * where one that did not change is invalid, which it has reported.
+ */
 export async function preflightGuardrails(
   api: ConfigApi,
   input: {
@@ -17,7 +28,8 @@ export async function preflightGuardrails(
     workspaceId?: string;
     options: ConfigCommandOptions;
   }
-): Promise<boolean> {
+): Promise<{ stale: StaleGuardrail[] } | undefined> {
+  const stale: StaleGuardrail[] = [];
   for (const asset of [...input.puts, ...input.deletes]) {
     const base = input.baseOf(asset.key);
     const current = input.listing.get(asset.key);
@@ -27,14 +39,11 @@ export async function preflightGuardrails(
         ? undefined
         : (await api.getLatestRevision(asset.kind, asset.name))?.revision);
     if ((revision ?? null) !== (base?.revision ?? null)) {
-      writeError(
-        input.options,
-        `Push refused; nothing was applied. ${asset.key} changed since the last pull. Run 'catalyst config pull --only ${asset.key}'.`
-      );
-      return false;
+      stale.push({ kind: asset.kind, name: asset.name, currentRevision: revision ?? null });
     }
   }
-  for (const asset of input.puts) {
+  const staleKeys = new Set(stale.map((asset) => `${asset.kind}:${asset.name}`));
+  for (const asset of input.puts.filter((put) => !staleKeys.has(put.key))) {
     const checked = await api.read((client) =>
       client.assets.validate({
         params: { kind: asset.kind },
@@ -51,8 +60,8 @@ export async function preflightGuardrails(
         input.options,
         `Validation failed for ${asset.key}: ${checked.issues.length} ${checked.issues.length === 1 ? "issue" : "issues"}${paths.length ? ` (${paths.join(", ")})` : ""}; nothing was applied.`
       );
-      return false;
+      return undefined;
     }
   }
-  return true;
+  return { stale };
 }

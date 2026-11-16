@@ -1209,3 +1209,24 @@ export type SubagentSummary = z.infer<typeof subagentSummarySchema>;
 export type ConversationThreadSnapshot = z.infer<typeof conversationThreadSnapshotSchema>;
 export type CancelRunRequest = z.infer<typeof cancelRunRequestSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
+
+/**
+ * Where a recording from the composer is spoken (STT-1): the chat, the project or the
+ * workspace the composer belongs to, each optional. The server reads the words it sends with
+ * the recording from them; the language defaults to the person's interface locale.
+ */
+export const transcriptionQuerySchema = z.object({
+  language: z
+    .string()
+    .regex(/^[a-z]{2,3}$/u)
+    .optional(),
+  conversationId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  workspaceId: z.string().min(1).optional()
+});
+
+/** The text of a recording, to be added to the input; nothing of it is stored. */
+export const transcriptionResponseSchema = z.object({
+  text: z.string(),
+  durationSeconds: z.number().nonnegative()
+});

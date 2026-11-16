@@ -13,7 +13,16 @@ import {
 } from "../personal-api-keys";
 import { defineOperation, defineRegisteredOperation, json, page } from "./define-operation";
 
-const confirmedConnectCodeSchema = z.object({ confirmed: z.literal(true) });
+/**
+ * A confirmed code: the scopes its key carries, and those asked for that name a right the
+ * person holds nowhere, which the key does not carry. Only a code none of whose scopes the
+ * person holds is refused.
+ */
+const confirmedConnectCodeSchema = z.object({
+  confirmed: z.literal(true),
+  scopes: z.array(z.string()).optional(),
+  leftOutScopes: z.array(z.string()).optional()
+});
 
 /**
  * Personal API keys, of the module `personalApiKeys`. A person issues and revokes their own in

@@ -110,7 +110,9 @@ export const safeConfigSchema = z.object({
       modelCallsPerDay: z.number().optional(),
       tokensPerDay: z.number().optional(),
       tokensPerMonth: z.number().optional()
-    })
+    }),
+    /** The context indicator shows what the conversation has cost so far (LU-7). Absent before. */
+    showConversationCost: z.boolean().optional()
   }),
   /** What a generated view may load besides the instance's own view runtime. */
   views: z
@@ -136,6 +138,11 @@ export const safeConfigSchema = z.object({
    * one made in the interface then starts with `[semantic, keyword]`, else with `[keyword]`.
    */
   knowledge: z.object({ semanticSearch: z.boolean() }).optional(),
+  /**
+   * Speech to text in the composer (STT-1): on where release config has a transcription
+   * binding. Absent in the answer of an API from before it; the interface reads that as off.
+   */
+  transcription: z.object({ enabled: z.boolean() }).optional(),
   /** Derived from `modules` for one transition release. */
   features: z.object({
     attachments: z.object({

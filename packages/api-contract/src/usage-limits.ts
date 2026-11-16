@@ -125,6 +125,21 @@ export const ownUsageSchema = z.object({
   instance: usageSpendLevelSchema
 });
 
+/**
+ * The settled cost of a conversation so far (LU-7): of the caller's own calls (`own`), or of the
+ * whole chat with its run threads for a holder of `usage.view` in a chat more people read
+ * (`conversation`). `shared`: more people than its creator read the chat, so `own` is a share.
+ * `currency` is absent where no rate card prices the calls; `complete` is false while a call's
+ * cost is incomplete, and `costMicros` is then what is known.
+ */
+export const conversationCostSchema = z.object({
+  scope: z.enum(["own", "conversation"]),
+  shared: z.boolean(),
+  currency: z.string().optional(),
+  costMicros: z.number(),
+  complete: z.boolean()
+});
+
 export const ownUsageQuerySchema = z.object({
   workspaceId: z.string().trim().min(1).max(200).optional()
 });
@@ -135,4 +150,5 @@ export type UsageSpendLimitOverride = z.infer<typeof usageSpendLimitOverrideSche
 export type UsageNearLimit = z.infer<typeof usageNearLimitSchema>;
 export type SetUsageSpendLimitRequest = z.infer<typeof setUsageSpendLimitRequestSchema>;
 export type OwnUsage = z.infer<typeof ownUsageSchema>;
+export type ConversationCost = z.infer<typeof conversationCostSchema>;
 export type UsageSpendPeriod = z.infer<typeof usageSpendPeriodSchema>;

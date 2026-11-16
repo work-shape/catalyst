@@ -9,7 +9,7 @@ import type {
   PlatformContext
 } from "@work-shape/catalyst-api-contract";
 import { ConfigApiError } from "./api";
-import { formatDraft } from "./command-support";
+import { formatDraft, keyScopeHint } from "./command-support";
 
 // How the asset commands print what the instance answered. Every line is built from the
 // answer; nothing here decides anything.
@@ -151,11 +151,14 @@ export function formatWarnings(warnings: ReadonlyArray<{ message: string }>): st
 /**
  * A refusal of the instance as it said it: the code, the message, and each asset, issue or
  * item its details name. Nothing is reworded, so what a person reads is what the instance
- * decided.
+ * decided. A key that does not cover a right its person holds is told how to get one that
+ * does: a key names the rights of when it was issued, so it lacks `skill.delete` where its
+ * person became Publisher since (SKILL-DEL-1).
  */
 export function formatRefusal(error: ConfigApiError): string {
   const head = `Refused by the instance (HTTP ${error.status}${error.code ? ` ${error.code}` : ""}): ${error.message}`;
-  return [head, ...detailLines(error.details)].join("\n");
+  const hint = keyScopeHint(error);
+  return [head, ...detailLines(error.details), ...(hint ? [hint] : [])].join("\n");
 }
 
 function detailLines(details: unknown): string[] {

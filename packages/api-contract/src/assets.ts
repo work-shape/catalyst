@@ -446,6 +446,14 @@ export const assetSchema = z.object({
   availability: agentAvailabilitySchema.optional(),
   dependencyAvailability: dependencyAvailabilitySchema.optional(),
   canSetAvailability: z.boolean().optional(),
+  /**
+   * Only on skill reads, for a caller who may delete the skill: the agents it may read that
+   * list it, in their draft, their live revision or their pending shared draft, sorted by name.
+   * Its delete is refused while any agent does (SKILL-DEL-1). Absent where none does.
+   */
+  listedBy: z.array(z.object({ name: z.string(), title: z.string() })).optional(),
+  /** Of those agents, how many the caller may not read: counted, never named. */
+  listedByUnread: z.number().int().positive().optional(),
   /** Only on agent reads: who uses the agent where it is available (AGENT-USE-1). */
   agentUse: agentUseSchema.optional(),
   /** Only on agent reads. The stored config stays intact; these references cannot run. */

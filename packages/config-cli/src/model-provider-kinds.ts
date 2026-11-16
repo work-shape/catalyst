@@ -187,6 +187,11 @@ export const PROVIDER_KINDS: Record<ModelProviderKind, ProviderKind> = {
         flag: "label",
         question: "Name people read for the model, such as Claude Sonnet 4.6",
         required: true
+      },
+      {
+        flag: "cache-write-price",
+        question: "Price of a million input tokens written to the prompt cache",
+        required: false
       }
     ],
     entry: (values) => ({

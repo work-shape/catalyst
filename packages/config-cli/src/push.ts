@@ -12,12 +12,7 @@ import {
   type InstanceBaseline,
   type WorkingCopyBundle
 } from "./working-copy";
-import {
-  OVERTAKEN_LINE,
-  agentPublishRefusalHint,
-  askBeforePublish,
-  waitingPublishLine
-} from "./publish-question";
+import { OVERTAKEN_LINE, agentPublishRefusalHint, waitingPublishLine } from "./publish-question";
 import { preflightGuardrails } from "./push-guardrail-preflight";
 import { CANONICAL_FORM_VERSION } from "./serialization";
 import {
@@ -50,7 +45,36 @@ import {
   type AssetKindName
 } from "./command-support";
 
+/**
+ * `config push`: writes every changed asset that is still at the revision of its last pull, and
+ * skips each one that changed on the instance since, without writing it. The skipped ones are
+ * listed with the scoped pull that reads them, and the push then ends with exit code 1.
+ */
 export async function pushConfig(options: ConfigCommandOptions): Promise<number> {
+  const skipped: SkippedAssets = { conflicts: [], defaultAgent: false };
+  const code = await pushChanges(options, skipped);
+  if (skipped.conflicts.length === 0 && !skipped.defaultAgent) return code;
+  writeError(
+    options,
+    formatPushConflict(skipped.conflicts, skipped.defaultAgent, options, SKIPPED_HEADER)
+  );
+  return code === 0 || code === 3 ? 1 : code;
+}
+
+/** What a push left unwritten because the instance holds a change its working copy has not seen. */
+interface SkippedAssets {
+  conflicts: AssetConflict[];
+  /** The default agent changed on the instance, so the push left it as the instance holds it. */
+  defaultAgent: boolean;
+}
+
+const SKIPPED_HEADER =
+  "Skipped; these changed on the instance since the last pull and were not written:";
+
+async function pushChanges(options: ConfigCommandOptions, skipped: SkippedAssets): Promise<number> {
+  const skip = (conflicts: readonly AssetConflict[]) => skipped.conflicts.push(...conflicts);
+  const isSkipped = (key: string) =>
+    skipped.conflicts.some((conflict) => `${conflict.kind}:${conflict.name}` === key);
   const workingDir = resolveWorkingDir(options);
   const manifest = await readManifest(workingDir);
   const instance = await resolveInstance(manifest, options);
@@ -135,7 +159,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   }
   const touchedKeys = new Set(touched.map((asset) => asset.key));
   const localKeys = new Set(assetEntries(local).map((asset) => asset.key));
-  const deleteAssets = options.prune
+  const pruned = options.prune
     ? [...listing.values()].filter((asset) => !localKeys.has(asset.key))
     : [];
   // A working copy of one workspace never names the instance's default agent.
@@ -166,29 +190,21 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       touched.filter((asset) => asset.kind === "guardrail").map((asset) => asset.key)
     )
   );
-  if (!touched.length && !deleteAssets.length && !changesDefault) {
+  if (!touched.length && !pruned.length && !changesDefault) {
     writeOutput(options, "No local changes to push.");
     return 0;
   }
   // An asset to delete that no pull of this working copy has seen was created since. The
-  // instance is asked for nothing: a delete names the revision it was decided on.
-  const unseen = deleteAssets.filter((asset) => baselineAssets[asset.key] === undefined);
-  if (unseen.length > 0) {
-    writeError(
-      options,
-      formatPushConflict(
-        unseen.map((asset) => ({ ...asset, currentRevision: asset.revision })),
-        false,
-        options
-      )
-    );
-    return 1;
-  }
+  // instance is asked for nothing: a delete names the revision it was decided on. It is skipped.
+  skip(
+    pruned
+      .filter((asset) => baselineAssets[asset.key] === undefined)
+      .map((asset) => ({ kind: asset.kind, name: asset.name, currentRevision: asset.revision }))
+  );
   // A revision counts one asset. Where the instance holds another asset under the name than
   // the one that was pulled, or the baseline does not say which asset it was, the number says
-  // nothing: the push is refused here, and the instance refuses it again under its own lock.
-  const written = [...touched, ...deleteAssets];
-  const foreign: AssetConflict[] = written.flatMap((asset): AssetConflict[] => {
+  // nothing: the asset is skipped here, and the instance would refuse it under its own lock.
+  const foreign: AssetConflict[] = [...touched, ...pruned].flatMap((asset): AssetConflict[] => {
     const base = baseOf(asset.key);
     if (base === undefined) return [];
     const address = { kind: asset.kind, name: asset.name };
@@ -198,13 +214,22 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       ? [{ ...address, baseline: "replaced" }]
       : [];
   });
-  if (foreign.length > 0) {
-    writeError(options, formatPushConflict(foreign, false, options));
-    return 1;
-  }
+  skip(foreign);
   // Guardrails are no part of a release: each is written alone, after the batch.
   const isGuardrail = (asset: { kind: string }) => asset.kind === "guardrail";
-  const fileSkills = touched.flatMap((asset) =>
+  const guardrailCheck = await preflightGuardrails(api, {
+    puts: touched.filter((asset) => isGuardrail(asset) && !isSkipped(asset.key)),
+    deletes: pruned.filter((asset) => isGuardrail(asset) && !isSkipped(asset.key)),
+    listing,
+    baseOf,
+    ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
+    options
+  });
+  if (guardrailCheck === undefined) return 1;
+  skip(await describeStale(api, guardrailCheck.stale));
+  const writable = touched.filter((asset) => !isSkipped(asset.key));
+  const deleteAssets = pruned.filter((asset) => !isSkipped(asset.key));
+  const fileSkillCandidates = writable.flatMap((asset) =>
     asset.kind === "skill" &&
     asset.folderFiles !== undefined &&
     JSON.stringify(extraHashes(folderHashes(asset.folderFiles))) !==
@@ -212,8 +237,8 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       ? [{ ...asset, folderFiles: asset.folderFiles }]
       : []
   );
-  const fileSkillKeys = new Set(fileSkills.map((asset) => asset.key));
-  const syncTouched = touched.filter(
+  const fileSkillKeys = new Set(fileSkillCandidates.map((asset) => asset.key));
+  const syncTouched = writable.filter(
     (asset) => !isGuardrail(asset) && !fileSkillKeys.has(asset.key)
   );
   const syncDeletes = deleteAssets.filter((asset) => !isGuardrail(asset));
@@ -259,18 +284,8 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       `This push changes ${items.length} assets, and one push holds at most ${ASSET_RELEASE_SYNC_MAX_ITEMS}. Push in parts with --only.`
     );
   }
-  if (
-    !(await preflightGuardrails(api, {
-      puts: touched.filter(isGuardrail),
-      deletes: deleteAssets.filter(isGuardrail),
-      listing,
-      baseOf,
-      ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
-      options
-    }))
-  )
-    return 1;
-  for (const asset of fileSkills) {
+  const fileSkills: typeof fileSkillCandidates = [];
+  for (const asset of fileSkillCandidates) {
     const current = listing.get(asset.key);
     const base = baseOf(asset.key);
     const revision =
@@ -279,16 +294,14 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
         ? undefined
         : (await api.getLatestRevision("skill", asset.name))?.revision);
     if ((revision ?? null) !== (base?.revision ?? null)) {
-      writeError(
-        options,
-        formatPushConflict(
-          [{ kind: "skill", name: asset.name, currentRevision: current?.revision ?? null }],
-          false,
-          options
-        )
+      skip(
+        await describeStale(api, [
+          { kind: "skill", name: asset.name, currentRevision: revision ?? null }
+        ])
       );
-      return 1;
+      continue;
     }
+    fileSkills.push(asset);
     const checked = await api.read((client) =>
       client.assets.validate({
         params: { kind: "skill" },
@@ -307,22 +320,33 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
   const drafted: PushedDraft[] = [];
   /** The skills this push filed for approval: the working copy keeps them as not yet written. */
   const filed: string[] = [];
-  if (items.length > 0 || changesDefault) {
-    // The default agent the push is made against, as the revisions are: the one of the last pull.
-    const batch: SyncBatch = {
-      ...batchScope(instance),
-      items,
-      ...(changesDefault
-        ? {
-            defaultAgentName: bundle.defaultAgentName ?? null,
-            expectedDefaultAgentName: baseline.defaultAgentName ?? null
-          }
-        : {})
-    };
-    const synced = await syncBatch(api, batch, options);
-    if (synced === undefined) {
-      return 1;
-    }
+  // The default agent the push is made against, as the revisions are: the one of the last pull.
+  const synced =
+    items.length > 0 || changesDefault
+      ? await syncBatch(
+          api,
+          {
+            ...batchScope(instance),
+            items,
+            ...(changesDefault
+              ? {
+                  defaultAgentName: bundle.defaultAgentName ?? null,
+                  expectedDefaultAgentName: baseline.defaultAgentName ?? null
+                }
+              : {})
+          },
+          options,
+          skipped
+        )
+      : "empty";
+  if (synced === undefined) {
+    return 1;
+  }
+  /** The default agent changed on the instance since the last pull is left as it is there. */
+  const defaultWritten = changesDefault && !skipped.defaultAgent;
+  /** The batch wrote something: what is reported after it was applied after it. */
+  const batchWritten = synced !== "empty";
+  if (synced !== "empty") {
     const result = synced;
     const revisions: Record<string, RecordedRevision> = {};
     const filedInSync = new Set<string>();
@@ -360,7 +384,9 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
         });
       }
     }
-    const pushed = bundleOf(syncTouched.filter((asset) => !filedInSync.has(asset.key)));
+    const pushed = bundleOf(
+      syncTouched.filter((asset) => !filedInSync.has(asset.key) && !isSkipped(asset.key))
+    );
     await recordBaseline(
       workingDir,
       instance.key,
@@ -368,7 +394,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       pushed,
       revisions,
       false,
-      changesDefault ? (bundle.defaultAgentName ?? null) : baseline.defaultAgentName,
+      defaultWritten ? (bundle.defaultAgentName ?? null) : baseline.defaultAgentName,
       Object.fromEntries(
         result.items.flatMap((item) =>
           item.status === "applied" && item.type === "delete"
@@ -421,11 +447,7 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
       if (outcome.status === "pending_approval") {
         writeError(
           options,
-          waitingGuardrail(
-            asset.key,
-            outcome.run.id,
-            skillsWritten || items.length > 0 || changesDefault
-          )
+          waitingGuardrail(asset.key, outcome.run.id, skillsWritten || batchWritten)
         );
         return 1;
       }
@@ -491,21 +513,15 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
         : error.code === "REVISION_CONFLICT" || error.code === "CONFLICT"
           ? readConflicts(error.details)
           : [];
-      if (conflicts.length)
-        writeError(
-          options,
-          formatPushConflict(
-            conflicts,
-            false,
-            options,
-            skillsWritten || items.length > 0 || changesDefault
-          )
-        );
-      else
-        writeError(
-          options,
-          `${asset.key}: ${error.code ?? "refused"}: ${error.message}. ${skillsWritten || items.length > 0 || changesDefault ? "What is reported above was applied; nothing after it." : "Nothing was applied."}`
-        );
+      // A refused revision wrote nothing: the skill is skipped and the push goes on.
+      if (conflicts.length > 0 || error.code === "REVISION_CONFLICT") {
+        skip(conflicts.length > 0 ? conflicts : [{ kind: "skill", name: asset.name }]);
+        continue;
+      }
+      writeError(
+        options,
+        `${asset.key}: ${error.code ?? "refused"}: ${error.message}. ${skillsWritten || batchWritten ? "What is reported above was applied; nothing after it." : "Nothing was applied."}`
+      );
       return 1;
     }
   }
@@ -513,11 +529,12 @@ export async function pushConfig(options: ConfigCommandOptions): Promise<number>
     workingDir,
     instanceKey: instance.key,
     version: baseline.lastPulledVersion,
-    puts: touched.filter(isGuardrail),
+    puts: writable.filter(isGuardrail),
     deletes: deleteAssets.filter(isGuardrail),
     baseOf,
     listing,
-    afterSync: items.length > 0 || changesDefault || skillsWritten,
+    skip,
+    afterSync: batchWritten || skillsWritten,
     ...(instance.workspace === undefined ? {} : { workspaceId: instance.workspace }),
     options
   });
@@ -547,11 +564,10 @@ interface PushedDraft {
 }
 
 /**
- * `push --publish`: publishes each draft the push wrote, by the draft revision it was given.
- * An instance's own agent is published without a question, unless a guardrail on
- * `agent.before_publish` holds it for an approval. A workspace's agent asks first, as an App
- * does, and without a terminal is not published. A service principal publishes nothing
- * (AP-10). Each publish is recorded as the agent's new live revision when it is answered.
+ * `push --publish`: publishes each draft the push wrote, by the draft revision it was given,
+ * without a question: the push is its person's own publish, live at once unless a guardrail on
+ * `agent.before_publish` holds it for an approval (PUB-LIVE-1). A service principal publishes
+ * nothing (AP-10). Each publish is recorded as the agent's new live revision when it is answered.
  * Answers 0 when all were published, 3 when one waits for an approval, 1 otherwise.
  */
 async function publishDrafts(
@@ -585,20 +601,6 @@ async function publishDrafts(
     }
   };
   for (const [index, draft] of drafts.entries()) {
-    if (input.workspaceId !== undefined && draft.kind === "agent") {
-      // A workspace's agent keeps the question and the approval of its publish (WS-PUB-1b).
-      const answer = await askBeforePublish(options, {
-        kind: "agent",
-        command: "agent",
-        name: draft.name,
-        revision: draft.draftRevision,
-        yes: false
-      });
-      if (answer !== "answered") {
-        unpublished(index);
-        return 1;
-      }
-    }
     let outcome;
     try {
       outcome = await api.change(
@@ -661,63 +663,101 @@ function publishRefusal(draft: PushedDraft, error: ConfigApiError): string {
 }
 
 /**
- * Sends the batch of agents and skills, checked first. Answers the result where it was
- * applied, and nothing where the instance refused it or holds it for an approval, which it has
- * reported.
+ * Sends the batch of agents and skills, checked first. Where the instance refuses it for assets
+ * that changed since the last pull, those are skipped and the rest is sent again; the instance
+ * checks every revision under its own lock, so nothing it holds unseen is written over. Answers
+ * the result where it was applied, "empty" where every item was skipped, and nothing where the
+ * instance refused it or holds it for an approval, which it has reported.
  */
 async function syncBatch(
   api: ConfigApi,
-  batch: SyncBatch,
-  options: ConfigCommandOptions
-): Promise<SyncOutput | undefined> {
-  try {
-    // Asked first: an instance of an earlier release has no check, and says so here before
-    // anything is written under rules this CLI does not expect.
-    const checked = await checkSyncOnThisRelease(api, batch);
-    const outcome = await api.syncAssets(batch);
-    if (outcome.status === "pending_approval") {
+  initial: SyncBatch,
+  options: ConfigCommandOptions,
+  skipped: SkippedAssets
+): Promise<SyncOutput | "empty" | undefined> {
+  let batch = initial;
+  // Each refusal it continues after takes at least one item or the default out of the batch.
+  for (;;) {
+    if (batch.items.length === 0 && batch.defaultAgentName === undefined) return "empty";
+    try {
+      // Asked first: an instance of an earlier release has no check, and says so here before
+      // anything is written under rules this CLI does not expect.
+      const checked = await checkSyncOnThisRelease(api, batch);
+      const outcome = await api.syncAssets(batch);
+      if (outcome.status === "pending_approval") {
+        writeError(
+          options,
+          `The push waits for an approval on the instance and nothing was applied yet (Operation Run ${outcome.operationRunId}). When it is approved, run 'catalyst config pull' to record the new revisions.`
+        );
+        return undefined;
+      }
+      const warnings = [...(checked.warnings ?? []), ...outcome.output.warnings];
+      return {
+        ...outcome.output,
+        warnings: warnings.filter(
+          (warning, index) =>
+            warnings.findIndex(
+              (other) => other.code === warning.code && other.message === warning.message
+            ) === index
+        )
+      };
+    } catch (error) {
+      if (!(error instanceof ConfigApiError)) throw error;
+      const draftConflict = readDraftConflict(error);
+      const refusal = draftConflict ? undefined : readRefusedBatch(error);
+      const conflicts = draftConflict ? [draftConflict] : (refusal?.conflicts ?? []);
+      const defaultAgentConflict = refusal?.defaultAgentConflict === true;
+      const rest = withoutConflicts(batch, conflicts, defaultAgentConflict, skipped);
+      if (rest !== undefined) {
+        batch = rest;
+        continue;
+      }
+      if (conflicts.length > 0 || defaultAgentConflict) {
+        writeError(
+          options,
+          formatPushConflict(conflicts, defaultAgentConflict, options, NOTHING_APPLIED_HEADER)
+        );
+        return undefined;
+      }
+      if (!refusal) throw error;
       writeError(
         options,
-        `The push waits for an approval on the instance and nothing was applied yet (Operation Run ${outcome.operationRunId}). When it is approved, run 'catalyst config pull' to record the new revisions.`
+        formatRefusal(
+          refusal.validation ? "Validation failed" : "Push refused; nothing was applied",
+          refusal
+        )
       );
       return undefined;
     }
-    const warnings = [...(checked.warnings ?? []), ...outcome.output.warnings];
-    return {
-      ...outcome.output,
-      warnings: warnings.filter(
-        (warning, index) =>
-          warnings.findIndex(
-            (other) => other.code === warning.code && other.message === warning.message
-          ) === index
-      )
-    };
-  } catch (error) {
-    const draftConflict = error instanceof ConfigApiError ? readDraftConflict(error) : undefined;
-    if (draftConflict) {
-      writeError(options, formatPushConflict([draftConflict], false, options));
-      return undefined;
-    }
-    const refusal = error instanceof ConfigApiError ? readRefusedBatch(error) : undefined;
-    if (!refusal) {
-      throw error;
-    }
-    if (refusal.conflicts.length > 0 || refusal.defaultAgentConflict) {
-      writeError(
-        options,
-        formatPushConflict(refusal.conflicts, refusal.defaultAgentConflict, options)
-      );
-      return undefined;
-    }
-    writeError(
-      options,
-      formatRefusal(
-        refusal.validation ? "Validation failed" : "Push refused; nothing was applied",
-        refusal
-      )
-    );
-    return undefined;
   }
+}
+
+/**
+ * The batch without the items the instance refused as changed since the last pull, and without
+ * the default agent where that changed; each is recorded as skipped. Answers nothing where the
+ * refusal names nothing the batch holds.
+ */
+function withoutConflicts(
+  batch: SyncBatch,
+  conflicts: readonly AssetConflict[],
+  defaultAgentConflict: boolean,
+  skipped: SkippedAssets
+): SyncBatch | undefined {
+  const named = new Map(
+    conflicts.map((conflict) => [`${conflict.kind}:${conflict.name}`, conflict])
+  );
+  const keyOf = (item: SyncBatch["items"][number]) =>
+    `${item.kind}:${item.type === "put" ? String(item.config.name) : item.name}`;
+  const left = batch.items.filter((item) => !named.has(keyOf(item)));
+  const dropsDefault = defaultAgentConflict && batch.defaultAgentName !== undefined;
+  if (left.length === batch.items.length && !dropsDefault) return undefined;
+  skipped.conflicts.push(...batch.items.flatMap((item) => named.get(keyOf(item)) ?? []));
+  if (!dropsDefault) return { ...batch, items: left };
+  skipped.defaultAgent = true;
+  return {
+    ...(batch.workspaceId === undefined ? {} : { workspaceId: batch.workspaceId }),
+    items: left
+  };
 }
 
 /**
@@ -736,6 +776,8 @@ async function writeGuardrails(
     deletes: readonly RemoteAsset[];
     baseOf: (key: string) => { id?: string; revision: number } | undefined;
     listing: ReadonlyMap<string, RemoteAsset>;
+    /** Records a guardrail the instance refused as changed since the last pull. */
+    skip: (conflicts: readonly AssetConflict[]) => void;
     afterSync: boolean;
     /** The workspace a bound root writes for: it owns the guardrails the push creates. */
     workspaceId?: string;
@@ -760,22 +802,35 @@ async function writeGuardrails(
       undefined,
       tombstones
     );
+  /** A refused revision wrote nothing: the guardrail is skipped and the next one written. */
+  const skipped = (error: unknown, asset: { kind: string; name: string }): boolean => {
+    if (!(error instanceof ConfigApiError) || error.code !== "REVISION_CONFLICT") return false;
+    const conflicts = readConflicts(error.details);
+    input.skip(conflicts.length > 0 ? conflicts : [{ kind: asset.kind, name: asset.name }]);
+    return true;
+  };
   try {
     for (const asset of input.puts) {
       const base = input.baseOf(asset.key);
-      const outcome = await api.change(
-        (client, idempotencyKey) =>
-          client.assets.put({
-            params: { kind: asset.kind, name: asset.name },
-            body: {
-              config: { ...asset.config },
-              expectedRevision: base?.revision ?? null,
-              ...owner
-            },
-            idempotencyKey
-          }),
-        "It may have been written: run 'catalyst config diff' before pushing again."
-      );
+      let outcome;
+      try {
+        outcome = await api.change(
+          (client, idempotencyKey) =>
+            client.assets.put({
+              params: { kind: asset.kind, name: asset.name },
+              body: {
+                config: { ...asset.config },
+                expectedRevision: base?.revision ?? null,
+                ...owner
+              },
+              idempotencyKey
+            }),
+          "It may have been written: run 'catalyst config diff' before pushing again."
+        );
+      } catch (error) {
+        if (skipped(error, asset)) continue;
+        throw error;
+      }
       if (outcome.status === "pending_approval") {
         writeError(options, waitingGuardrail(asset.key, outcome.run.id, written));
         return 1;
@@ -796,15 +851,21 @@ async function writeGuardrails(
     for (const asset of input.deletes) {
       const base = input.baseOf(asset.key);
       if (base === undefined) continue;
-      const outcome = await api.change(
-        (client, idempotencyKey) =>
-          client.assets.delete({
-            params: { kind: asset.kind, name: asset.name },
-            body: { expectedRevision: base.revision, ...owner },
-            idempotencyKey
-          }),
-        "It may have been applied: run 'catalyst config diff' before pushing again."
-      );
+      let outcome;
+      try {
+        outcome = await api.change(
+          (client, idempotencyKey) =>
+            client.assets.delete({
+              params: { kind: asset.kind, name: asset.name },
+              body: { expectedRevision: base.revision, ...owner },
+              idempotencyKey
+            }),
+          "It may have been applied: run 'catalyst config diff' before pushing again."
+        );
+      } catch (error) {
+        if (skipped(error, asset)) continue;
+        throw error;
+      }
       if (outcome.status === "pending_approval") {
         writeError(options, waitingGuardrail(asset.key, outcome.run.id, written));
         return 1;
@@ -821,11 +882,6 @@ async function writeGuardrails(
     return 0;
   } catch (error) {
     if (!(error instanceof ConfigApiError)) throw error;
-    const conflicts = error.code === "REVISION_CONFLICT" ? readConflicts(error.details) : [];
-    if (conflicts.length > 0) {
-      writeError(options, formatPushConflict(conflicts, false, options, written));
-      return 1;
-    }
     const refusal = readRefusedBatch(error);
     if (!refusal) throw error;
     writeError(
@@ -1112,14 +1168,18 @@ export function formatRefusal(title: string, refusal: RefusedBatch): string {
   return `${title}:\n${refusal.lines.map((line) => `- ${line}`).join("\n")}`;
 }
 
+const NOTHING_APPLIED_HEADER = "Push conflict; nothing was applied.";
+
 function formatPushConflict(
   conflicts: readonly AssetConflict[],
   defaultAgentConflict: boolean,
   options: ConfigCommandOptions,
-  /** Writes of this push were applied before the conflict, as reported above it. */
-  applied = false
+  header: string
 ): string {
-  const selectors = conflicts.map((asset) => `${asset.kind}:${asset.name}`);
+  const sorted = [...conflicts].sort((left, right) =>
+    `${left.kind}:${left.name}`.localeCompare(`${right.kind}:${right.name}`)
+  );
+  const selectors = sorted.map((asset) => `${asset.kind}:${asset.name}`);
   const argumentsList = [
     "catalyst config pull",
     ...(options.dir ? ["--dir", shellQuote(options.dir)] : []),
@@ -1130,10 +1190,8 @@ function formatPushConflict(
       : selectors.flatMap((selector) => ["--only", shellQuote(selector)]))
   ];
   return [
-    applied
-      ? "Push conflict; what is reported above was applied, nothing after it."
-      : "Push conflict; nothing was applied.",
-    ...conflicts.map((asset) => `- ${asset.kind}:${asset.name}: ${describeConflict(asset)}`),
+    header,
+    ...sorted.map((asset) => `- ${asset.kind}:${asset.name}: ${describeConflict(asset)}`),
     ...(defaultAgentConflict
       ? ["- default agent changed on the instance; a full pull is required."]
       : []),
@@ -1141,8 +1199,29 @@ function formatPushConflict(
       ? "Commit or stash local edits in git first: a full pull overwrites the local working copy."
       : "Commit or stash local edits in git first: pull overwrites the local files for these assets.",
     argumentsList.join(" "),
-    "Review with 'catalyst config diff', re-apply local edits, and push again."
+    "Merge your edits into the pulled files, review with 'catalyst config diff', and push again."
   ].join("\n");
+}
+
+/**
+ * Each asset that changed on the instance since the last pull, with who changed it and when,
+ * where the key may read its history.
+ */
+async function describeStale(
+  api: ConfigApi,
+  stale: readonly { kind: string; name: string; currentRevision: number | null }[]
+): Promise<AssetConflict[]> {
+  return mapConcurrently(stale, async (asset) => {
+    const latest = await api.getLatestRevision(asset.kind, asset.name).catch(() => undefined);
+    return {
+      kind: asset.kind,
+      name: asset.name,
+      currentRevision: latest?.revision ?? asset.currentRevision,
+      ...(latest?.operation === "delete" ? { deleted: true } : {}),
+      ...(latest?.actor ? { changedBy: latest.actor.displayLabel } : {}),
+      ...(latest ? { changedAt: latest.createdAt } : {})
+    };
+  });
 }
 
 /** What the instance holds of one conflicting asset, in the words of what the key may read. */

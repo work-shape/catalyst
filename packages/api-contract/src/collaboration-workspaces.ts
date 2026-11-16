@@ -10,6 +10,7 @@ import {
   WORKSPACE_VISIBILITIES
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
+import { accessOriginRoleSchema } from "./access";
 import { conversationVisibilitySchema } from "./conversations";
 import { timestampSchema } from "./shared";
 
@@ -156,7 +157,8 @@ export type WorkspaceBundle = z.infer<typeof workspaceBundleSchema>;
 /**
  * One bundle of one member as the caller reads it. `held` is a row in this workspace, which
  * the workspace's Owner or Admin may take back; `inherited` is held through a role, a group or
- * the whole instance, and is changed where it is given.
+ * the whole instance, or every right it carries here already is, and is changed where it is
+ * given. Nobody asks for an inherited bundle.
  */
 export const memberBundleSchema = z.object({
   state: z.enum(MEMBER_BUNDLE_STATES),
@@ -166,7 +168,9 @@ export const memberBundleSchema = z.object({
    */
   change: z.enum(MEMBER_BUNDLE_CHANGES).optional(),
   /** The pending request, while one is open. */
-  requestId: z.string().optional()
+  requestId: z.string().optional(),
+  /** For `inherited`: the roles that give it, where roles alone do. */
+  coveredBy: z.array(accessOriginRoleSchema).optional()
 });
 export type MemberBundle = z.infer<typeof memberBundleSchema>;
 

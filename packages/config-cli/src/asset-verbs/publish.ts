@@ -1,11 +1,9 @@
 import { workflowPublishReview } from "../workflow-publish-review";
-import { kindNoun } from "../asset-output";
 import { writeOutput } from "../command-support";
 import {
   OVERTAKEN_LINE,
   agentPublishRefusalHint,
   alreadyLiveLine,
-  askBeforePublish,
   isAlreadyLive
 } from "../publish-question";
 import {
@@ -27,7 +25,7 @@ const ALREADY_LIVE: unique symbol = Symbol("already live");
 export const publishVerb: Verb = {
   usage: "publish <name> --revision <n> [--yes] [--confirm <blocked>]",
   summary:
-    "Make one revision the one its users are served (assets.publish). A guardrail shows its dry run first; an App, a Workflow or a workspace's agent asks you first. A publish that hands a source's data to people who may not use the source waits in the Inbox until a person who may change the source approves it",
+    "Make one revision the one its users are served (assets.publish), live at once. A guardrail shows its dry run first; --yes is accepted and changes nothing. A guardrail of the instance can hold a publish for an approval, and a publish that hands a source's data to people who may not use the source waits in the Inbox until a person who may change the source approves it",
   named: true,
   options: {
     revision: { type: "string" },
@@ -52,51 +50,21 @@ export const publishVerb: Verb = {
         );
         for (const line of asset.publishQuestion ?? []) writeOutput(session.options, line);
       }
-      let unattended = false;
-      let dataStores: { name: string; revision: number }[] = [];
-      // A workspace's agent keeps the question of its publish; the instance's own does not.
+      // A publish is its person's own and goes live at once: nothing asks first (PUB-LIVE-1).
+      // A Workflow's publish names the Data Stores it publishes first, as its page does (LIVE-2).
+      const review =
+        session.kind.kind === "workflow"
+          ? await workflowPublishReview({
+              api: session.api,
+              options: session.options,
+              scope: session.scope,
+              name,
+              revision,
+              json: values.json
+            })
+          : undefined;
+      const dataStores = review?.dataStores ?? [];
       const agent = session.kind.kind === AGENT_KIND;
-      const asks = agent
-        ? session.scope.workspaceId !== undefined
-        : session.kind.actions.approve !== undefined;
-      if (asks) {
-        // A Workflow's publish names the Data Stores it publishes first, as its page does (LIVE-2).
-        const review =
-          session.kind.kind === "workflow" && (values.yes || session.options.prompt)
-            ? await workflowPublishReview({
-                api: session.api,
-                options: session.options,
-                scope: session.scope,
-                name,
-                revision,
-                json: values.json,
-                yes: values.yes
-              })
-            : undefined;
-        dataStores = review?.dataStores ?? [];
-        const asked = {
-          kind: session.kind.kind,
-          command: kindNoun(session.kind),
-          name,
-          revision
-        };
-        const answer = await askBeforePublish(session.options, {
-          ...asked,
-          yes: values.yes,
-          ...(review?.details ? { details: review.details } : {})
-        });
-        if (answer === "refused") return EXIT.refused;
-        unattended = answer === "unattended";
-      } else if (values.yes && session.kind.kind === "data_store") {
-        // As for other publishes, --yes sends an unattended request; a held one exits 3.
-        unattended = true;
-      } else if (values.yes) {
-        throw new UsageError(
-          agent
-            ? "An instance's own agent is published without a question; --yes answers none."
-            : `A ${session.kind.kind} is published without a question; --yes answers none.`
-        );
-      }
       const outcome = await session.api
         .change(
           (client, idempotencyKey) =>
@@ -110,8 +78,7 @@ export const publishVerb: Verb = {
                   ? { confirmProcessing: values.confirm }
                   : {})
               },
-              idempotencyKey,
-              ...(unattended ? { unattended } : {})
+              idempotencyKey
             }),
           "It may have been applied: run 'show' before sending it again."
         )
@@ -146,7 +113,9 @@ export const publishVerb: Verb = {
             ? `Published draft revision ${output.draftRevision} of ${session.kind.kind} '${name}' as live revision ${output.publishedRevision}${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
             : `Published revision ${output.publishedRevision} of ${session.kind.kind} '${name}'${output.replacedRevision === undefined ? "" : ` in place of revision ${output.replacedRevision}`}.`
         ],
-        asks ? "If you are an instance approver, you can approve it in the Inbox." : undefined,
+        session.kind.actions.approve !== undefined || agent
+          ? "If you are an instance approver, you can approve it in the Inbox."
+          : undefined,
         OVERTAKEN_LINE
       );
     };
