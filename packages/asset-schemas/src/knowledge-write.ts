@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { KNOWLEDGE_FILE_MAX_BYTES } from "./contract-values";
+import { KNOWLEDGE_DOCUMENT_TEXT_MAX_BYTES } from "./contract-values";
 import { operationBatchResultSchema, workflowDatasetReferenceSchema } from "./operation-batch";
 
 // KBW-0 freezes these contracts before KBW-1, PROC-W and REC-W implement them. These
@@ -10,10 +10,13 @@ const count = z.number().int().min(0);
 const hash = z.string().regex(/^[a-f0-9]{64}$/u);
 const text = z
   .string()
-  .max(KNOWLEDGE_FILE_MAX_BYTES)
-  .refine((value) => new TextEncoder().encode(value).byteLength <= KNOWLEDGE_FILE_MAX_BYTES, {
-    message: `Document text exceeds ${KNOWLEDGE_FILE_MAX_BYTES} bytes`
-  });
+  .max(KNOWLEDGE_DOCUMENT_TEXT_MAX_BYTES)
+  .refine(
+    (value) => new TextEncoder().encode(value).byteLength <= KNOWLEDGE_DOCUMENT_TEXT_MAX_BYTES,
+    {
+      message: `Document text exceeds ${KNOWLEDGE_DOCUMENT_TEXT_MAX_BYTES} bytes`
+    }
+  );
 
 /** How long an origin link may be. */
 export const KNOWLEDGE_ORIGIN_LINK_MAX_CHARS = 4_000;
@@ -200,7 +203,7 @@ export const knowledgeProcessorOutputSchema = processorMetadataSchema
       (size, page) => size + new TextEncoder().encode(page.text).byteLength,
       0
     );
-    if (bytes > KNOWLEDGE_FILE_MAX_BYTES)
+    if (bytes > KNOWLEDGE_DOCUMENT_TEXT_MAX_BYTES)
       context.addIssue({
         code: "custom",
         path: ["pages"],

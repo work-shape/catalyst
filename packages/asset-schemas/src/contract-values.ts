@@ -887,11 +887,18 @@ export const KNOWLEDGE_DOCUMENT_STATES = ["pending", "indexed", "failed"] as con
 export type KnowledgeDocumentState = (typeof KNOWLEDGE_DOCUMENT_STATES)[number];
 
 /**
- * The largest file a Knowledge Base takes unless release config sets `knowledge.maxFileBytes`,
- * and the most text one document carries through the write contracts, a setting or not. A
- * larger file is refused when it is added or fetched, with the limit named.
+ * The largest file a Knowledge Base takes unless release config sets `knowledge.maxFileBytes`.
+ * A larger file is refused when it is added or fetched, with the limit named.
  */
-export const KNOWLEDGE_FILE_MAX_BYTES = 25 * 1024 * 1024;
+export const KNOWLEDGE_FILE_MAX_BYTES = 100 * 1024 * 1024;
+
+/**
+ * The most text one document carries through the write contracts, however large its file and
+ * whatever `knowledge.maxFileBytes` says. A TXT or Markdown file is its own text, so it is
+ * refused above this when it is added or fetched; extraction fails a PDF, DOCX, XLSX or PPTX
+ * whose text passes it with `knowledge_file_over_limit`.
+ */
+export const KNOWLEDGE_DOCUMENT_TEXT_MAX_BYTES = 25 * 1024 * 1024;
 
 /**
  * The most `knowledge.maxFileBytes` may be. A file added by hand is read whole into memory, and
