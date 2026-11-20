@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Workshape Catalyst API",
-    "version": "0.8.0-rc.44",
-    "description": "Every operation under `/api/v1` of release 0.8.0-rc.44, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
+    "version": "0.8.0-rc.45",
+    "description": "Every operation under `/api/v1` of release 0.8.0-rc.45, and the unversioned readiness probe `/ready`. Every error answers with the envelope `ApiErrorResponse`; its `code` is the stable part, its `correlationId` names the request in the instance's log."
   },
   "servers": [
     {
@@ -52737,6 +52737,9 @@
                       },
                       "prompt": {
                         "type": "string"
+                      },
+                      "icon": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -52916,6 +52919,9 @@
                         "type": "string"
                       },
                       "prompt": {
+                        "type": "string"
+                      },
+                      "icon": {
                         "type": "string"
                       }
                     },
@@ -54161,6 +54167,9 @@
                         "type": "string"
                       },
                       "prompt": {
+                        "type": "string"
+                      },
+                      "icon": {
                         "type": "string"
                       }
                     },
@@ -61874,6 +61883,9 @@
                         "type": "string"
                       },
                       "prompt": {
+                        "type": "string"
+                      },
+                      "icon": {
                         "type": "string"
                       }
                     },

@@ -208,12 +208,14 @@ export const safeConfigSchema = z.object({
       initialPrompts: z.array(
         z.object({
           title: z.string(),
-          prompt: z.string()
+          prompt: z.string(),
+          /** A name of the starter icons the author chose. Missing means the usual icon. */
+          icon: z.string().optional()
         })
       ),
       /**
        * What the empty chat offers as first requests: the starters of the agent's skills that
-       * name no tool the agent lacks, the skills in the agent's order, at most four. Choosing
+       * name no tool the agent lacks, the skills in the agent's order, as many as the agent's own requests leave of twelve. Choosing
        * one fills the composer with `prompt` and sends nothing.
        */
       starters: z

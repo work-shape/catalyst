@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { STARTER_ICON_NAMES } from "./starter-icons";
 import { yamlValueIssue } from "./yaml-bounds";
 import {
   REASONING_EFFORTS,
@@ -339,7 +340,10 @@ export const agentConfigSchema = z.object({
     .array(
       z.object({
         title: localizedStringSchema,
-        prompt: localizedStringSchema
+        prompt: localizedStringSchema,
+        icon: z
+          .enum(STARTER_ICON_NAMES, { message: "A starter's icon is one of the starter icons" })
+          .optional()
       })
     )
     .default([]),

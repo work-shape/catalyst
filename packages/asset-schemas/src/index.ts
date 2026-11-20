@@ -7,6 +7,7 @@ export * from "./is-record";
 export * from "./schemas";
 export * from "./secret-names";
 export * from "./skill-markdown";
+export * from "./starter-icons";
 export * from "./yaml-bounds";
 export * from "./yaml-data";
 
