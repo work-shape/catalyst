@@ -14,6 +14,7 @@ import { DATA_STORE_ACTIONS } from "./contract-values/data-store";
 import { KNOWLEDGE_BASE_ACTIONS } from "./contract-values/knowledge-base";
 import { MAIL_SENDER_ACTIONS } from "./contract-values/mail-sender";
 import { GUARDRAIL_ACTIONS } from "./contract-values/guardrail";
+import { TOOL_ACTIONS } from "./contract-values/tool";
 import { OPERATIONS_ACTIONS } from "./contract-values/operations";
 import { FEEDBACK_ACTIONS } from "./contract-values/feedback";
 import { ADMINISTRATION_ACTIONS } from "./contract-values/administration";
@@ -101,6 +102,7 @@ export const ACTIONS = [
   ...KNOWLEDGE_BASE_ACTIONS,
   ...MAIL_SENDER_ACTIONS,
   ...GUARDRAIL_ACTIONS,
+  ...TOOL_ACTIONS,
   ...OPERATIONS_ACTIONS,
   ...FEEDBACK_ACTIONS,
   ...ADMINISTRATION_ACTIONS,
@@ -374,7 +376,8 @@ export type OperationRunDecisionMode = (typeof OPERATION_RUN_DECISION_MODES)[num
 export const OPERATION_RUN_DECISION_REASONS = [
   "inherited_approval_not_applied",
   "workflow_publish",
-  "approved_by_caller"
+  "approved_by_caller",
+  "tool_call"
 ] as const;
 export type OperationRunDecisionReason = (typeof OPERATION_RUN_DECISION_REASONS)[number];
 
@@ -1331,7 +1334,8 @@ export const WORKSPACE_OWNED_RIGHT_KINDS = [
   "workflow",
   "data_store",
   "knowledge_base",
-  "guardrail"
+  "guardrail",
+  "tool"
 ] as const;
 
 /** Published assets that consume Connections or stored data. Agents hold tools separately. */

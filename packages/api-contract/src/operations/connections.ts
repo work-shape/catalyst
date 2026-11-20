@@ -20,6 +20,7 @@ import {
   CONNECTOR_TEST_STATUSES,
   operationPagingSchema,
   OPERATION_EFFECTS,
+  OPERATION_TARGETS,
   OWN_SERVER_SIGN_INS
 } from "@work-shape/catalyst-asset-schemas";
 import { z } from "zod";
@@ -261,6 +262,22 @@ const connectionOAuthCallbackQuerySchema = z.object({
 export const connectionTestResultSchema = z.object({
   status: z.enum(CONNECTOR_TEST_STATUSES),
   testedAt: timestampSchema
+});
+
+/** A try of one operation of a Connection: the operation's input. */
+export const connectionTryCallRequestSchema = z.object({
+  input: z.record(z.string(), z.unknown()).default({})
+});
+
+/**
+ * What a try answers: where the call went, and what the operation answered. `test`: the
+ * Connection's test credential. `live`: a read with the Connection's own credential, where no
+ * test credential is set. `dry_run`: a change without a test credential, simulated, so that
+ * nothing changed and `output` is what the simulation answered, or null.
+ */
+export const connectionTryCallResultSchema = z.object({
+  target: z.enum(OPERATION_TARGETS),
+  output: z.unknown()
 });
 
 /** One folder of a document source, as a person chooses a Knowledge Base's folders. */
@@ -548,6 +565,7 @@ export type ConnectionSecretState = z.infer<typeof connectionSecretStateSchema>;
 export type ConnectionDiscoveredTool = z.infer<typeof connectionDiscoveredToolSchema>;
 export type ConnectionOperationDetail = z.infer<typeof connectionOperationDetailSchema>;
 export type ConnectionTestResult = z.infer<typeof connectionTestResultSchema>;
+export type ConnectionTryCallResult = z.infer<typeof connectionTryCallResultSchema>;
 export type ConnectionSourceFolders = z.infer<typeof connectionSourceFoldersSchema>;
 export type ConnectionTools = z.infer<typeof connectionToolsSchema>;
 export type ConnectionOAuthStart = z.infer<typeof connectionOAuthStartSchema>;
@@ -774,6 +792,26 @@ export const connectionOperations = {
     effect: "changing",
     response: json(connectionTestResultSchema),
     errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  // A code tool's handler run locally from the CLI (TOOL-2d) calls the Connection operations its
+  // tool declares as a draft would: with the test credential where one is set, and a change
+  // without one is simulated. The call runs as the operation `connection.<name>.<operation>`,
+  // with its right, exposure, key scope, policy and audit; this route only names it.
+  "connections.try_call": defineRegisteredOperation({
+    id: "connections.try_call",
+    method: "POST",
+    path: "/api/v1/connections/:name/operations/:operation/tries",
+    summary:
+      "Try one operation of a Connection as a draft calls it: with the test credential where one is set, a read otherwise live and a change otherwise simulated",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    body: connectionTryCallRequestSchema,
+    response: json(connectionTryCallResultSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT", "VALIDATION_FAILED", "TIMEOUT"],
     rateClass: "write"
   }),
   "connections.set_secret": defineRegisteredOperation({

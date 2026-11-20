@@ -284,6 +284,12 @@ const knowledgeListDocumentsResponseSchema = z.object({
        */
       sourceId: z.string().optional(),
       /**
+       * The folder of a synced document at its source, below the folder that is synced and
+       * without the file name, such as `/Projects/North`; `/` at the top. Read-only, and absent
+       * for a file added by hand.
+       */
+      folder: z.string().optional(),
+      /**
        * Where the original lives: filled by its source for a synced document, entered by the
        * builder for one added by hand. An http or https address.
        */

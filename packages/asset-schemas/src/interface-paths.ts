@@ -26,7 +26,8 @@ export const STUDIO_KIND_PATHS: Readonly<Record<string, string>> = {
   connection: "connections",
   data_store: "data-stores",
   knowledge_base: "knowledge-bases",
-  guardrail: "guardrails"
+  guardrail: "guardrails",
+  tool: "tools"
 };
 
 /**

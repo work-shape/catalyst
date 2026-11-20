@@ -25,7 +25,7 @@ export function filesRead(session: Session, from: string, files: number): number
 
 /** Prints what a changing call answered, or that it waits and has changed nothing yet. */
 export function settle<Output>(
-  session: Session,
+  session: Pick<Session, "values" | "options">,
   outcome: OperationOutcome<Output, { id: string; status?: string; approvalRequestId?: string }>,
   lines: (output: Output) => string[],
   approvalHint?: string,

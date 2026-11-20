@@ -22,6 +22,8 @@ export interface Values {
   confirm?: string;
   audience?: string;
   withdraw?: string;
+  /** `catalyst tool run`: the tool's input, as JSON. */
+  input?: string;
   json: boolean;
   all: boolean;
   files: boolean;

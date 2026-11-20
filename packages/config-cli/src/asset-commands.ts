@@ -28,6 +28,7 @@ import { formatAssetHelp } from "./asset-help";
 import { VERBS } from "./asset-verbs";
 import type { Values, OptionName, AssetKind } from "./asset-verbs/types";
 import { EXIT, UsageError, ExplainedRefusal, required } from "./asset-verbs/support";
+import { TOOL_FOLDER_FLAGS, isToolFolderCommand, runToolFolderCommand } from "./tool-commands";
 
 const COMMON_OPTIONS = {
   instance: { type: "string" },
@@ -43,6 +44,7 @@ const OPTIONS = {
   yes: { type: "boolean", default: false },
   audience: { type: "string" },
   withdraw: { type: "string" },
+  input: { type: "string" },
   ...Object.values(VERBS).reduce<NonNullable<ParseArgsConfig["options"]>>(
     (options, verb) => ({ ...options, ...verb.options }),
     {}
@@ -113,7 +115,8 @@ export async function runAssetCommand(
     "workflow",
     "connection",
     "data-store",
-    "knowledge-base"
+    "knowledge-base",
+    "tool"
   ].some((kind) => [kind, `${kind}s`, kind.replace("-", "_")].includes(noun));
   // A registered kind unknown to this CLI can still use offline help with a kind verb.
   if (instanceCommand === undefined && !knownKind && VERBS[verbName] === undefined) {
@@ -153,6 +156,12 @@ export async function runAssetCommand(
         options,
         instanceCommand === "docs" ? verbName : name
       );
+    }
+    if (isToolFolderCommand(noun, verbName, values)) {
+      const verb = verbName === "run" ? "run" : "put";
+      refuseFlags(values, TOOL_FOLDER_FLAGS[verb], `tool ${verb}`);
+      if (extra.length > 0) throw new UsageError(`Unexpected argument '${extra[0]}'.`);
+      return await runToolFolderCommand(verb, name, values, options);
     }
     const repository = Object.values(REPOSITORY_KINDS).find(
       (kind) => noun === kind.kind || noun === `${kind.kind}s`
