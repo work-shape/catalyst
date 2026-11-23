@@ -135,6 +135,12 @@ export interface SkillFileEntry {
 export const SKILL_STARTERS_MAX = 2;
 /** How many starters the empty chat shows for one agent at most. */
 export const AGENT_STARTERS_MAX = 12;
+/**
+ * How many places the skills' starters fill up to, the author's prompts counted: as many as
+ * the empty chat shows before "More". An author who writes this many gets no others under
+ * the fold; only the author's own prompts go beyond it.
+ */
+export const SKILL_STARTERS_FILL = 9;
 /** The most characters a starter's `title` and its `hint` hold, in each language. */
 export const SKILL_STARTER_LINE_MAX_LENGTH = 60;
 
