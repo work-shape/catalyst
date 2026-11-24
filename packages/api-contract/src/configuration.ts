@@ -248,6 +248,21 @@ export const safeConfigSchema = z.object({
             tools: z.array(z.object({ toolName: z.string(), effect: z.enum(OPERATION_EFFECTS) }))
           })
         )
+        .optional(),
+      /**
+       * The Knowledge Bases the agent answers from that the caller may read, in the agent's
+       * order: the id, the name people read and a short description. The empty chat shows
+       * them, so a person sees what the agent can answer from. Nothing else of a Knowledge
+       * Base travels here.
+       */
+      knowledgeBases: z
+        .array(
+          z.object({
+            name: z.string(),
+            title: z.string(),
+            description: z.string().optional()
+          })
+        )
         .optional()
     })
   ),
