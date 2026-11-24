@@ -38,6 +38,12 @@ export const PERSONAL_WORKSPACES_KEY = "personal";
  */
 export const PERSONAL_AGENTS_KEY = ":personal";
 
+/**
+ * The start of the agent key of a call no agent made, which the Breakdown by agent groups by
+ * what the product made it for (`:purpose:knowledge_page_reading`), not as one unnamed row.
+ */
+export const USAGE_PURPOSE_AGENT_KEY_PREFIX = ":purpose:";
+
 /** What the Breakdown of the Usage page groups by (LU-3, limits spec 3.3, view 2). */
 export const USAGE_BREAKDOWN_DIMENSIONS = [
   "workspace",
