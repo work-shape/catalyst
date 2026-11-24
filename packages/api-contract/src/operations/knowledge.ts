@@ -306,6 +306,8 @@ const knowledgeListDocumentsResponseSchema = z.object({
     .object({
       count: z.number().int(),
       state: z.enum(KNOWLEDGE_DOCUMENT_STATES),
+      /** How many of them failed. An older instance sends none. */
+      failed: z.number().int().nonnegative().optional(),
       lastIngestedAt: z.string().optional()
     })
     .optional()
