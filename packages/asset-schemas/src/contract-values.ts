@@ -607,6 +607,12 @@ export const WEB_SOURCE_PROVIDERS = [
 export type WebSourceProvider = (typeof WEB_SOURCE_PROVIDERS)[number];
 
 export const CHAT_MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
+
+/** The roles of what was said in a conversation, which recall searches and reads (RECALL). */
+export const RECALL_ROLES = [
+  "user",
+  "assistant"
+] as const satisfies readonly (typeof CHAT_MESSAGE_ROLES)[number][];
 export type ChatMessageRole = (typeof CHAT_MESSAGE_ROLES)[number];
 
 export const CONVERSATION_ATTACHMENT_STATUSES = [

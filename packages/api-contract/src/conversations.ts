@@ -13,6 +13,7 @@ import {
   ARTIFACT_PREVIEW_IMAGE_MIME_TYPES,
   ATTACHMENT_CREATE_OUTCOMES,
   CHAT_MESSAGE_ROLES,
+  RECALL_ROLES,
   CONNECTION_SIGN_IN_NEEDS,
   CONVERSATION_ATTACHMENT_STATUSES,
   CONVERSATION_VISIBILITIES,
@@ -330,6 +331,57 @@ export const messageSchema = z.object({
   text: z.string(),
   createdAt: timestampSchema,
   metadata: messageMetadataSchema.optional()
+});
+
+/** A search of what was said in a conversation (RECALL-1): the words, as people wrote them. */
+const recallQuerySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[^\u0000]*$/u, "must not contain a NUL character");
+
+const recallHitSchema = z.object({
+  messageId: z.string(),
+  role: z.enum(RECALL_ROLES),
+  createdAt: timestampSchema,
+  snippet: z.string()
+});
+
+export const conversationMessagesSearchQuerySchema = z.object({
+  query: recallQuerySchema,
+  /** Only messages stored before this one. */
+  before: z.string().min(1).max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(20).default(8)
+});
+
+/** The best matches, the match of each snippet marked « », and whether there are more. */
+export const conversationMessagesSearchResultSchema = z.object({
+  hits: z.array(recallHitSchema),
+  more: z.boolean()
+});
+
+/** Without a query: the project's chats by title, newest first. */
+export const projectConversationsSearchQuerySchema = z.object({
+  query: recallQuerySchema.optional(),
+  limit: z.coerce.number().int().min(1).max(10).default(5)
+});
+
+/**
+ * The project's chats whose title or messages match, a title match first, each with at most
+ * three snippets; without a query the newest titles. `more`: more chats matched.
+ */
+export const projectConversationsSearchResultSchema = z.object({
+  conversations: z.array(
+    z.object({
+      conversationId: z.string(),
+      title: z.string(),
+      updatedAt: timestampSchema,
+      titleMatch: z.boolean(),
+      hits: z.array(recallHitSchema)
+    })
+  ),
+  more: z.boolean()
 });
 
 export const draftAttachmentStatusSchema = z.enum(CONVERSATION_ATTACHMENT_STATUSES);

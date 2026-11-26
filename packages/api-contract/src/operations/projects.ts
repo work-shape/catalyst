@@ -28,7 +28,12 @@ import {
   projectMoveSchema,
   setProjectAudienceRequestSchema
 } from "../projects";
-import { conversationSchema, draftAttachmentUploadResponseSchema } from "../conversations";
+import {
+  conversationSchema,
+  draftAttachmentUploadResponseSchema,
+  projectConversationsSearchQuerySchema,
+  projectConversationsSearchResultSchema
+} from "../conversations";
 import { blob, defineOperation, defineRegisteredOperation, json } from "./define-operation";
 
 /**
@@ -208,6 +213,23 @@ export const projectOperations = {
     response: json(conversationSchema),
     errors: ["NOT_FOUND", "CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
+  }),
+  // What was said in the project's chats (RECALL-2): the chats the caller reads, without
+  // drafts, Try conversations and those with the personal-data mark.
+  "projects.conversations.search": defineOperation({
+    id: "projects.conversations.search",
+    method: "GET",
+    path: "/api/v1/project-conversations/:projectId/search",
+    summary: "Search the titles and what was said in a project's chats, or list them newest first",
+    tag: "Projects",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: projectConversationsSearchQuerySchema,
+    response: json(projectConversationsSearchResultSchema),
+    errors: ["NOT_FOUND", "VALIDATION_FAILED", "CONFLICT"],
+    rateClass: "read"
   }),
   // Project files (PRJ-2). Every read and write asks the project's audience: a person
   // outside it gets a project that does not exist, also by its id.

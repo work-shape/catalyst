@@ -19,6 +19,8 @@ import {
   createConversationRequestSchema,
   createConversationRunRequestSchema,
   messageSchema,
+  conversationMessagesSearchQuerySchema,
+  conversationMessagesSearchResultSchema,
   moveConversationRequestSchema,
   openConversationSubjectRequestSchema,
   renameConversationRequestSchema,
@@ -249,6 +251,21 @@ export const conversationOperations = {
     query: listQuerySchema,
     response: page(messageSchema, ["createdAt", "id"], false),
     errors: ["NOT_FOUND"],
+    rateClass: "read"
+  }),
+  "conversations.messages.search": defineOperation({
+    id: "conversations.messages.search",
+    method: "GET",
+    path: "/api/v1/conversations/:conversationId/messages/search",
+    summary: "Search what the user and the agent said in a conversation",
+    tag: "Conversations",
+    auth: "user",
+    scope: "conversation:read",
+    requires: [],
+    effect: "reading",
+    query: conversationMessagesSearchQuerySchema,
+    response: json(conversationMessagesSearchResultSchema),
+    errors: ["NOT_FOUND", "VALIDATION_FAILED", "CONFLICT"],
     rateClass: "read"
   }),
   "conversations.resources.list": defineOperation({
