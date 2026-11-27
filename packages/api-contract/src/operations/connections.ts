@@ -204,6 +204,14 @@ export const connectionDetailSchema = z.object({
   binding: connectionBindingSchema.optional(),
   /** Only for a Connection whose auth scheme is `oauth`. */
   oauth: connectionOAuthSchema.optional(),
+  /**
+   * The instance's OAuth app of the server the Connection's settings name (OAUTH-APP), where
+   * it has one: its client id and version. `inUse` where the Connection signs in with it: the
+   * same client id and no client secret of its own. Never the secret.
+   */
+  oauthApp: z
+    .object({ clientId: z.string(), version: z.number().int().positive(), inUse: z.boolean() })
+    .optional(),
   /** Only for a shared Connection that takes a test credential, or where one is stored. */
   testCredential: connectionTestCredentialSchema.optional(),
   /** Only for a personal MCP Connection that takes each person's own token: the reader's. */
@@ -439,6 +447,16 @@ export const connectorTypeOffersSchema = z.object({
              * app registration with `fields`. Never the client's secret or where it is kept.
              */
             managedClient: z.string().optional(),
+            /**
+             * Where the part signs in at a server its settings name on a client of its own: the
+             * instance's OAuth app of that server (OAUTH-APP), with its client id where one is
+             * set. With one, the install asks for neither client id nor secret. Without, `mayEnter`
+             * says the reader may set it (`connection.write` on the whole instance): the install
+             * then stores what is typed as the app. Never the secret.
+             */
+            oauthApp: z
+              .object({ clientId: z.string().optional(), mayEnter: z.boolean() })
+              .optional(),
             operations: z.array(
               z.object({
                 name: z.string(),
@@ -473,6 +491,26 @@ const connectionSecretWriteSchema = z.object({
   expectedVersion: z.number().int().positive().nullable(),
   expectedRevision: z.number().int().positive()
 });
+
+/**
+ * The instance's OAuth app (OAUTH-APP) of the server and client id a Connection names. With
+ * `value` the client secret is set or replaced; without, the Connection's own is adopted.
+ * `expectedVersion` is the app's version the writer saw, `null` for none; `expectedRevision`
+ * the Connection's, as for a secret.
+ */
+const connectionOAuthAppWriteSchema = z.object({
+  value: z.string().min(1).max(SECRET_VALUE_MAX_CHARS).optional(),
+  expectedVersion: z.number().int().positive().nullable(),
+  expectedRevision: z.number().int().positive()
+});
+/** The app as written: never its secret. `moved` names the Connections whose copy went. */
+const connectionOAuthAppStateSchema = z.object({
+  service: z.string().optional(),
+  clientId: z.string(),
+  version: z.number().int().positive(),
+  moved: z.array(z.string())
+});
+export type ConnectionOAuthAppState = z.infer<typeof connectionOAuthAppStateSchema>;
 
 /**
  * A test credential entered once, as `connectionSecretWriteSchema` enters a secret. `endpoint`
@@ -593,6 +631,18 @@ export const personalConnectionsSchema = z.object({
       catalogue: z
         .object({ entry: z.string(), part: z.enum(CATALOGUE_PARTS), version: z.number().int() })
         .optional(),
+      /**
+       * Of a Connection installed from a catalogue entry: the service's name and its mark, so
+       * the person sees whose system they connect without the right to read the catalogue.
+       */
+      serviceTitle: localizedTextSchema.optional(),
+      mark: z.object({ color: z.string().optional(), logo: z.string().optional() }).optional(),
+      /**
+       * The agents that carry one of the Connection's tools, by the name people read, as far
+       * as the caller may read them. Absent on a person's own server, whose tools every agent
+       * that allows own servers is offered.
+       */
+      usedBy: z.array(z.string()).optional(),
       /**
        * Only on an MCP server the caller added for themselves (PMCP), which is listed to its
        * owner alone, also while it is switched off: its host, whether it is on, and how many
@@ -830,6 +880,24 @@ export const connectionOperations = {
     body: connectionSecretWriteSchema,
     response: json(connectionSecretStateSchema),
     errors: ["NOT_FOUND", "CONFLICT"],
+    rateClass: "write"
+  }),
+  "connections.set_oauth_app": defineRegisteredOperation({
+    id: "connections.set_oauth_app",
+    method: "PUT",
+    path: "/api/v1/connections/:name/oauth-app",
+    summary:
+      "Set or replace the instance's OAuth app of the server and client id one Connection names, with a secret entered or that Connection's own; copies of it are removed. The value is never answered",
+    tag: "Connections",
+    auth: "principal",
+    scope: "config_assets:write",
+    requires: [],
+    effect: "changing",
+    // The call carries a secret. The run keeps no answer and the call never waits.
+    secret: true,
+    body: connectionOAuthAppWriteSchema,
+    response: json(connectionOAuthAppStateSchema),
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT", "VALIDATION_FAILED"],
     rateClass: "write"
   }),
   "connections.set_test_credential": defineRegisteredOperation({

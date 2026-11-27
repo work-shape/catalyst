@@ -186,7 +186,10 @@ export const assetSummarySchema = z.object({
   /**
    * What the kind says of the asset beside its name, by the kind's own keys: a Connection
    * names its `connectorType`, its `origin`, whether it is `enabled` and, where it has one, its
-   * `service`, which picks its icon. Connection lists also carry runtime `health`, and of a
+   * `service`, which picks its icon. One installed for a catalogued service names it in the
+   * reader's language as `serviceTitle`, with its mark as `serviceColor` or `serviceLogo`. A personal
+   * Connection the reader may change names `connectedPeople`, how many people have their own
+   * account connected, as digits. Connection lists also carry runtime `health`, and of a
    * person's own server `ownServer`: `reader` where it is the reader's own, `other` where it is
    * another person's, then with `ownerLabel`, its owner's name (empty for a deleted account). A skill names its
    * `origin`, who ships it: `instance` for a skill of the instance's own, `release` for one a

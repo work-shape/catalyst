@@ -51,6 +51,8 @@ export async function runOperationCommand(argv: readonly string[], base: Options
           test: { type: "boolean" },
           endpoint: { type: "string" },
           account: { type: "string" },
+          app: { type: "boolean" },
+          adopt: { type: "boolean" },
           help: { type: "boolean", short: "h" }
         },
         allowPositionals: true,
@@ -77,6 +79,10 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       );
     if ((values.endpoint !== undefined || values.account !== undefined) && !values.test)
       throw new UsageError("--endpoint and --account belong to the test credential: add --test.");
+    if ((values.app || values.adopt) && !(secretCommand && positionals[1] === "set"))
+      throw new UsageError("--app and --adopt belong to 'catalyst connection secret set'.");
+    if (values.adopt && !values.app) throw new UsageError("--adopt belongs to --app.");
+    if (values.app && values.test) throw new UsageError("--app and --test do not go together.");
     const stdin = base.stdin ?? process.stdin;
     if (argv[0] === "call") {
       if (positionals.length !== 1)
@@ -100,6 +106,7 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       }
       if (
         (operation.id === "connections.set_secret" ||
+          operation.id === "connections.set_oauth_app" ||
           operation.id === "connections.set_test_credential") &&
         isRecord(input.body) &&
         typeof input.body.value === "string"
@@ -131,7 +138,7 @@ export async function runOperationCommand(argv: readonly string[], base: Options
         !positionals[2]
       ) {
         throw new UsageError(
-          "Usage: catalyst connection secret set <name> [--test [--endpoint <url>] [--account <name>]] (value from stdin or hidden prompt only), or catalyst connection secret remove <name> --test"
+          "Usage: catalyst connection secret set <name> [--test [--endpoint <url>] [--account <name>] | --app [--adopt]] (value from stdin or hidden prompt only), or catalyst connection secret remove <name> --test"
         );
       }
       const connectionName = positionals[2];
@@ -156,6 +163,33 @@ export async function runOperationCommand(argv: readonly string[], base: Options
       const { revision } = await api.read((client) =>
         client.assets.get({ params: { kind: "connection", name: connectionName }, query: {} })
       );
+      if (values.app) {
+        // The instance's OAuth app of the server and client id the Connection names (OAUTH-APP):
+        // a value typed, or with --adopt the Connection's own secret, which is never read here.
+        const value = values.adopt
+          ? undefined
+          : await readSecret(stdin, (text) =>
+              (options.stderr ?? process.stderr.write.bind(process.stderr))(text)
+            );
+        secret = value;
+        if (value?.length === 0) throw new UsageError("The secret must not be empty.");
+        const state = await api.change(
+          (client, idempotencyKey) =>
+            client.connections.set_oauth_app({
+              params: { name: connectionName },
+              body: {
+                ...(value === undefined ? {} : { value }),
+                // The version of the app the Connection's server has now, read before the prompt.
+                expectedVersion: detail.oauthApp?.version ?? null,
+                expectedRevision: revision
+              },
+              idempotencyKey
+            }),
+          "Read the connection's OAuth app before trying again."
+        );
+        writeOutput(options, JSON.stringify(state, null, 2));
+        return 0;
+      }
       const value = await readSecret(stdin, (text) =>
         (options.stderr ?? process.stderr.write.bind(process.stderr))(text)
       );
@@ -345,6 +379,12 @@ export const operationHelpText = `Operations (JSON output; the instance decides 
                                     instead (connections.set_test_credential); with
                                     --endpoint <url> they go to that address, which must be on
                                     the egress list; --account <name> names the test account
+                                    --app sets the instance's OAuth app of the server and
+                                    client id the Connection names instead: every Connection
+                                    on them without a secret of its own uses it, and own
+                                    copies of the same value are removed
+                                    (connections.set_oauth_app); --app --adopt takes the
+                                    Connection's own secret and reads no value
   connection secret remove <name> --test
                                     Remove the test credential: a draft's changing calls are
                                     simulated again (connections.remove_test_credential)
